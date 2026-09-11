@@ -15,6 +15,8 @@ ANIMATION_FINISHED = "animation_finished"
 ERROR = "error"
 USER_TEXT = "user_text"
 USER_AUDIO = "user_audio"
+SAVE_PROFILE = "save_profile"
+LOAD_PROFILE = "load_profile"
 
 # Brain -> Renderer message type strings.
 PING = "ping"
@@ -23,6 +25,7 @@ SET_EXPRESSION = "set_expression"
 VISEME_STREAM = "viseme_stream"
 SPEAK_TEXT = "speak_text"
 SPEAK_AUDIO = "speak_audio"
+PROFILES = "profiles"
 
 
 def ping() -> dict:
@@ -43,6 +46,10 @@ def play_animation(name: str, loop: bool = False) -> dict:
 
 def set_expression(name: str, weight: float) -> dict:
     return {"type": SET_EXPRESSION, "name": name, "weight": weight}
+
+
+def profiles(names: list[str]) -> dict:
+    return {"type": PROFILES, "names": names}
 
 
 @dataclass

@@ -18,6 +18,13 @@ const SUBTITLE_FADE_DELAY_MS = 10000;
 const MOODS = ["happy", "sad", "surprised", "angry", "relaxed"];
 const EXPRESSION_FADE_SEC = 0.3;
 
+// Profiles are stored Brain-side now (brain/profiles/*.md, see
+// protocol.md's save_profile/load_profile/profiles) rather than in
+// localStorage -- Brain persists the active one across its own restarts
+// via user.md, so the Renderer doesn't need to resend anything on
+// reconnect the way an earlier, single-profile version of this feature
+// did.
+
 export class BrainClient {
   constructor({
     url,
@@ -29,6 +36,13 @@ export class BrainClient {
     micButtonEl,
     micLabelEl,
     historyListEl,
+    profileListEl,
+    newProfileButtonEl,
+    profileModalBackdropEl,
+    profileNameEl,
+    profileContentEl,
+    profileSaveButtonEl,
+    profileCancelButtonEl,
   }) {
     this.url = url;
     this.vrm = vrm;
@@ -39,6 +53,14 @@ export class BrainClient {
     this.micButtonEl = micButtonEl;
     this.micLabelEl = micLabelEl;
     this.historyListEl = historyListEl;
+    this.profileListEl = profileListEl;
+    this.newProfileButtonEl = newProfileButtonEl;
+    this.profileModalBackdropEl = profileModalBackdropEl;
+    this.profileNameEl = profileNameEl;
+    this.profileContentEl = profileContentEl;
+    this.profileSaveButtonEl = profileSaveButtonEl;
+    this.profileCancelButtonEl = profileCancelButtonEl;
+    this._activeProfileName = null;
     this.socket = null;
     this._subtitleTimer = null;
     this._subtitleStreamTimer = null;
@@ -72,6 +94,16 @@ export class BrainClient {
     this.micButtonEl?.addEventListener("pointerup", stopRecording);
     this.micButtonEl?.addEventListener("pointerleave", stopRecording);
     this.micButtonEl?.addEventListener("pointercancel", stopRecording);
+
+    this.newProfileButtonEl?.addEventListener("click", () => this._openProfileModal());
+    this.profileCancelButtonEl?.addEventListener("click", () => this._closeProfileModal());
+    this.profileSaveButtonEl?.addEventListener("click", () => this._saveProfile());
+    this.profileModalBackdropEl?.addEventListener("click", (e) => {
+      if (e.target === this.profileModalBackdropEl) this._closeProfileModal();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !this.profileModalBackdropEl?.hidden) this._closeProfileModal();
+    });
   }
 
   connect() {
@@ -210,6 +242,62 @@ export class BrainClient {
     if (this.statusEl) this.statusEl.textContent = text;
   }
 
+  // Renders the current list of saved profiles into the settings panel,
+  // each with a Load button; the active one (if any) is highlighted.
+  // Called whenever a `profiles` message arrives -- right after connect,
+  // and again after every save (see _handleMessage).
+  _renderProfileList(names) {
+    if (!this.profileListEl) return;
+    this.profileListEl.replaceChildren();
+    for (const name of names) {
+      const entry = document.createElement("div");
+      entry.className = "profile-entry";
+      if (name === this._activeProfileName) entry.classList.add("active");
+
+      const label = document.createElement("span");
+      label.className = "profile-entry-name";
+      label.textContent = name;
+      entry.appendChild(label);
+
+      const loadButton = document.createElement("button");
+      loadButton.className = "profile-entry-load";
+      loadButton.textContent = name === this._activeProfileName ? "Active" : "Load";
+      loadButton.addEventListener("click", () => this._loadProfile(name));
+      entry.appendChild(loadButton);
+
+      this.profileListEl.appendChild(entry);
+    }
+  }
+
+  _loadProfile(name) {
+    this._send({ type: "load_profile", name });
+    this._activeProfileName = name;
+    // Re-render immediately against the list already on screen so the
+    // "Active" highlight shows right away rather than waiting on a round
+    // trip -- Brain doesn't send a fresh `profiles` list back for a load,
+    // only for a save (protocol.md), so nothing else would trigger this.
+    this._renderProfileList([...this.profileListEl.querySelectorAll(".profile-entry-name")].map((el) => el.textContent));
+  }
+
+  _openProfileModal() {
+    if (!this.profileModalBackdropEl) return;
+    if (this.profileNameEl) this.profileNameEl.value = "";
+    if (this.profileContentEl) this.profileContentEl.value = "";
+    this.profileModalBackdropEl.hidden = false;
+  }
+
+  _closeProfileModal() {
+    if (this.profileModalBackdropEl) this.profileModalBackdropEl.hidden = true;
+  }
+
+  _saveProfile() {
+    const name = this.profileNameEl?.value.trim() || "";
+    const content = this.profileContentEl?.value.trim() || "";
+    if (!name || !content) return;
+    this._send({ type: "save_profile", name, content });
+    this._closeProfileModal();
+  }
+
   _addHistoryEntry(role, text) {
     if (!this.historyListEl) return;
     const group = document.createElement("div");
@@ -321,6 +409,9 @@ export class BrainClient {
         break;
       case "viseme_stream":
         this.visemeFrames = data.frames || [];
+        break;
+      case "profiles":
+        this._renderProfileList(data.names || []);
         break;
       case "play_animation":
         console.warn("[brain] play_animation not yet implemented:", data);

@@ -57,6 +57,27 @@ class LocalLLM:
         self._client = OpenAI(base_url=endpoint, api_key=api_key or "not-needed")
         self._model = model
         self._history: list[dict] = []
+        self._persona = ""
+
+    def set_persona(self, persona_md: str) -> None:
+        """Sets the active role-play profile (freeform markdown -- character
+        and scenario combined, not separate fields; see brain/profiles.py),
+        folded into the system prompt for every reply from here on. Resets
+        conversation history -- continuing an old exchange under a brand
+        new role-play premise would just be incoherent, so a persona
+        change starts the conversation fresh.
+        """
+        self._persona = persona_md.strip()
+        self._history.clear()
+
+    def _system_prompt(self) -> str:
+        if not self._persona:
+            return SYSTEM_PROMPT
+        return (
+            f"{SYSTEM_PROMPT}\n\nYou are role-playing with the user under this profile:\n"
+            f"{self._persona}\n\nStay in character and play out this scenario naturally "
+            "as the conversation continues."
+        )
 
     def reply(self, user_text: str) -> tuple[str, str]:
         """Returns (reply_text, mood) -- reply_text has the mood tag
@@ -65,7 +86,7 @@ class LocalLLM:
         """
         self._history.append({"role": "user", "content": user_text})
         del self._history[:-MAX_HISTORY_MESSAGES]
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}, *self._history]
+        messages = [{"role": "system", "content": self._system_prompt()}, *self._history]
         response = self._client.chat.completions.create(model=self._model, messages=messages)
         raw_reply = response.choices[0].message.content
         mood, reply_text = _extract_mood(raw_reply)

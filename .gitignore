@@ -5,6 +5,11 @@
 config.yaml
 config.local.*
 
+# User-generated role-play profiles (brain/profiles.py) -- personal
+# content, not source code.
+brain/profiles/
+brain/user.md
+
 # Python
 __pycache__/
 *.pyc

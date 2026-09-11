@@ -15,6 +15,13 @@ const historyPanelEl = document.getElementById("history-panel");
 const historyListEl = document.getElementById("history-list");
 const settingsButtonEl = document.getElementById("settings-button");
 const settingsPanelEl = document.getElementById("settings-panel");
+const profileListEl = document.getElementById("profile-list");
+const newProfileButtonEl = document.getElementById("new-profile-button");
+const profileModalBackdropEl = document.getElementById("profile-modal-backdrop");
+const profileNameEl = document.getElementById("profile-name");
+const profileContentEl = document.getElementById("profile-content");
+const profileSaveButtonEl = document.getElementById("profile-save-button");
+const profileCancelButtonEl = document.getElementById("profile-cancel-button");
 
 const canvas = document.getElementById("scene");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -75,6 +82,13 @@ const brain = new BrainClient({
   micButtonEl,
   micLabelEl,
   historyListEl,
+  profileListEl,
+  newProfileButtonEl,
+  profileModalBackdropEl,
+  profileNameEl,
+  profileContentEl,
+  profileSaveButtonEl,
+  profileCancelButtonEl,
 });
 brain.connect();
 window.__brain = brain; // for console-driven verification while building

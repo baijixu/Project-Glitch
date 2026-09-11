@@ -224,6 +224,186 @@ html, body {
   line-height: 1.4;
 }
 
+.settings-section h3 {
+  margin: 0 0 6px;
+  color: #eee;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.settings-hint {
+  margin: 0 0 10px;
+  color: #8a8fa0;
+}
+
+.settings-action-button {
+  width: 100%;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: none;
+  background: #4a7bd8;
+  color: white;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.settings-action-button:hover {
+  background: #3a67c2;
+}
+
+#profile-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.profile-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: #262a3a;
+}
+
+.profile-entry.active {
+  background: #2f4270;
+  box-shadow: inset 0 0 0 1px #4a7bd8;
+}
+
+.profile-entry-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #eee;
+  font-size: 12px;
+}
+
+.profile-entry-load {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: none;
+  background: #3a3f52;
+  color: #ddd;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.profile-entry-load:hover {
+  background: #4a4f66;
+}
+
+.profile-entry.active .profile-entry-load {
+  background: #4a7bd8;
+  color: white;
+}
+
+.modal-backdrop[hidden] {
+  display: none;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.modal {
+  width: min(420px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  background: #1e2130;
+  border-radius: 14px;
+  padding: 20px;
+  box-sizing: border-box;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+}
+
+.modal h2 {
+  margin: 0 0 14px;
+  color: #eee;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.modal label {
+  color: #cbd0dc;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.modal textarea,
+.modal input[type="text"] {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  border-radius: 10px;
+  border: 1px solid #444a5c;
+  background: #14151f;
+  color: #eee;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+}
+
+.modal textarea:focus,
+.modal input[type="text"]:focus {
+  outline: none;
+  border-color: #4a7bd8;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.modal-button {
+  padding: 8px 18px;
+  border-radius: 10px;
+  border: none;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.modal-button.primary {
+  background: #4a7bd8;
+  color: white;
+}
+
+.modal-button.primary:hover {
+  background: #3a67c2;
+}
+
+.modal-button.secondary {
+  background: #3a3f52;
+  color: #ddd;
+}
+
+.modal-button.secondary:hover {
+  background: #4a4f66;
+}
+
 #history-list {
   flex: 1 1 auto;
   overflow-y: auto;

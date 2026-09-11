@@ -37,6 +37,7 @@ logging.basicConfig(level=logging.WARNING, format="[%(name)s] %(levelname)s: %(m
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
+import profiles
 import protocol
 from config import load_config
 from discord_bot import build_discord_client, run_discord_bot
@@ -93,6 +94,7 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
 
     if msg_type == protocol.READY:
         print(f"[brain] renderer ready, model={data.get('model')!r}")
+        await websocket.send(json.dumps(protocol.profiles(profiles.list_profiles())))
     elif msg_type == protocol.PONG:
         pass
     elif msg_type == protocol.ANIMATION_FINISHED:
@@ -103,8 +105,37 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
         await _reply_to(websocket, data.get("text", ""), brain)
     elif msg_type == protocol.USER_AUDIO:
         await _handle_user_audio(websocket, data, brain)
+    elif msg_type == protocol.SAVE_PROFILE:
+        await _handle_save_profile(websocket, data, brain)
+    elif msg_type == protocol.LOAD_PROFILE:
+        _handle_load_profile(data, brain)
     else:
         print(f"[brain] ignoring unknown message type: {msg_type!r}")
+
+
+async def _handle_save_profile(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    name = data.get("name", "")
+    content = data.get("content", "")
+    if not name.strip() or not content.strip():
+        return
+    try:
+        profiles.save_profile(name, content)
+    except ValueError as exc:
+        print(f"[brain] couldn't save profile {name!r}: {exc!r}")
+        return
+    print(f"[brain] saved profile {name!r}")
+    await websocket.send(json.dumps(protocol.profiles(profiles.list_profiles())))
+
+
+def _handle_load_profile(data: dict, brain: Brain) -> None:
+    name = data.get("name", "")
+    try:
+        content = profiles.load_profile(name)
+    except (ValueError, FileNotFoundError) as exc:
+        print(f"[brain] couldn't load profile {name!r}: {exc!r}")
+        return
+    brain.llm.set_persona(content)
+    print(f"[brain] loaded profile {name!r}")
 
 
 async def _handle_user_audio(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
@@ -176,6 +207,13 @@ async def main() -> None:
 
     llm_cfg = brain_cfg["llm"]
     llm = LocalLLM(endpoint=llm_cfg["endpoint"], model=llm_cfg.get("model"), api_key=llm_cfg.get("api_key"))
+    # user.md persists across restarts (brain/profiles.py) -- prime the
+    # LLM with whatever profile was last active rather than starting
+    # every restart back at no persona, silently losing it.
+    active_profile = profiles.read_active_profile()
+    if active_profile:
+        llm.set_persona(active_profile)
+        print("[brain] primed with previously active profile from user.md")
 
     print("[brain] loading TTS (Kokoro)...")
     tts = KokoroTTS()
