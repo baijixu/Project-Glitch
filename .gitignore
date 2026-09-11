@@ -1,0 +1,21 @@
+# Secrets / local config
+.env
+.env.*
+!.env.example
+config.yaml
+config.local.*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node
+node_modules/
+npm-debug.log*
+renderer/dist/
+
+# OS
+.DS_Store
+Thumbs.db

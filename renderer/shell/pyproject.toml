@@ -1,0 +1,8 @@
+[project]
+name = "glitch-renderer-shell"
+version = "0.1.0"
+description = "Native window shell for the Renderer -- pywebview only, no app logic (spec section 4)"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "pywebview>=5.0",
+]

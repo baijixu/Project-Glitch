@@ -1,0 +1,12 @@
+# Copy to config.yaml and fill in real values. config.yaml is gitignored.
+
+brain:
+  # Address the Brain's WebSocket server binds to. 0.0.0.0 to accept
+  # connections from other machines on the LAN, localhost/127.0.0.1 for
+  # same-machine only.
+  host: localhost
+  port: 8765
+
+# The Renderer is a browser/WebView app, not a Python process -- it can't
+# read this file directly, so it gets the same host/port via its own
+# renderer/.env (VITE_BRAIN_WS_URL). Keep the two in sync by hand.
