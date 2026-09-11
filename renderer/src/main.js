@@ -20,7 +20,7 @@ renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x6a87ad);
+scene.background = new THREE.Color(0x000000);
 
 const camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.1, 20);
 camera.position.set(0, 1.25, 1.7);
@@ -42,7 +42,7 @@ scene.add(dirLight);
 
 const floor = new THREE.Mesh(
   new THREE.PlaneGeometry(4, 4),
-  new THREE.MeshStandardMaterial({ color: 0x2a2e3a })
+  new THREE.MeshStandardMaterial({ color: 0x000000 })
 );
 floor.rotation.x = -Math.PI / 2;
 scene.add(floor);
