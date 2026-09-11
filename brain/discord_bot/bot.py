@@ -44,6 +44,12 @@ DISCORD_MESSAGE_LIMIT = 2000
 
 LEAVE_COMMAND = "!leave"
 
+# See _connect_voice's docstring -- discord.py's default connect()
+# timeout (30s) was confirmed too short live.
+VOICE_CONNECT_TIMEOUT_SEC = 60.0
+VOICE_CONNECT_RETRIES = 3
+VOICE_RETRY_DELAY_SEC = 3.0
+
 
 class DiscordBrain(discord.Client):
     def __init__(
@@ -105,22 +111,9 @@ class DiscordBrain(discord.Client):
                 print(f"[discord-voice] cleanup of stale connection failed (continuing anyway): {exc!r}")
             self._voice_clients.pop(member.guild.id, None)
 
-        print(f"[discord-voice] joining {after.channel.name!r} in {member.guild.name!r}")
-        try:
-            vc = await after.channel.connect(cls=voice_recv.VoiceRecvClient)
-        except discord.ClientException as exc:
-            # discord.py's own guild.voice_client registry still thinks
-            # we're connected somewhere -- force it to forget and retry
-            # once rather than getting permanently stuck refusing to
-            # rejoin after a bad disconnect.
-            print(f"[discord-voice] connect() rejected ({exc!r}), forcing voice-client reset and retrying")
-            stale = member.guild.voice_client
-            if stale:
-                try:
-                    await stale.disconnect(force=True)
-                except Exception:
-                    pass
-            vc = await after.channel.connect(cls=voice_recv.VoiceRecvClient)
+        vc = await self._connect_voice(after)
+        if vc is None:
+            return  # already logged -- nothing was left half-connected to clean up
 
         self._voice_clients[member.guild.id] = vc
 
@@ -129,6 +122,43 @@ class DiscordBrain(discord.Client):
 
         vc.listen(UtteranceSink(on_utterance))
         print(f"[discord-voice] listening in {after.channel.name!r}")
+
+    async def _connect_voice(self, channel: discord.VoiceChannel):
+        """Connects with retries. discord.py's own warning when this is
+        slow ("Awaiting endpoint... considering raising the timeout and
+        reconnecting") names exactly this fix -- confirmed live hitting
+        the default 30s connect() timeout during a real, independently-
+        reported voice-server hiccup ("she joins with me, crashes the
+        voice channel then drops"). Each retry also clears whatever
+        discord.py's own guild.voice_client registry still thinks is
+        connected first, in case the previous attempt left it in a
+        half-connected state that would make a plain retry fail
+        immediately with "already connected."
+        """
+        last_exc: Exception | None = None
+        for attempt in range(1, VOICE_CONNECT_RETRIES + 1):
+            stale = channel.guild.voice_client
+            if stale:
+                try:
+                    await stale.disconnect(force=True)
+                except Exception:
+                    pass
+
+            print(f"[discord-voice] joining {channel.name!r} in {channel.guild.name!r} (attempt {attempt}/{VOICE_CONNECT_RETRIES})")
+            try:
+                return await channel.connect(cls=voice_recv.VoiceRecvClient, timeout=VOICE_CONNECT_TIMEOUT_SEC)
+            except Exception as exc:
+                last_exc = exc
+                print(f"[discord-voice] connect attempt {attempt} failed: {exc!r}")
+                if attempt < VOICE_CONNECT_RETRIES:
+                    await asyncio.sleep(VOICE_RETRY_DELAY_SEC)
+
+        print(
+            f"[discord-voice] giving up joining {channel.name!r} after {VOICE_CONNECT_RETRIES} attempts: {last_exc!r} -- "
+            "this looks like a Discord-side voice-server issue rather than a bug here (discord.py's own "
+            "handshake timed out waiting on Discord's servers, not on anything this code controls)."
+        )
+        return None
 
     async def _leave_voice(self, guild: discord.Guild) -> None:
         vc = self._voice_clients.pop(guild.id, None)
