@@ -11,20 +11,28 @@ Voice is join-and-speak only, not listen-and-respond: she auto-joins
 whichever voice channel allowed_user_id enters (following if they switch
 channels) and speaks her text-chat replies out loud while connected, but
 does not transcribe or react to anything said in the channel. Live
-wake-word listening was attempted and deliberately dropped after hitting
-a real, currently-unresolved upstream limitation: Discord's voice
-channels are now DAVE (E2EE) encrypted by default, and
-discord-ext-voice-recv -- the only community library that lets
-discord.py receive voice audio at all -- cannot decrypt DAVE packets yet
-(open feature request: github.com/imayhaveborkedit/discord-ext-voice-recv
-issue #64, no ETA). Every packet it tried to receive Opus-decoded to
-garbage ("corrupted stream"), which also appeared to destabilize the
-voice session for other real people in the channel -- confirmed live,
-not a guess. Sending audio doesn't touch that broken code path at all
-(discord.py's own native, DAVE-aware VoiceClient handles it), so
-speaking is unaffected; only the extra `discord-ext-voice-recv`
-dependency and its receive machinery were removed. Leaving is
-command-only ("!leave", allowed_user_id only), no auto-leave.
+wake-word listening was attempted twice, on two different libraries, and
+dropped both times after hitting the same real, currently-unresolved
+upstream limitation: Discord's voice channels are DAVE (E2EE) encrypted
+by default (enforced platform-wide since 2026-03-02), and neither
+discord-ext-voice-recv nor py-cord's own built-in voice-receive can
+decrypt DAVE audio yet. Confirmed live on the first attempt (every
+packet Opus-decoded to garbage -- "corrupted stream" -- which also
+appeared to destabilize the voice session for other real people in the
+channel), and confirmed directly in py-cord's own source before the
+second attempt even started: VoiceClient.start_recording() raises its
+own RuntimeWarning admitting exactly this
+(github.com/Pycord-Development/pycord issue #3139, no ETA). Sending
+audio doesn't touch that broken code path at all, so speaking is
+unaffected either way.
+
+This uses py-cord, not discord.py, specifically because py-cord speaks
+the DAVE handshake and discord.py doesn't at all -- a discord.py bot's
+mere presence in a call was reported to silently drop that call out of
+E2EE for everyone in it, DAVE or not, since discord.py can't negotiate
+it. Switching stops that even though receive still doesn't work either
+way. Leaving is command-only ("!leave", allowed_user_id only), no
+auto-leave.
 
 Every conversation -- each DM thread, each channel -- gets its own
 LocalLLM instance and history, completely separate from whatever's live
@@ -42,15 +50,16 @@ import discord.opus
 from llm import LocalLLM
 from voice import KokoroTTS
 
-# discord.py doesn't reliably auto-load libopus on import (confirmed:
-# discord.opus.is_loaded() was False here despite the bundled Windows DLL
-# sitting right there in the package) -- without it, encoding audio for
-# playback fails, not just receiving it. _load_default() is "private"
-# (underscore-prefixed) but it's the only part of discord.py that
-# already knows how to find the right library on every platform: the
-# bundled DLL on Windows, or a system-installed libopus via
-# ctypes.util.find_library on macOS/Linux (which needs actually
-# installing there, e.g. `apt install libopus0` -- see setup.sh).
+# Neither discord.py nor its fork py-cord (this project's discord.opus
+# module -- forked wholesale, same code) reliably auto-loads libopus on
+# import (confirmed on both: discord.opus.is_loaded() was False despite
+# the bundled Windows DLL sitting right there in the package) -- without
+# it, encoding audio for playback fails, not just receiving it.
+# _load_default() is "private" (underscore-prefixed) but it's the only
+# part of the library that already knows how to find the right library
+# on every platform: the bundled DLL on Windows, or a system-installed
+# libopus via ctypes.util.find_library on macOS/Linux (which needs
+# actually installing there, e.g. `apt install libopus0` -- see setup.sh).
 if not discord.opus.is_loaded():
     try:
         discord.opus._load_default()
