@@ -19,7 +19,19 @@ const MOODS = ["happy", "sad", "surprised", "angry", "relaxed"];
 const EXPRESSION_FADE_SEC = 0.3;
 
 export class BrainClient {
-  constructor({ url, vrm, statusEl, subtitleEl, inputEl, sendButtonEl, micButtonEl, micLabelEl }) {
+  constructor({
+    url,
+    vrm,
+    statusEl,
+    subtitleEl,
+    inputEl,
+    sendButtonEl,
+    micButtonEl,
+    micLabelEl,
+    historyButtonEl,
+    historyPanelEl,
+    historyListEl,
+  }) {
     this.url = url;
     this.vrm = vrm;
     this.statusEl = statusEl;
@@ -28,6 +40,9 @@ export class BrainClient {
     this.sendButtonEl = sendButtonEl;
     this.micButtonEl = micButtonEl;
     this.micLabelEl = micLabelEl;
+    this.historyButtonEl = historyButtonEl;
+    this.historyPanelEl = historyPanelEl;
+    this.historyListEl = historyListEl;
     this.socket = null;
     this._subtitleTimer = null;
     this._subtitleStreamTimer = null;
@@ -61,6 +76,10 @@ export class BrainClient {
     this.micButtonEl?.addEventListener("pointerup", stopRecording);
     this.micButtonEl?.addEventListener("pointerleave", stopRecording);
     this.micButtonEl?.addEventListener("pointercancel", stopRecording);
+
+    this.historyButtonEl?.addEventListener("click", () => {
+      this.historyPanelEl?.classList.toggle("open");
+    });
   }
 
   connect() {
@@ -139,6 +158,7 @@ export class BrainClient {
     const text = this.inputEl?.value.trim();
     if (!text) return;
     this._send({ type: "user_text", text });
+    this._addHistoryEntry("user", text);
     this.inputEl.value = "";
   }
 
@@ -181,6 +201,11 @@ export class BrainClient {
     const blob = new Blob(this.recordedChunks, { type: mimeType });
     const audioB64 = _arrayBufferToBase64(await blob.arrayBuffer());
     this._send({ type: "user_audio", audio_b64: audioB64, mime_type: mimeType });
+    // The transcript itself only exists Brain-side (STT runs there) --
+    // protocol.md has no message that sends it back, so this is a
+    // placeholder rather than the actual words, just to keep the history
+    // showing a turn happened here.
+    this._addHistoryEntry("user", "🎤 (voice message)");
   }
 
   _send(message) {
@@ -191,6 +216,15 @@ export class BrainClient {
 
   _setStatus(text) {
     if (this.statusEl) this.statusEl.textContent = text;
+  }
+
+  _addHistoryEntry(role, text) {
+    if (!this.historyListEl) return;
+    const entry = document.createElement("div");
+    entry.className = `history-entry history-${role}`;
+    entry.textContent = text;
+    this.historyListEl.appendChild(entry);
+    this.historyListEl.scrollTop = this.historyListEl.scrollHeight;
   }
 
   // Reveals text word by word, paced to the actual audio duration (decoded
@@ -278,6 +312,7 @@ export class BrainClient {
         // Held until speak_audio arrives with a decoded duration to pace
         // the streaming reveal against -- see _startSubtitleStream.
         this._pendingSpeakText = data.text;
+        this._addHistoryEntry("glitch", data.text);
         break;
       case "speak_audio":
         this._playAudio(data.audio_b64);
