@@ -11,6 +11,8 @@ brain/profiles/
 brain/user.md
 brain/souls/
 brain/soul.md
+brain/avatars/
+brain/active_avatar.txt
 
 # Python
 __pycache__/

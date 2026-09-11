@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { VRMUtils } from "@pixiv/three-vrm";
 import { loadAvatar } from "./avatar.js";
 import { IdleController } from "./idle.js";
 import { BrainClient } from "./brain_client.js";
@@ -32,6 +33,9 @@ const soulDescriptionEl = document.getElementById("soul-description");
 const soulExamplesEl = document.getElementById("soul-examples");
 const soulSaveButtonEl = document.getElementById("soul-save-button");
 const soulCancelButtonEl = document.getElementById("soul-cancel-button");
+const avatarListEl = document.getElementById("avatar-list");
+const importAvatarButtonEl = document.getElementById("import-avatar-button");
+const avatarFileInputEl = document.getElementById("avatar-file-input");
 
 const canvas = document.getElementById("scene");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -72,17 +76,48 @@ window.addEventListener("resize", () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-statusEl.textContent = "Loading avatar...";
-const vrm = await loadAvatar("/Glitch.vrm");
-scene.add(vrm.scene);
-window.__vrm = vrm; // for console-driven verification while building
-statusEl.textContent = "";
+// vrm/idle are mutable (not const) -- setActiveAvatar reassigns both on
+// every swap, and animate()'s closure below always reads the current
+// value since it's a plain outer-scope reference, not a snapshot taken
+// once at startup.
+let vrm = null;
+let idle = null;
+// Declared before BrainClient exists (setActiveAvatar is used for the
+// very first, pre-BrainClient load too) and guarded inside the function
+// below -- there's nothing to retarget yet on that first call.
+let brain = null;
 
-const idle = new IdleController(vrm);
-idle.relaxPose();
-window.__idle = idle;
+// `source` matches loadAvatar's own contract: a URL string (the shipped
+// default) or an ArrayBuffer (a custom avatar's raw .vrm bytes, from
+// either a WS-delivered avatar_data message or a user-imported File).
+// Used for the initial boot load below and again by BrainClient's
+// onAvatarSwap callback whenever the user picks or imports a different
+// one -- a completely different model can arrive mid-session, so this
+// has to fully replace the old scene graph and animation state, not
+// just mutate the existing vrm in place.
+async function setActiveAvatar(source) {
+  statusEl.textContent = "Loading avatar...";
+  const newVrm = await loadAvatar(source);
 
-const brain = new BrainClient({
+  if (vrm) {
+    scene.remove(vrm.scene);
+    VRMUtils.deepDispose(vrm.scene); // frees the old model's GPU geometry/textures -- repeated swaps would otherwise leak
+  }
+  scene.add(newVrm.scene);
+  vrm = newVrm;
+
+  idle = new IdleController(vrm);
+  idle.relaxPose();
+
+  if (brain) brain.vrm = vrm; // BrainClient reads this.vrm fresh each call (lipsync/mood) -- a plain reassignment is enough to retarget it
+  window.__vrm = vrm; // for console-driven verification while building
+  window.__idle = idle;
+  statusEl.textContent = "";
+}
+
+await setActiveAvatar("/Glitch.vrm");
+
+brain = new BrainClient({
   url: import.meta.env.VITE_BRAIN_WS_URL,
   vrm,
   statusEl,
@@ -109,6 +144,10 @@ const brain = new BrainClient({
   soulExamplesEl,
   soulSaveButtonEl,
   soulCancelButtonEl,
+  avatarListEl,
+  importAvatarButtonEl,
+  avatarFileInputEl,
+  onAvatarSwap: setActiveAvatar,
 });
 brain.connect();
 window.__brain = brain; // for console-driven verification while building

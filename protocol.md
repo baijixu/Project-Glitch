@@ -27,6 +27,8 @@ reports state/events back. All "thinking" happens in the Brain.
 | `profile_content` | `name: string`, `content: string` | The content of the named profile, in reply to `get_profile` -- used to pre-fill the profile editor when the user clicks Edit. |
 | `souls` | `names: [string]` | The current list of saved soul names (from `brain/souls/*.md`) -- who Glitch is, as opposed to `profiles`' user role-play context. Sent once right after `ready`, and again after every `save_soul`. |
 | `soul_content` | `name: string`, `description: string`, `examples: string` | The named soul's content, split back into its two editor fields, in reply to `get_soul`. |
+| `avatars` | `names: [string]` | The list of installed *custom* avatar names (from `brain/avatars/*.vrm`) -- does not include `"Glitch"`, the shipped default the Renderer always offers locally without needing Brain at all. Sent once right after `ready`, and again after every `save_avatar`. |
+| `avatar_data` | `name: string`, `data_b64: string` | Base64-encoded `.vrm` bytes for the named avatar -- sent in reply to `load_avatar` for any non-default name, and pushed automatically right after `ready` if the remembered active avatar is a custom one, so a reconnecting Renderer knows to swap to it instead of staying on the default it just booted with. |
 
 ## Renderer → Brain
 
@@ -44,6 +46,10 @@ reports state/events back. All "thinking" happens in the Brain.
 | `save_soul` | `name: string`, `description: string`, `examples: string` | Create/overwrite a saved soul -- who Glitch is (`description`) and example `<user>`/`<character>` dialogue turns (`examples`), kept as two separate fields (unlike `save_profile`'s single combined blob) so the editor can show and re-populate them as two distinct boxes. Written to `brain/souls/<name>.md`. Brain replies with an updated `souls` list. |
 | `load_soul` | `name: string` | Make the named saved soul the active one: its content is copied into `brain/soul.md` and replaces the LLM's default personality (not layered on top of it, the way a loaded profile is) for every subsequent reply. The mood-tag instruction stays fixed underneath regardless. Resets conversation history. |
 | `get_soul` | `name: string` | Request the named soul's content, split back into its two fields, to pre-fill the soul editor for the Edit button. Brain replies with `soul_content`. |
+| `save_avatar` | `name: string`, `data_b64: string` | Install a new avatar (the user's imported `.vrm` file) -- written to `brain/avatars/<name>.vrm` and made the active one. The Renderer already has the raw bytes locally (it just read the file), so it swaps immediately client-side without waiting for a reply; Brain replies with an updated `avatars` list so the new one shows up for future sessions/other devices. |
+| `load_avatar` | `name: string` | Make an already-installed avatar (or `"Glitch"`, the default) the active one. For `"Glitch"` this is bookkeeping only -- no reply, the Renderer loads it locally. For any other name, Brain reads the file and replies with `avatar_data`. |
+
+**Transfer size note:** VRM files are large (the shipped default is ~15MB; base64 adds ~33% on top), so the WS server's `max_size` is set well above the default 20MB used for TTS/STT audio -- see `brain/main.py`.
 
 ## Adding a new message type
 

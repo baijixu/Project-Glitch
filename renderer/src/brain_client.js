@@ -53,6 +53,10 @@ export class BrainClient {
     soulExamplesEl,
     soulSaveButtonEl,
     soulCancelButtonEl,
+    avatarListEl,
+    importAvatarButtonEl,
+    avatarFileInputEl,
+    onAvatarSwap,
   }) {
     this.url = url;
     this.vrm = vrm;
@@ -84,6 +88,16 @@ export class BrainClient {
     this.soulCancelButtonEl = soulCancelButtonEl;
     this._activeSoulName = null;
     this._pendingEditSoulName = null;
+    this.avatarListEl = avatarListEl;
+    this.importAvatarButtonEl = importAvatarButtonEl;
+    this.avatarFileInputEl = avatarFileInputEl;
+    // Called with a VRM source (a URL string for the shipped default, or
+    // an ArrayBuffer of raw .vrm bytes) whenever the active avatar should
+    // change -- main.js owns the actual THREE.Scene/IdleController swap,
+    // BrainClient only decides *when* one should happen.
+    this._onAvatarSwap = onAvatarSwap;
+    this._customAvatarNames = [];
+    this._activeAvatarName = "Glitch"; // matches what main.js boots with by default
     this.socket = null;
     this._subtitleTimer = null;
     this._subtitleStreamTimer = null;
@@ -134,6 +148,14 @@ export class BrainClient {
     this.soulSaveButtonEl?.addEventListener("click", () => this._saveSoul());
     this.soulModalBackdropEl?.addEventListener("click", (e) => {
       if (e.target === this.soulModalBackdropEl) this._closeSoulModal();
+    });
+
+    this._renderAvatarList([]); // shows the always-available "Glitch" entry immediately, before any `avatars` message arrives
+    this.importAvatarButtonEl?.addEventListener("click", () => this.avatarFileInputEl?.click());
+    this.avatarFileInputEl?.addEventListener("change", () => {
+      const file = this.avatarFileInputEl.files?.[0];
+      if (file) this._importAvatarFile(file);
+      this.avatarFileInputEl.value = ""; // otherwise re-picking the same file wouldn't fire "change" again
     });
   }
 
@@ -416,6 +438,60 @@ export class BrainClient {
     this._closeSoulModal();
   }
 
+  // "Glitch" (the shipped default) is always shown first even though it
+  // never appears in Brain's own `avatars` list -- it loads locally with
+  // no WS round trip at all (see avatars.py's module docstring), unlike
+  // every other entry here. No Edit button on any of these -- a VRM's
+  // binary content isn't something there's a text box for.
+  _renderAvatarList(customNames) {
+    if (!this.avatarListEl) return;
+    this._customAvatarNames = customNames;
+    this.avatarListEl.replaceChildren();
+    for (const name of ["Glitch", ...customNames]) {
+      const entry = document.createElement("div");
+      entry.className = "profile-entry";
+      if (name === this._activeAvatarName) entry.classList.add("active");
+
+      const label = document.createElement("span");
+      label.className = "profile-entry-name";
+      label.textContent = name;
+      entry.appendChild(label);
+
+      const loadButton = document.createElement("button");
+      loadButton.className = "profile-entry-load";
+      loadButton.textContent = name === this._activeAvatarName ? "Active" : "Load";
+      loadButton.addEventListener("click", () => this._loadAvatarByName(name));
+      entry.appendChild(loadButton);
+
+      this.avatarListEl.appendChild(entry);
+    }
+  }
+
+  _loadAvatarByName(name) {
+    if (name === "Glitch") {
+      // No bytes to fetch -- the shipped default loads locally.
+      this._onAvatarSwap?.("/Glitch.vrm");
+      this._activeAvatarName = name;
+      this._renderAvatarList(this._customAvatarNames);
+    }
+    // Bookkeeping either way, so Brain remembers this choice across its
+    // own restarts (avatars.py's active_avatar.txt) -- for a non-default
+    // name, Brain's avatar_data reply is what actually performs the swap
+    // (see _handleMessage), not this call itself.
+    this._send({ type: "load_avatar", name });
+  }
+
+  async _importAvatarFile(file) {
+    const buffer = await file.arrayBuffer();
+    // Swap immediately, client-side -- no reason to wait on a round trip
+    // to Brain when the bytes are already sitting right here.
+    this._onAvatarSwap?.(buffer);
+    const name = file.name.replace(/\.vrm$/i, "");
+    this._activeAvatarName = name;
+    this._renderAvatarList(this._customAvatarNames);
+    this._send({ type: "save_avatar", name, data_b64: _arrayBufferToBase64(buffer) });
+  }
+
   _addHistoryEntry(role, text) {
     if (!this.historyListEl) return;
     const group = document.createElement("div");
@@ -480,11 +556,7 @@ export class BrainClient {
   }
 
   async _playAudio(audioB64) {
-    const binary = atob(audioB64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-
-    const audioBuffer = await this.audioContext.decodeAudioData(bytes.buffer.slice(0));
+    const audioBuffer = await this.audioContext.decodeAudioData(_base64ToArrayBuffer(audioB64));
     const source = this.audioContext.createBufferSource();
     source.buffer = audioBuffer;
     source.connect(this.audioContext.destination);
@@ -546,6 +618,17 @@ export class BrainClient {
           this._openSoulModal(data.name, data.description, data.examples);
         }
         break;
+      case "avatars":
+        this._renderAvatarList(data.names || []);
+        break;
+      case "avatar_data":
+        // Sent either in reply to our own load_avatar, or unprompted
+        // right after `ready` to restore a previously active custom
+        // avatar (protocol.md) -- both cases handled the same way.
+        this._onAvatarSwap?.(_base64ToArrayBuffer(data.data_b64));
+        this._activeAvatarName = data.name;
+        this._renderAvatarList(this._customAvatarNames);
+        break;
       case "play_animation":
         console.warn("[brain] play_animation not yet implemented:", data);
         this._send({ type: "error", message: `play_animation not yet implemented: ${data.name}` });
@@ -557,8 +640,23 @@ export class BrainClient {
 }
 
 function _arrayBufferToBase64(buffer) {
-  let binary = "";
+  // Chunked rather than one String.fromCharCode call per byte -- fine for
+  // a few seconds of mic audio, but a multi-megabyte VRM import (avatars
+  // can be 15MB+) made the naive per-byte version a real, noticeable UI
+  // freeze. 0x8000 stays well under String.fromCharCode.apply's argument-
+  // count limit while still batching most of the work into large appends.
   const bytes = new Uint8Array(buffer);
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  const CHUNK_SIZE = 0x8000;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK_SIZE));
+  }
   return btoa(binary);
+}
+
+function _base64ToArrayBuffer(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
 }

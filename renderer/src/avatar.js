@@ -1,11 +1,17 @@
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
 
-export async function loadAvatar(url) {
+// `source` is either a URL string (the shipped default, fetched locally
+// with zero network round-trip to Brain) or an ArrayBuffer (a custom
+// avatar's raw .vrm bytes, decoded from a WS-delivered base64 payload or
+// read directly from a user-imported File) -- GLTFLoader's loadAsync
+// only takes a URL, parseAsync is the ArrayBuffer equivalent.
+export async function loadAvatar(source) {
   const loader = new GLTFLoader();
   loader.register((parser) => new VRMLoaderPlugin(parser));
 
-  const gltf = await loader.loadAsync(url);
+  const gltf =
+    typeof source === "string" ? await loader.loadAsync(source) : await loader.parseAsync(source, "");
   const vrm = gltf.userData.vrm;
 
   // VRM 0.x models author their "forward" as +Z; three-vrm's own convention

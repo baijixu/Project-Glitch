@@ -37,6 +37,7 @@ logging.basicConfig(level=logging.WARNING, format="[%(name)s] %(levelname)s: %(m
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
+import avatars
 import profiles
 import protocol
 import souls
@@ -97,6 +98,19 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
         print(f"[brain] renderer ready, model={data.get('model')!r}")
         await websocket.send(json.dumps(protocol.profiles(profiles.list_profiles())))
         await websocket.send(json.dumps(protocol.souls(souls.list_souls())))
+        await websocket.send(json.dumps(protocol.avatars(avatars.list_avatars())))
+        # If a custom avatar was active last time, the Renderer needs its
+        # bytes to swap to it -- it just booted with the shipped default,
+        # which needs no round trip at all (see avatars.py's docstring).
+        active_avatar = avatars.read_active_avatar()
+        if active_avatar and active_avatar != avatars.DEFAULT_AVATAR_NAME:
+            try:
+                vrm_bytes = avatars.read_avatar(active_avatar)
+            except (ValueError, FileNotFoundError) as exc:
+                print(f"[brain] couldn't restore active avatar {active_avatar!r}: {exc!r}")
+            else:
+                data_b64 = base64.b64encode(vrm_bytes).decode("ascii")
+                await websocket.send(json.dumps(protocol.avatar_data(active_avatar, data_b64)))
     elif msg_type == protocol.PONG:
         pass
     elif msg_type == protocol.ANIMATION_FINISHED:
@@ -119,6 +133,10 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
         _handle_load_soul(data, brain)
     elif msg_type == protocol.GET_SOUL:
         await _handle_get_soul(websocket, data)
+    elif msg_type == protocol.SAVE_AVATAR:
+        await _handle_save_avatar(websocket, data)
+    elif msg_type == protocol.LOAD_AVATAR:
+        await _handle_load_avatar(websocket, data)
     else:
         print(f"[brain] ignoring unknown message type: {msg_type!r}")
 
@@ -181,6 +199,42 @@ async def _handle_get_soul(websocket: websockets.ServerConnection, data: dict) -
         print(f"[brain] couldn't read soul {name!r}: {exc!r}")
         return
     await websocket.send(json.dumps(protocol.soul_content(name, description, examples)))
+
+
+async def _handle_save_avatar(websocket: websockets.ServerConnection, data: dict) -> None:
+    name = data.get("name", "")
+    data_b64 = data.get("data_b64", "")
+    if not name.strip() or not data_b64:
+        return
+    try:
+        vrm_bytes = base64.b64decode(data_b64)
+        avatars.save_avatar(name, vrm_bytes)
+    except ValueError as exc:
+        print(f"[brain] couldn't save avatar {name!r}: {exc!r}")
+        return
+    avatars.set_active_avatar(name)
+    print(f"[brain] saved and activated avatar {name!r} ({len(vrm_bytes)} bytes)")
+    await websocket.send(json.dumps(protocol.avatars(avatars.list_avatars())))
+
+
+async def _handle_load_avatar(websocket: websockets.ServerConnection, data: dict) -> None:
+    name = data.get("name", "")
+    if not name.strip():
+        return
+    avatars.set_active_avatar(name)
+    if name == avatars.DEFAULT_AVATAR_NAME:
+        # Bookkeeping only -- the Renderer already knows how to load the
+        # shipped default locally, no bytes to send.
+        print(f"[brain] activated default avatar {name!r}")
+        return
+    try:
+        vrm_bytes = avatars.read_avatar(name)
+    except (ValueError, FileNotFoundError) as exc:
+        print(f"[brain] couldn't load avatar {name!r}: {exc!r}")
+        return
+    print(f"[brain] activated avatar {name!r}, sending {len(vrm_bytes)} bytes")
+    data_b64 = base64.b64encode(vrm_bytes).decode("ascii")
+    await websocket.send(json.dumps(protocol.avatar_data(name, data_b64)))
 
 
 def _handle_load_profile(data: dict, brain: Brain) -> None:
@@ -301,8 +355,12 @@ async def main() -> None:
     else:
         print("[brain] no Discord token configured, skipping Discord bot")
 
+    # 20MB was enough for base64 TTS/STT audio, but VRM avatar files
+    # (avatars.py) routinely exceed that once base64-encoded -- the
+    # shipped default alone is ~15MB raw, ~20MB encoded. 100MB gives
+    # real headroom for larger imported avatars.
     print(f"[brain] listening on ws://{host}:{port}")
-    async with websockets.serve(lambda ws: handle_renderer(ws, brain), host, port, max_size=20 * 1024 * 1024):
+    async with websockets.serve(lambda ws: handle_renderer(ws, brain), host, port, max_size=100 * 1024 * 1024):
         await asyncio.Future()  # run forever
 
 

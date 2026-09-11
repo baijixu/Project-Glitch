@@ -21,6 +21,8 @@ GET_PROFILE = "get_profile"
 SAVE_SOUL = "save_soul"
 LOAD_SOUL = "load_soul"
 GET_SOUL = "get_soul"
+SAVE_AVATAR = "save_avatar"
+LOAD_AVATAR = "load_avatar"
 
 # Brain -> Renderer message type strings.
 PING = "ping"
@@ -33,6 +35,8 @@ PROFILES = "profiles"
 PROFILE_CONTENT = "profile_content"
 SOULS = "souls"
 SOUL_CONTENT = "soul_content"
+AVATARS = "avatars"
+AVATAR_DATA = "avatar_data"
 
 
 def ping() -> dict:
@@ -69,6 +73,14 @@ def souls(names: list[str]) -> dict:
 
 def soul_content(name: str, description: str, examples: str) -> dict:
     return {"type": SOUL_CONTENT, "name": name, "description": description, "examples": examples}
+
+
+def avatars(names: list[str]) -> dict:
+    return {"type": AVATARS, "names": names}
+
+
+def avatar_data(name: str, data_b64: str) -> dict:
+    return {"type": AVATAR_DATA, "name": name, "data_b64": data_b64}
 
 
 @dataclass

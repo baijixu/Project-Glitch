@@ -191,6 +191,10 @@ html, body {
   z-index: 15;
   display: flex;
   flex-direction: column;
+  /* Three settings sections (Profile/Soul/Avatar) can now exceed the
+     viewport height, especially on a phone -- without this the overflow
+     was just invisible, not scrollable. */
+  overflow-y: auto;
   padding: 68px 16px 16px;
   box-sizing: border-box;
 }
