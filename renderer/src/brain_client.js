@@ -220,10 +220,20 @@ export class BrainClient {
 
   _addHistoryEntry(role, text) {
     if (!this.historyListEl) return;
-    const entry = document.createElement("div");
-    entry.className = `history-entry history-${role}`;
-    entry.textContent = text;
-    this.historyListEl.appendChild(entry);
+    const group = document.createElement("div");
+    group.className = `history-group history-${role}`;
+
+    const bubble = document.createElement("div");
+    bubble.className = "history-bubble";
+    bubble.textContent = text;
+    group.appendChild(bubble);
+
+    const time = document.createElement("div");
+    time.className = "history-time";
+    time.textContent = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    group.appendChild(time);
+
+    this.historyListEl.appendChild(group);
     this.historyListEl.scrollTop = this.historyListEl.scrollHeight;
   }
 

@@ -206,8 +206,13 @@ html, body {
   gap: 8px;
 }
 
-.history-entry {
+.history-group {
+  display: flex;
+  flex-direction: column;
   max-width: 88%;
+}
+
+.history-bubble {
   padding: 8px 12px;
   border-radius: 14px;
   color: #fff;
@@ -216,14 +221,34 @@ html, body {
   word-wrap: break-word;
 }
 
+.history-time {
+  margin-top: 3px;
+  font-size: 10px;
+  color: #8a8fa0;
+}
+
 .history-user {
   align-self: flex-end;
+}
+
+.history-user .history-bubble {
   background: #4a7bd8;
   border-bottom-right-radius: 4px;
 }
 
+.history-user .history-time {
+  align-self: flex-end;
+}
+
 .history-glitch {
   align-self: flex-start;
+}
+
+.history-glitch .history-bubble {
   background: #3a3f52;
   border-bottom-left-radius: 4px;
+}
+
+.history-glitch .history-time {
+  align-self: flex-start;
 }
