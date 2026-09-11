@@ -31,6 +31,7 @@ MAX_UTTERANCE_SEC = 20.0  # hard cap so one person talking forever can't grow un
 MIN_UTTERANCE_SEC = 0.4  # shorter than this is almost certainly noise, not speech
 WATCHER_POLL_SEC = 0.2
 RMS_SILENCE_THRESHOLD = 300  # out of 16-bit PCM's ~32768 range -- filters near-silent frames
+HEARTBEAT_SEC = 5.0  # how often to log audio-activity diagnostics (see __init__ docstring)
 
 # discord.opus.Decoder's constants -- what AudioSink.write() delivers when
 # wants_opus() returns False.
@@ -81,6 +82,18 @@ class UtteranceSink(voice_recv.AudioSink):
         self._started: dict[int, float] = {}
         self._users: dict[int, object] = {}
         self._stop = threading.Event()
+        # Diagnostics only -- the live voice path can't be tested from
+        # the environment this was built in, so there's no way to tune
+        # RMS_SILENCE_THRESHOLD against real numbers in advance. This
+        # prints periodically regardless of whether anything ever clears
+        # the threshold, specifically so "did any audio arrive at all,
+        # and how loud" is visible from the log instead of unknowable
+        # (a completely silent log was the actual symptom that made a
+        # real reconnect bug hard to distinguish from e.g. the threshold
+        # just being wrong).
+        self._packets_seen = 0
+        self._max_rms_seen = 0.0
+        self._last_heartbeat = time.monotonic()
         self._watcher = threading.Thread(target=self._watch, daemon=True)
         self._watcher.start()
 
@@ -90,7 +103,11 @@ class UtteranceSink(voice_recv.AudioSink):
     def write(self, user, data) -> None:
         if user is None or not data.pcm:
             return
-        if _rms(data.pcm) < RMS_SILENCE_THRESHOLD:
+        rms = _rms(data.pcm)
+        with self._lock:
+            self._packets_seen += 1
+            self._max_rms_seen = max(self._max_rms_seen, rms)
+        if rms < RMS_SILENCE_THRESHOLD:
             return
         now = time.monotonic()
         with self._lock:
@@ -104,6 +121,14 @@ class UtteranceSink(voice_recv.AudioSink):
             now = time.monotonic()
             to_flush = []
             with self._lock:
+                if now - self._last_heartbeat >= HEARTBEAT_SEC:
+                    print(
+                        f"[discord-voice] audio activity: {self._packets_seen} packets, "
+                        f"max_rms={self._max_rms_seen:.0f} (threshold={RMS_SILENCE_THRESHOLD})"
+                    )
+                    self._packets_seen = 0
+                    self._max_rms_seen = 0.0
+                    self._last_heartbeat = now
                 for user_id, last in list(self._last_write.items()):
                     duration = now - self._started.get(user_id, now)
                     silent_for = now - last

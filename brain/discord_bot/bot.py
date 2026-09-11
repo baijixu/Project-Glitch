@@ -89,19 +89,51 @@ class DiscordBrain(discord.Client):
                 await existing.move_to(after.channel)
             return
 
+        if existing:
+            # Not cleanly connected anymore (e.g. a Discord voice-server
+            # hiccup) -- tear it down explicitly instead of leaving its
+            # reader thread/sink running in the background while a fresh
+            # connection opens underneath it. Confirmed hitting exactly
+            # this live: a voice-server drop produced three consecutive
+            # "joining" reconnects with zero utterance activity after,
+            # consistent with a leaked/orphaned sink never actually
+            # listening on the real, current connection.
+            print(f"[discord-voice] stale connection in {member.guild.name!r}, cleaning up before rejoining")
+            try:
+                await existing.disconnect(force=True)
+            except Exception as exc:
+                print(f"[discord-voice] cleanup of stale connection failed (continuing anyway): {exc!r}")
+            self._voice_clients.pop(member.guild.id, None)
+
         print(f"[discord-voice] joining {after.channel.name!r} in {member.guild.name!r}")
-        vc = await after.channel.connect(cls=voice_recv.VoiceRecvClient)
+        try:
+            vc = await after.channel.connect(cls=voice_recv.VoiceRecvClient)
+        except discord.ClientException as exc:
+            # discord.py's own guild.voice_client registry still thinks
+            # we're connected somewhere -- force it to forget and retry
+            # once rather than getting permanently stuck refusing to
+            # rejoin after a bad disconnect.
+            print(f"[discord-voice] connect() rejected ({exc!r}), forcing voice-client reset and retrying")
+            stale = member.guild.voice_client
+            if stale:
+                try:
+                    await stale.disconnect(force=True)
+                except Exception:
+                    pass
+            vc = await after.channel.connect(cls=voice_recv.VoiceRecvClient)
+
         self._voice_clients[member.guild.id] = vc
 
         def on_utterance(user, pcm: bytes) -> None:
             self._on_voice_utterance(member.guild, vc, user, pcm)
 
         vc.listen(UtteranceSink(on_utterance))
+        print(f"[discord-voice] listening in {after.channel.name!r}")
 
     async def _leave_voice(self, guild: discord.Guild) -> None:
         vc = self._voice_clients.pop(guild.id, None)
         if vc:
-            await vc.disconnect()
+            await vc.disconnect(force=True)
             print(f"[discord-voice] left voice in {guild.name!r}")
 
     def _on_voice_utterance(self, guild: discord.Guild, voice_client, user, pcm: bytes) -> None:
@@ -117,10 +149,16 @@ class DiscordBrain(discord.Client):
                 Path(wav_path).unlink(missing_ok=True)
 
             if not transcript.strip():
+                print(f"[discord-voice] {user}: heard audio but STT returned nothing")
                 return
             query = extract_wake_query(transcript)
             if query is None:
-                return  # not directed at her -- ignore silently, no history stored
+                # Logged even though not directed at her -- previously
+                # silent here, which made "no wake word detected" and
+                # "no audio reached the sink at all" indistinguishable
+                # from the log alone.
+                print(f"[discord-voice] {user}: {transcript!r} (no wake word, ignoring)")
+                return
             print(f"[discord-voice] {user}: {transcript!r} -> {query!r}")
 
             key = f"voice:{guild.id}"
