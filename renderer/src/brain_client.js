@@ -36,7 +36,8 @@ export class BrainClient {
     micButtonEl,
     micLabelEl,
     historyListEl,
-    profileListEl,
+    profileSelectEl,
+    editProfileButtonEl,
     newProfileButtonEl,
     profileModalBackdropEl,
     profileModalTitleEl,
@@ -44,7 +45,8 @@ export class BrainClient {
     profileContentEl,
     profileSaveButtonEl,
     profileCancelButtonEl,
-    soulListEl,
+    soulSelectEl,
+    editSoulButtonEl,
     newSoulButtonEl,
     soulModalBackdropEl,
     soulModalTitleEl,
@@ -67,7 +69,8 @@ export class BrainClient {
     this.micButtonEl = micButtonEl;
     this.micLabelEl = micLabelEl;
     this.historyListEl = historyListEl;
-    this.profileListEl = profileListEl;
+    this.profileSelectEl = profileSelectEl;
+    this.editProfileButtonEl = editProfileButtonEl;
     this.newProfileButtonEl = newProfileButtonEl;
     this.profileModalBackdropEl = profileModalBackdropEl;
     this.profileModalTitleEl = profileModalTitleEl;
@@ -75,9 +78,11 @@ export class BrainClient {
     this.profileContentEl = profileContentEl;
     this.profileSaveButtonEl = profileSaveButtonEl;
     this.profileCancelButtonEl = profileCancelButtonEl;
+    this._profileNames = [];
     this._activeProfileName = null;
     this._pendingEditName = null;
-    this.soulListEl = soulListEl;
+    this.soulSelectEl = soulSelectEl;
+    this.editSoulButtonEl = editSoulButtonEl;
     this.newSoulButtonEl = newSoulButtonEl;
     this.soulModalBackdropEl = soulModalBackdropEl;
     this.soulModalTitleEl = soulModalTitleEl;
@@ -86,6 +91,7 @@ export class BrainClient {
     this.soulExamplesEl = soulExamplesEl;
     this.soulSaveButtonEl = soulSaveButtonEl;
     this.soulCancelButtonEl = soulCancelButtonEl;
+    this._soulNames = [];
     this._activeSoulName = null;
     this._pendingEditSoulName = null;
     this.avatarSelectEl = avatarSelectEl;
@@ -132,6 +138,11 @@ export class BrainClient {
     this.micButtonEl?.addEventListener("pointerleave", stopRecording);
     this.micButtonEl?.addEventListener("pointercancel", stopRecording);
 
+    this._renderProfileList([]); // shows the (empty) placeholder option immediately, before any `profiles` message arrives
+    this.profileSelectEl?.addEventListener("change", () => this._loadProfile(this.profileSelectEl.value));
+    this.editProfileButtonEl?.addEventListener("click", () => {
+      if (this.profileSelectEl?.value) this._editProfile(this.profileSelectEl.value);
+    });
     this.newProfileButtonEl?.addEventListener("click", () => this._openProfileModal());
     this.profileCancelButtonEl?.addEventListener("click", () => this._closeProfileModal());
     this.profileSaveButtonEl?.addEventListener("click", () => this._saveProfile());
@@ -143,6 +154,11 @@ export class BrainClient {
       if (e.key === "Escape" && !this.soulModalBackdropEl?.hidden) this._closeSoulModal();
     });
 
+    this._renderSoulList([]); // shows the (empty) placeholder option immediately, before any `souls` message arrives
+    this.soulSelectEl?.addEventListener("change", () => this._loadSoul(this.soulSelectEl.value));
+    this.editSoulButtonEl?.addEventListener("click", () => {
+      if (this.soulSelectEl?.value) this._editSoul(this.soulSelectEl.value);
+    });
     this.newSoulButtonEl?.addEventListener("click", () => this._openSoulModal());
     this.soulCancelButtonEl?.addEventListener("click", () => this._closeSoulModal());
     this.soulSaveButtonEl?.addEventListener("click", () => this._saveSoul());
@@ -296,47 +312,36 @@ export class BrainClient {
     if (this.statusEl) this.statusEl.textContent = text;
   }
 
-  // Renders the current list of saved profiles into the settings panel,
-  // each with a Load button; the active one (if any) is highlighted.
-  // Called whenever a `profiles` message arrives -- right after connect,
-  // and again after every save (see _handleMessage).
+  // A dropdown, same quick-pick pattern as the avatar picker -- selecting
+  // an option loads it immediately via the select's own change event, no
+  // separate confirm click. Edit works on whatever's currently selected
+  // (a single external button, not one per entry -- a <select>'s options
+  // can't contain buttons of their own). Called whenever a `profiles`
+  // message arrives -- right after connect, and again after every save
+  // (see _handleMessage).
   _renderProfileList(names) {
-    if (!this.profileListEl) return;
-    this.profileListEl.replaceChildren();
-    for (const name of names) {
-      const entry = document.createElement("div");
-      entry.className = "profile-entry";
-      if (name === this._activeProfileName) entry.classList.add("active");
-
-      const label = document.createElement("span");
-      label.className = "profile-entry-name";
-      label.textContent = name;
-      entry.appendChild(label);
-
-      const editButton = document.createElement("button");
-      editButton.className = "profile-entry-edit";
-      editButton.textContent = "Edit";
-      editButton.addEventListener("click", () => this._editProfile(name));
-      entry.appendChild(editButton);
-
-      const loadButton = document.createElement("button");
-      loadButton.className = "profile-entry-load";
-      loadButton.textContent = name === this._activeProfileName ? "Active" : "Load";
-      loadButton.addEventListener("click", () => this._loadProfile(name));
-      entry.appendChild(loadButton);
-
-      this.profileListEl.appendChild(entry);
+    if (!this.profileSelectEl) return;
+    this._profileNames = names;
+    this.profileSelectEl.replaceChildren();
+    if (names.length === 0) {
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "No saved profiles yet";
+      this.profileSelectEl.appendChild(placeholder);
     }
+    for (const name of names) {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      this.profileSelectEl.appendChild(option);
+    }
+    if (this._activeProfileName) this.profileSelectEl.value = this._activeProfileName;
   }
 
   _loadProfile(name) {
+    if (!name) return; // the empty-list placeholder option has no name to load
     this._send({ type: "load_profile", name });
     this._activeProfileName = name;
-    // Re-render immediately against the list already on screen so the
-    // "Active" highlight shows right away rather than waiting on a round
-    // trip -- Brain doesn't send a fresh `profiles` list back for a load,
-    // only for a save (protocol.md), so nothing else would trigger this.
-    this._renderProfileList([...this.profileListEl.querySelectorAll(".profile-entry-name")].map((el) => el.textContent));
   }
 
   // Asks Brain for the profile's current content (the Renderer only ever
@@ -374,42 +379,32 @@ export class BrainClient {
     this._closeProfileModal();
   }
 
-  // Mirrors the profile list/edit/load methods above, for souls -- who
-  // Glitch is (brain/souls.py), kept as two separate fields (description
-  // + example dialogue) end to end rather than combined, unlike profiles.
+  // Mirrors the profile dropdown above, for souls -- who Glitch is
+  // (brain/souls.py), kept as two separate fields (description + example
+  // dialogue) end to end rather than combined, unlike profiles.
   _renderSoulList(names) {
-    if (!this.soulListEl) return;
-    this.soulListEl.replaceChildren();
-    for (const name of names) {
-      const entry = document.createElement("div");
-      entry.className = "profile-entry";
-      if (name === this._activeSoulName) entry.classList.add("active");
-
-      const label = document.createElement("span");
-      label.className = "profile-entry-name";
-      label.textContent = name;
-      entry.appendChild(label);
-
-      const editButton = document.createElement("button");
-      editButton.className = "profile-entry-edit";
-      editButton.textContent = "Edit";
-      editButton.addEventListener("click", () => this._editSoul(name));
-      entry.appendChild(editButton);
-
-      const loadButton = document.createElement("button");
-      loadButton.className = "profile-entry-load";
-      loadButton.textContent = name === this._activeSoulName ? "Active" : "Load";
-      loadButton.addEventListener("click", () => this._loadSoul(name));
-      entry.appendChild(loadButton);
-
-      this.soulListEl.appendChild(entry);
+    if (!this.soulSelectEl) return;
+    this._soulNames = names;
+    this.soulSelectEl.replaceChildren();
+    if (names.length === 0) {
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "No saved souls yet";
+      this.soulSelectEl.appendChild(placeholder);
     }
+    for (const name of names) {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      this.soulSelectEl.appendChild(option);
+    }
+    if (this._activeSoulName) this.soulSelectEl.value = this._activeSoulName;
   }
 
   _loadSoul(name) {
+    if (!name) return;
     this._send({ type: "load_soul", name });
     this._activeSoulName = name;
-    this._renderSoulList([...this.soulListEl.querySelectorAll(".profile-entry-name")].map((el) => el.textContent));
   }
 
   _editSoul(name) {

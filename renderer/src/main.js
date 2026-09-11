@@ -16,7 +16,8 @@ const historyPanelEl = document.getElementById("history-panel");
 const historyListEl = document.getElementById("history-list");
 const settingsButtonEl = document.getElementById("settings-button");
 const settingsPanelEl = document.getElementById("settings-panel");
-const profileListEl = document.getElementById("profile-list");
+const profileSelectEl = document.getElementById("profile-select");
+const editProfileButtonEl = document.getElementById("edit-profile-button");
 const newProfileButtonEl = document.getElementById("new-profile-button");
 const profileModalBackdropEl = document.getElementById("profile-modal-backdrop");
 const profileModalTitleEl = document.getElementById("profile-modal-title");
@@ -24,7 +25,8 @@ const profileNameEl = document.getElementById("profile-name");
 const profileContentEl = document.getElementById("profile-content");
 const profileSaveButtonEl = document.getElementById("profile-save-button");
 const profileCancelButtonEl = document.getElementById("profile-cancel-button");
-const soulListEl = document.getElementById("soul-list");
+const soulSelectEl = document.getElementById("soul-select");
+const editSoulButtonEl = document.getElementById("edit-soul-button");
 const newSoulButtonEl = document.getElementById("new-soul-button");
 const soulModalBackdropEl = document.getElementById("soul-modal-backdrop");
 const soulModalTitleEl = document.getElementById("soul-modal-title");
@@ -127,7 +129,8 @@ brain = new BrainClient({
   micButtonEl,
   micLabelEl,
   historyListEl,
-  profileListEl,
+  profileSelectEl,
+  editProfileButtonEl,
   newProfileButtonEl,
   profileModalBackdropEl,
   profileModalTitleEl,
@@ -135,7 +138,8 @@ brain = new BrainClient({
   profileContentEl,
   profileSaveButtonEl,
   profileCancelButtonEl,
-  soulListEl,
+  soulSelectEl,
+  editSoulButtonEl,
   newSoulButtonEl,
   soulModalBackdropEl,
   soulModalTitleEl,

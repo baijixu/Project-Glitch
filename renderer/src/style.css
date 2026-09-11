@@ -257,6 +257,27 @@ html, body {
   background: #3a67c2;
 }
 
+.settings-action-button.secondary {
+  background: #3a3f52;
+  color: #ddd;
+}
+
+.settings-action-button.secondary:hover {
+  background: #4a4f66;
+}
+
+.settings-button-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.settings-button-row .settings-action-button {
+  width: auto;
+  flex: 1 1 0;
+  margin-bottom: 0;
+}
+
 .settings-select {
   width: 100%;
   box-sizing: border-box;
@@ -274,77 +295,6 @@ html, body {
 .settings-select:focus {
   outline: none;
   border-color: #4a7bd8;
-}
-
-#profile-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 10px;
-}
-
-.profile-entry {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 8px;
-  background: #262a3a;
-}
-
-.profile-entry.active {
-  background: #2f4270;
-  box-shadow: inset 0 0 0 1px #4a7bd8;
-}
-
-.profile-entry-name {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: #eee;
-  font-size: 12px;
-}
-
-.profile-entry-load {
-  flex-shrink: 0;
-  padding: 4px 10px;
-  border-radius: 8px;
-  border: none;
-  background: #3a3f52;
-  color: #ddd;
-  font-family: inherit;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.profile-entry-load:hover {
-  background: #4a4f66;
-}
-
-.profile-entry.active .profile-entry-load {
-  background: #4a7bd8;
-  color: white;
-}
-
-.profile-entry-edit {
-  flex-shrink: 0;
-  padding: 4px 10px;
-  border-radius: 8px;
-  border: 1px solid #4a4f66;
-  background: transparent;
-  color: #aab0c0;
-  font-family: inherit;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.profile-entry-edit:hover {
-  background: #3a3f52;
-  color: #eee;
 }
 
 .modal-backdrop[hidden] {
