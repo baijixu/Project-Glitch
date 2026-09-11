@@ -177,6 +177,39 @@ html, body {
   right: 16px;
 }
 
+.connection-light {
+  position: fixed;
+  top: 32px;
+  right: 66px;
+  z-index: 21;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #666;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.6);
+  transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* red: WS closed/errored -- can't reach Brain at all.
+   yellow: connected, but a reply has been pending longer than
+   SLOW_REPLY_THRESHOLD_MS (brain_client.js) -- Brain (or the LLM behind
+   it) is just slow right now, not unreachable.
+   green: connected, nothing outstanding taking unusually long. */
+.connection-light.red {
+  background: #e0453f;
+  box-shadow: 0 0 6px rgba(224, 69, 63, 0.8);
+}
+
+.connection-light.yellow {
+  background: #e0b93f;
+  box-shadow: 0 0 6px rgba(224, 185, 63, 0.8);
+}
+
+.connection-light.green {
+  background: #4fcf6e;
+  box-shadow: 0 0 6px rgba(79, 207, 110, 0.8);
+}
+
 .slide-panel {
   position: fixed;
   top: 0;

@@ -10,6 +10,14 @@ const RECONNECT_DELAY_MS = 3000;
 // seconds after the last word appears, which reads as rushed.
 const SUBTITLE_FADE_DELAY_MS = 10000;
 
+// How long a reply can be outstanding before the connection light goes
+// yellow ("Brain's slow", not "Brain's unreachable"). Set well above a
+// normal reply, not just above the fastest one seen -- this session's own
+// local LLM has ranged from ~1.5s to 90s+ for the exact same kind of
+// message, so anything much tighter would spend most of a conversation
+// sitting in "slow" for completely ordinary latency.
+const SLOW_REPLY_THRESHOLD_MS = 15000;
+
 // This VRM's actual mood expression presets (confirmed via
 // vrm.expressionManager.expressionMap) -- "neutral" isn't in this list on
 // purpose, it means "fade all of these to 0" rather than being a settable
@@ -36,6 +44,7 @@ export class BrainClient {
     micButtonEl,
     micLabelEl,
     historyListEl,
+    connectionLightEl,
     profileSelectEl,
     editProfileButtonEl,
     newProfileButtonEl,
@@ -69,6 +78,9 @@ export class BrainClient {
     this.micButtonEl = micButtonEl;
     this.micLabelEl = micLabelEl;
     this.historyListEl = historyListEl;
+    this.connectionLightEl = connectionLightEl;
+    this._connectionState = "red"; // haven't connected yet
+    this._slowReplyTimer = null;
     this.profileSelectEl = profileSelectEl;
     this.editProfileButtonEl = editProfileButtonEl;
     this.newProfileButtonEl = newProfileButtonEl;
@@ -174,6 +186,8 @@ export class BrainClient {
       if (file) this._importAvatarFile(file);
       this.avatarFileInputEl.value = ""; // otherwise re-picking the same file wouldn't fire "change" again
     });
+
+    this._setConnectionState(this._connectionState); // paints the light red immediately, before connect() even runs
   }
 
   connect() {
@@ -182,17 +196,20 @@ export class BrainClient {
     this.socket.addEventListener("open", () => {
       console.log("[brain] connected");
       this._setStatus("");
+      this._setConnectionState("green");
       this._send({ type: "ready", model: "Glitch.vrm" });
     });
 
     this.socket.addEventListener("close", () => {
       console.warn("[brain] disconnected, retrying...");
       this._setStatus("Brain: disconnected, retrying...");
+      this._setConnectionState("red");
       setTimeout(() => this.connect(), RECONNECT_DELAY_MS);
     });
 
     this.socket.addEventListener("error", (err) => {
       console.error("[brain] socket error:", err);
+      this._setConnectionState("red");
     });
 
     this.socket.addEventListener("message", (event) => this._handleMessage(event.data));
@@ -253,6 +270,7 @@ export class BrainClient {
     if (!text) return;
     this._send({ type: "user_text", text });
     this._addHistoryEntry("user", text);
+    this._startSlowReplyTimer();
     this.inputEl.value = "";
   }
 
@@ -300,6 +318,7 @@ export class BrainClient {
     // placeholder rather than the actual words, just to keep the history
     // showing a turn happened here.
     this._addHistoryEntry("user", "🎤 (voice message)");
+    this._startSlowReplyTimer();
   }
 
   _send(message) {
@@ -310,6 +329,31 @@ export class BrainClient {
 
   _setStatus(text) {
     if (this.statusEl) this.statusEl.textContent = text;
+  }
+
+  _setConnectionState(state) {
+    this._connectionState = state;
+    if (!this.connectionLightEl) return;
+    this.connectionLightEl.classList.remove("red", "yellow", "green");
+    this.connectionLightEl.classList.add(state);
+  }
+
+  // Started whenever we send something expecting a reply (user_text,
+  // user_audio); cleared the moment speak_text actually arrives (see
+  // _handleMessage). If it fires first, Brain's still connected -- the
+  // socket would already be "red" otherwise -- just slow to reply, most
+  // often the local LLM itself taking a while, not a broken connection.
+  _startSlowReplyTimer() {
+    clearTimeout(this._slowReplyTimer);
+    this._slowReplyTimer = setTimeout(() => {
+      if (this._connectionState !== "red") this._setConnectionState("yellow");
+    }, SLOW_REPLY_THRESHOLD_MS);
+  }
+
+  _clearSlowReplyTimer() {
+    clearTimeout(this._slowReplyTimer);
+    this._slowReplyTimer = null;
+    if (this._connectionState !== "red") this._setConnectionState("green");
   }
 
   // A dropdown, same quick-pick pattern as the avatar picker -- selecting
@@ -580,6 +624,7 @@ export class BrainClient {
         // the streaming reveal against -- see _startSubtitleStream.
         this._pendingSpeakText = data.text;
         this._addHistoryEntry("glitch", data.text);
+        this._clearSlowReplyTimer();
         break;
       case "speak_audio":
         this._playAudio(data.audio_b64);

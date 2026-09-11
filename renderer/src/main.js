@@ -14,6 +14,7 @@ const micLabelEl = document.getElementById("mic-label");
 const historyButtonEl = document.getElementById("history-button");
 const historyPanelEl = document.getElementById("history-panel");
 const historyListEl = document.getElementById("history-list");
+const connectionLightEl = document.getElementById("connection-light");
 const settingsButtonEl = document.getElementById("settings-button");
 const settingsPanelEl = document.getElementById("settings-panel");
 const profileSelectEl = document.getElementById("profile-select");
@@ -129,6 +130,7 @@ brain = new BrainClient({
   micButtonEl,
   micLabelEl,
   historyListEl,
+  connectionLightEl,
   profileSelectEl,
   editProfileButtonEl,
   newProfileButtonEl,
