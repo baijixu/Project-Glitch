@@ -5,6 +5,9 @@ import { IdleController } from "./idle.js";
 import { BrainClient } from "./brain_client.js";
 
 const statusEl = document.getElementById("status");
+const subtitleEl = document.getElementById("subtitle");
+const inputEl = document.getElementById("message-input");
+const sendButtonEl = document.getElementById("send-button");
 
 const canvas = document.getElementById("scene");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -55,7 +58,7 @@ const idle = new IdleController(vrm);
 idle.relaxPose();
 window.__idle = idle;
 
-const brain = new BrainClient({ url: import.meta.env.VITE_BRAIN_WS_URL, vrm, statusEl });
+const brain = new BrainClient({ url: import.meta.env.VITE_BRAIN_WS_URL, vrm, statusEl, subtitleEl, inputEl, sendButtonEl });
 brain.connect();
 window.__brain = brain; // for console-driven verification while building
 

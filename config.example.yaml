@@ -6,6 +6,10 @@ brain:
   # same-machine only.
   host: localhost
   port: 8765
+  llm:
+    endpoint: http://localhost:1234/v1 # LM Studio / llama-server OpenAI-compatible endpoint
+    model: null # set to whatever the endpoint has loaded
+    api_key: null # only needed if the endpoint requires one
 
 # The Renderer is a browser/WebView app, not a Python process -- it can't
 # read this file directly, so it gets the same host/port via its own

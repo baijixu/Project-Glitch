@@ -13,16 +13,22 @@ PONG = "pong"
 READY = "ready"
 ANIMATION_FINISHED = "animation_finished"
 ERROR = "error"
+USER_TEXT = "user_text"
 
 # Brain -> Renderer message type strings.
 PING = "ping"
 PLAY_ANIMATION = "play_animation"
 SET_EXPRESSION = "set_expression"
 VISEME_STREAM = "viseme_stream"
+SPEAK_TEXT = "speak_text"
 
 
 def ping() -> dict:
     return {"type": PING}
+
+
+def speak_text(text: str) -> dict:
+    return {"type": SPEAK_TEXT, "text": text}
 
 
 def play_animation(name: str, loop: bool = False) -> dict:

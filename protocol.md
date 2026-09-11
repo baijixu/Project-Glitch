@@ -21,6 +21,7 @@ reports state/events back. All "thinking" happens in the Brain.
 | `play_animation` | `name: string`, `loop: bool` | Play a named animation clip. |
 | `set_expression` | `name: string`, `weight: number` (0–1) | Blend a VRM expression preset toward `weight`. |
 | `viseme_stream` | `frames: [{t: number, shape: string, weight: number}]` | Lipsync playback: a timed sequence of viseme shape/weight keyframes, `t` in seconds from stream start. |
+| `speak_text` | `text: string` | The LLM's reply, to display as an on-screen subtitle. Interim message for build order step 4's LLM-only milestone — once TTS lands, audio playback (with `viseme_stream` for lipsync) is the real "she's speaking" signal and this may become purely a subtitle companion to that rather than carrying the turn on its own. |
 
 ## Renderer → Brain
 
@@ -30,6 +31,7 @@ reports state/events back. All "thinking" happens in the Brain.
 | `ready` | `model: string` | Sent once, right after the Renderer connects and the `.vrm` model has finished loading. |
 | `animation_finished` | `name: string` | The named `play_animation` clip completed. |
 | `error` | `message: string` | Something went wrong Renderer-side (failed to load model, unknown animation name, etc.) — reported, not acted on locally. |
+| `user_text` | `text: string` | The user typed a message (chat box). Voice input (STT) arrives later as its own message type once that subsystem is built. |
 
 ## Adding a new message type
 

@@ -30,3 +30,65 @@ html, body {
   padding: 0;
   background: none;
 }
+
+#subtitle {
+  position: fixed;
+  left: 50%;
+  bottom: 90px;
+  transform: translateX(-50%);
+  width: min(640px, 92vw);
+  max-height: 4.5em;
+  overflow-y: auto;
+  text-align: center;
+  color: #fff;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.3;
+  -webkit-text-stroke: 4px #7b4fe0;
+  paint-order: stroke fill;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+#subtitle.visible {
+  opacity: 1;
+}
+
+#chat-bar {
+  position: fixed;
+  left: clamp(8px, 3vw, 20px);
+  right: clamp(8px, 3vw, 20px);
+  bottom: clamp(8px, 2vh, 15px);
+  display: flex;
+  gap: 8px;
+}
+
+#message-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 14px;
+  border-radius: 18px;
+  border: 1px solid #555;
+  background: #fff;
+  font-family: inherit;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+#send-button {
+  flex-shrink: 0;
+  padding: 8px 20px;
+  border-radius: 18px;
+  border: none;
+  background: #4a7bd8;
+  color: white;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+#send-button:hover {
+  background: #3a67c2;
+}
