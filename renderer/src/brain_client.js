@@ -151,6 +151,13 @@ export class BrainClient {
   // so it roughly tracks her speech. Each word is its own span with a
   // fade-in (CSS) instead of a flat textContent append, so words ease in
   // instead of popping in instantly.
+  //
+  // Paced faster than a literal duration/wordCount split (PACE_FACTOR < 1):
+  // TTS audio has leading/trailing silence and per-word count doesn't match
+  // spoken syllable count well (an emoji counts as a full "word" but takes
+  // near-zero time to speak), so an even split over the *whole* clip
+  // consistently landed behind actual speech -- confirmed by users noticing
+  // the text trailing the voice, not just a guess.
   _startSubtitleStream(text, durationSec) {
     if (!this.subtitleEl) return;
     clearInterval(this._subtitleStreamTimer);
@@ -161,7 +168,8 @@ export class BrainClient {
     this.subtitleEl.classList.add("visible");
     if (words.length === 0) return;
 
-    const intervalMs = Math.max((durationSec * 1000) / words.length, 60);
+    const PACE_FACTOR = 0.6;
+    const intervalMs = Math.max((durationSec * 1000 * PACE_FACTOR) / words.length, 30);
     let i = 0;
     const revealNext = () => {
       const span = document.createElement("span");
