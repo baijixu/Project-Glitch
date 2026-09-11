@@ -19,13 +19,12 @@ from pathlib import Path
 import websockets
 from websockets.exceptions import ConnectionClosed
 
-# discord.py and discord-ext-voice-recv report real errors (voice socket
-# failures, opus/decrypt issues, etc.) through Python's logging module,
-# not print() -- with no handler configured those were completely
-# invisible, which is exactly what made a live voice-audio problem
-# (zero packets ever reaching the sink) impossible to diagnose beyond
-# "nothing happened." WARNING+ is enough to surface real failures
-# without the DEBUG-level packet-by-packet chatter these libraries emit.
+# discord.py reports real errors (voice handshake failures, gateway
+# issues, etc.) through Python's logging module, not print() -- with no
+# handler configured those were completely invisible, which is exactly
+# what made a live voice-connection problem impossible to diagnose
+# beyond "nothing happened." WARNING+ is enough to surface real failures
+# without DEBUG-level chatter.
 logging.basicConfig(level=logging.WARNING, format="[%(name)s] %(levelname)s: %(message)s")
 
 # The LLM is prompted to be "friendly and conversational" and routinely
@@ -184,9 +183,11 @@ async def main() -> None:
     stt = FasterWhisperSTT()
     brain = Brain(llm=llm, tts=tts, stt=stt)
 
-    # Reuses the same already-loaded TTS/STT instances (expensive to
-    # load) rather than creating separate ones for Discord. Optional: an
-    # unset token just skips starting the bot, so nobody who isn't using
+    # Reuses the same already-loaded TTS instance (expensive to load)
+    # rather than creating a separate one for Discord. STT isn't needed
+    # here -- Discord voice is join-and-speak only, see discord_bot/bot.py's
+    # module docstring for why listening was dropped. Optional: an unset
+    # token just skips starting the bot, so nobody who isn't using
     # Discord needs any of this.
     discord_cfg = brain_cfg.get("discord") or {}
     discord_token = discord_cfg.get("token")
@@ -196,7 +197,6 @@ async def main() -> None:
             llm_cfg=llm_cfg,
             allowed_user_id=discord_cfg.get("allowed_user_id"),
             allowed_channel_ids=discord_cfg.get("allowed_channel_ids") or [],
-            stt=stt,
             tts=tts,
         )
         asyncio.create_task(run_discord_bot(discord_client, discord_token))

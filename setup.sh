@@ -21,10 +21,19 @@ echo "Setting up renderer shell..."
 
 if [ "$(uname)" = "Linux" ]; then
     echo
-    echo "Linux note: pywebview needs the system WebKitGTK libraries (pip"
-    echo "can't install these) -- on Debian/Ubuntu:"
-    echo "    sudo apt install python3-gi gir1.2-webkit2-4.1"
+    echo "Linux note: pywebview needs the system WebKitGTK libraries, and"
+    echo "Discord voice playback needs system libopus -- pip can't install"
+    echo "either -- on Debian/Ubuntu:"
+    echo "    sudo apt install python3-gi gir1.2-webkit2-4.1 libopus0"
     echo "See SPEC.md section 7 for other distros."
+    echo
+fi
+
+if [ "$(uname)" = "Darwin" ]; then
+    echo
+    echo "macOS note: Discord voice playback needs libopus (pip can't"
+    echo "install it) -- if it's not already on your system:"
+    echo "    brew install opus"
     echo
 fi
 

@@ -1,5 +1,5 @@
-"""Discord integration (SPEC.md section 5): text chat, plus voice-channel
-presence (voice.py) now that text was verified working first.
+"""Discord integration (SPEC.md section 5): text chat, plus join-and-speak
+voice-channel presence.
 
 Text chat replies in exactly three cases:
   - a DM from the configured allowed_user_id (everyone else's DMs are
@@ -7,36 +7,55 @@ Text chat replies in exactly three cases:
   - any message in one of the configured allowed_channel_ids, from anyone
   - a message anywhere else that @mentions the bot, from anyone
 
-Voice works differently on purpose: she auto-joins whichever voice
-channel allowed_user_id enters (following if they switch channels), but
-once in, anyone in the channel can wake her by saying "glitch" -- gating
-by user identity doesn't carry over the same way for voice, see voice.py.
-Leaving is command-only ("!leave", allowed_user_id only), no auto-leave.
+Voice is join-and-speak only, not listen-and-respond: she auto-joins
+whichever voice channel allowed_user_id enters (following if they switch
+channels) and speaks her text-chat replies out loud while connected, but
+does not transcribe or react to anything said in the channel. Live
+wake-word listening was attempted and deliberately dropped after hitting
+a real, currently-unresolved upstream limitation: Discord's voice
+channels are now DAVE (E2EE) encrypted by default, and
+discord-ext-voice-recv -- the only community library that lets
+discord.py receive voice audio at all -- cannot decrypt DAVE packets yet
+(open feature request: github.com/imayhaveborkedit/discord-ext-voice-recv
+issue #64, no ETA). Every packet it tried to receive Opus-decoded to
+garbage ("corrupted stream"), which also appeared to destabilize the
+voice session for other real people in the channel -- confirmed live,
+not a guess. Sending audio doesn't touch that broken code path at all
+(discord.py's own native, DAVE-aware VoiceClient handles it), so
+speaking is unaffected; only the extra `discord-ext-voice-recv`
+dependency and its receive machinery were removed. Leaving is
+command-only ("!leave", allowed_user_id only), no auto-leave.
 
-Every conversation -- each DM thread, each channel, each guild's voice
-session -- gets its own LocalLLM instance and history, completely
-separate from whatever's live on the Renderer's screen: a Discord message
-never changes what's showing on her face there, and vice versa (an
-explicit choice, not an oversight).
+Every conversation -- each DM thread, each channel -- gets its own
+LocalLLM instance and history, completely separate from whatever's live
+on the Renderer's screen: a Discord message never changes what's showing
+on her face there, and vice versa (an explicit choice, not an oversight).
 """
 
 import asyncio
 import tempfile
-import threading
-import time
-import wave
 from pathlib import Path
 
 import discord
-from discord.ext import voice_recv
+import discord.opus
 
 from llm import LocalLLM
-# brain/voice/ (STT+TTS classes) vs this package's own sibling voice.py
-# (voice-channel sink/wake-word logic) -- same name, different modules;
-# the absolute vs. relative import below is what tells them apart.
-from voice import FasterWhisperSTT, KokoroTTS
+from voice import KokoroTTS
 
-from .voice import CHANNELS, SAMPLE_RATE, SAMPLE_WIDTH, UtteranceSink, extract_wake_query
+# discord.py doesn't reliably auto-load libopus on import (confirmed:
+# discord.opus.is_loaded() was False here despite the bundled Windows DLL
+# sitting right there in the package) -- without it, encoding audio for
+# playback fails, not just receiving it. _load_default() is "private"
+# (underscore-prefixed) but it's the only part of discord.py that
+# already knows how to find the right library on every platform: the
+# bundled DLL on Windows, or a system-installed libopus via
+# ctypes.util.find_library on macOS/Linux (which needs actually
+# installing there, e.g. `apt install libopus0` -- see setup.sh).
+if not discord.opus.is_loaded():
+    try:
+        discord.opus._load_default()
+    except Exception as exc:
+        print(f"[discord] warning: couldn't load libopus ({exc!r}) -- voice playback will fail")
 
 # Discord's hard per-message character cap -- a long reply needs to be
 # split into multiple sends rather than silently truncated or rejected.
@@ -58,7 +77,6 @@ class DiscordBrain(discord.Client):
         llm_cfg: dict,
         allowed_user_id: int | None,
         allowed_channel_ids: set[int],
-        stt: FasterWhisperSTT,
         tts: KokoroTTS,
         **kwargs,
     ) -> None:
@@ -66,17 +84,11 @@ class DiscordBrain(discord.Client):
         self._llm_cfg = llm_cfg
         self._allowed_user_id = allowed_user_id
         self._allowed_channel_ids = allowed_channel_ids
-        self._stt = stt
         self._tts = tts
-        # Keyed by "dm:<user_id>" / "channel:<channel_id>" / "voice:<guild_id>"
-        # -- lazily created per conversation the first time it's used.
+        # Keyed by "dm:<user_id>" or "channel:<channel_id>" -- lazily
+        # created per conversation the first time it's actually used.
         self._conversations: dict[str, LocalLLM] = {}
-        self._voice_clients: dict[int, voice_recv.VoiceRecvClient] = {}
-        # Guards each guild's voice conversation history and playback
-        # ordering -- utterances are handled on worker threads (voice.py),
-        # so two people talking over each other in the same channel could
-        # otherwise race on the same LocalLLM instance.
-        self._voice_locks: dict[int, threading.Lock] = {}
+        self._voice_clients: dict[int, discord.VoiceClient] = {}
 
     async def on_ready(self) -> None:
         print(f"[discord] logged in as {self.user}")
@@ -97,13 +109,8 @@ class DiscordBrain(discord.Client):
 
         if existing:
             # Not cleanly connected anymore (e.g. a Discord voice-server
-            # hiccup) -- tear it down explicitly instead of leaving its
-            # reader thread/sink running in the background while a fresh
-            # connection opens underneath it. Confirmed hitting exactly
-            # this live: a voice-server drop produced three consecutive
-            # "joining" reconnects with zero utterance activity after,
-            # consistent with a leaked/orphaned sink never actually
-            # listening on the real, current connection.
+            # hiccup) -- tear it down explicitly instead of leaving stale
+            # state behind while a fresh connection opens underneath it.
             print(f"[discord-voice] stale connection in {member.guild.name!r}, cleaning up before rejoining")
             try:
                 await existing.disconnect(force=True)
@@ -116,24 +123,18 @@ class DiscordBrain(discord.Client):
             return  # already logged -- nothing was left half-connected to clean up
 
         self._voice_clients[member.guild.id] = vc
-
-        def on_utterance(user, pcm: bytes) -> None:
-            self._on_voice_utterance(member.guild, vc, user, pcm)
-
-        vc.listen(UtteranceSink(on_utterance))
-        print(f"[discord-voice] listening in {after.channel.name!r}")
+        print(f"[discord-voice] joined {after.channel.name!r}")
 
     async def _connect_voice(self, channel: discord.VoiceChannel):
         """Connects with retries. discord.py's own warning when this is
         slow ("Awaiting endpoint... considering raising the timeout and
         reconnecting") names exactly this fix -- confirmed live hitting
-        the default 30s connect() timeout during a real, independently-
-        reported voice-server hiccup ("she joins with me, crashes the
-        voice channel then drops"). Each retry also clears whatever
-        discord.py's own guild.voice_client registry still thinks is
-        connected first, in case the previous attempt left it in a
-        half-connected state that would make a plain retry fail
-        immediately with "already connected."
+        the default 30s connect() timeout during a real voice-server
+        hiccup. Each retry also clears whatever discord.py's own
+        guild.voice_client registry still thinks is connected first, in
+        case the previous attempt left it in a half-connected state that
+        would make a plain retry fail immediately with "already
+        connected."
         """
         last_exc: Exception | None = None
         for attempt in range(1, VOICE_CONNECT_RETRIES + 1):
@@ -146,7 +147,7 @@ class DiscordBrain(discord.Client):
 
             print(f"[discord-voice] joining {channel.name!r} in {channel.guild.name!r} (attempt {attempt}/{VOICE_CONNECT_RETRIES})")
             try:
-                return await channel.connect(cls=voice_recv.VoiceRecvClient, timeout=VOICE_CONNECT_TIMEOUT_SEC)
+                return await channel.connect(timeout=VOICE_CONNECT_TIMEOUT_SEC)
             except Exception as exc:
                 last_exc = exc
                 print(f"[discord-voice] connect attempt {attempt} failed: {exc!r}")
@@ -166,64 +167,26 @@ class DiscordBrain(discord.Client):
             await vc.disconnect(force=True)
             print(f"[discord-voice] left voice in {guild.name!r}")
 
-    def _on_voice_utterance(self, guild: discord.Guild, voice_client, user, pcm: bytes) -> None:
-        lock = self._voice_locks.setdefault(guild.id, threading.Lock())
-        with lock:
-            wav_path = _pcm_to_wav_file(pcm)
-            try:
-                transcript = self._stt.transcribe(wav_path)
-            except Exception as exc:
-                print(f"[discord-voice] STT failed: {exc!r}")
-                return
-            finally:
-                Path(wav_path).unlink(missing_ok=True)
+    async def _speak_in_voice(self, guild: discord.Guild, text: str) -> None:
+        vc = self._voice_clients.get(guild.id)
+        if not vc or not vc.is_connected():
+            return
+        try:
+            wav_bytes, _frames = await asyncio.to_thread(self._tts.synthesize, text)
+        except Exception as exc:
+            print(f"[discord-voice] TTS failed: {exc!r}")
+            return
 
-            if not transcript.strip():
-                print(f"[discord-voice] {user}: heard audio but STT returned nothing")
-                return
-            query = extract_wake_query(transcript)
-            if query is None:
-                # Logged even though not directed at her -- previously
-                # silent here, which made "no wake word detected" and
-                # "no audio reached the sink at all" indistinguishable
-                # from the log alone.
-                print(f"[discord-voice] {user}: {transcript!r} (no wake word, ignoring)")
-                return
-            print(f"[discord-voice] {user}: {transcript!r} -> {query!r}")
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            f.write(wav_bytes)
+            reply_path = f.name
 
-            key = f"voice:{guild.id}"
-            llm = self._conversations.get(key)
-            if llm is None:
-                llm = LocalLLM(
-                    endpoint=self._llm_cfg["endpoint"],
-                    model=self._llm_cfg.get("model"),
-                    api_key=self._llm_cfg.get("api_key"),
-                )
-                self._conversations[key] = llm
+        def _cleanup(_err) -> None:
+            Path(reply_path).unlink(missing_ok=True)
 
-            try:
-                reply_text, _mood = llm.reply(query)
-            except Exception as exc:
-                print(f"[discord-voice] LLM call failed: {exc!r}")
-                return
-
-            try:
-                wav_bytes, _frames = self._tts.synthesize(reply_text)
-            except Exception as exc:
-                print(f"[discord-voice] TTS failed: {exc!r}")
-                return
-
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-                f.write(wav_bytes)
-                reply_path = f.name
-
-            while voice_client.is_playing():
-                time.sleep(0.1)
-
-            def _cleanup(_err) -> None:
-                Path(reply_path).unlink(missing_ok=True)
-
-            voice_client.play(discord.FFmpegPCMAudio(reply_path), after=_cleanup)
+        if vc.is_playing():
+            vc.stop()  # a new reply takes priority over finishing the last one
+        vc.play(discord.FFmpegPCMAudio(reply_path), after=_cleanup)
 
     async def on_message(self, message: discord.Message) -> None:
         if message.author.id == self.user.id:
@@ -278,23 +241,14 @@ class DiscordBrain(discord.Client):
         for start in range(0, len(reply_text), DISCORD_MESSAGE_LIMIT):
             await message.channel.send(reply_text[start : start + DISCORD_MESSAGE_LIMIT])
 
-
-def _pcm_to_wav_file(pcm: bytes) -> str:
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-        path = f.name
-    with wave.open(path, "wb") as wav_file:
-        wav_file.setnchannels(CHANNELS)
-        wav_file.setsampwidth(SAMPLE_WIDTH)
-        wav_file.setframerate(SAMPLE_RATE)
-        wav_file.writeframes(pcm)
-    return path
+        if not is_dm:
+            await self._speak_in_voice(message.guild, reply_text)
 
 
 def build_discord_client(
     llm_cfg: dict,
     allowed_user_id: int | None,
     allowed_channel_ids: list[int],
-    stt: FasterWhisperSTT,
     tts: KokoroTTS,
 ) -> DiscordBrain:
     intents = discord.Intents.default()
@@ -304,7 +258,6 @@ def build_discord_client(
         llm_cfg=llm_cfg,
         allowed_user_id=allowed_user_id,
         allowed_channel_ids=set(allowed_channel_ids),
-        stt=stt,
         tts=tts,
         intents=intents,
     )
