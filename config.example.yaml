@@ -10,6 +10,13 @@ brain:
     endpoint: http://localhost:1234/v1 # LM Studio / llama-server OpenAI-compatible endpoint
     model: null # set to whatever the endpoint has loaded
     api_key: null # only needed if the endpoint requires one
+  # Text-chat only for now -- voice-channel presence (live STT/TTS in a
+  # call) is a separate, deliberately deferred phase. Leave `token` unset
+  # to skip starting the Discord bot entirely.
+  discord:
+    token: null # from https://discord.com/developers/applications -- bot, Message Content intent enabled
+    allowed_user_id: null # your numeric Discord user ID -- DMs only get a reply from this user
+    allowed_channel_ids: [] # bot replies to every message in these channel IDs, from anyone
 
 # The Renderer is a browser/WebView app, not a Python process -- it can't
 # read this file directly, so it gets the same host/port via its own

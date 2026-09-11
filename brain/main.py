@@ -30,6 +30,7 @@ sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 import protocol
 from config import load_config
+from discord_bot import build_discord_client, run_discord_bot
 from llm import LocalLLM
 from voice import FasterWhisperSTT, KokoroTTS
 
@@ -172,6 +173,22 @@ async def main() -> None:
     print("[brain] loading STT (faster-whisper)...")
     stt = FasterWhisperSTT()
     brain = Brain(llm=llm, tts=tts, stt=stt)
+
+    # Text-chat only -- see discord_bot/bot.py's module docstring for why
+    # voice-channel presence is a separate, later phase. Optional: an unset
+    # token just skips it, so nobody who isn't using Discord needs this.
+    discord_cfg = brain_cfg.get("discord") or {}
+    discord_token = discord_cfg.get("token")
+    if discord_token:
+        print("[brain] starting Discord bot...")
+        discord_client = build_discord_client(
+            llm_cfg=llm_cfg,
+            allowed_user_id=discord_cfg.get("allowed_user_id"),
+            allowed_channel_ids=discord_cfg.get("allowed_channel_ids") or [],
+        )
+        asyncio.create_task(run_discord_bot(discord_client, discord_token))
+    else:
+        print("[brain] no Discord token configured, skipping Discord bot")
 
     print(f"[brain] listening on ws://{host}:{port}")
     async with websockets.serve(lambda ws: handle_renderer(ws, brain), host, port, max_size=20 * 1024 * 1024):
