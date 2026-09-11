@@ -168,7 +168,7 @@ export class BrainClient {
     this.subtitleEl.classList.add("visible");
     if (words.length === 0) return;
 
-    const PACE_FACTOR = 0.6;
+    const PACE_FACTOR = 0.75;
     const intervalMs = Math.max((durationSec * 1000 * PACE_FACTOR) / words.length, 30);
     let i = 0;
     const revealNext = () => {
