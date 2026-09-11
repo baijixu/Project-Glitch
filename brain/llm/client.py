@@ -14,6 +14,14 @@ from openai import OpenAI
 
 SYSTEM_PROMPT = "You are Glitch, a friendly and curious AI companion. Keep replies conversational and fairly short."
 
+# Not a memory system (SPEC.md section 2 excludes that) -- just a sane
+# bound on how much history gets resent every turn. Found by hitting it
+# directly: a long test session let this grow unbounded and each call got
+# progressively slower re-processing a ever-larger context on a local
+# model, to the point one reply took 90+s and looked hung. Trimming keeps
+# every turn's latency roughly flat instead of degrading over a session.
+MAX_HISTORY_MESSAGES = 20  # ~10 user/assistant exchanges
+
 
 class LocalLLM:
     def __init__(self, endpoint: str, model: str | None, api_key: str | None = None) -> None:
@@ -23,6 +31,7 @@ class LocalLLM:
 
     def reply(self, user_text: str) -> str:
         self._history.append({"role": "user", "content": user_text})
+        del self._history[:-MAX_HISTORY_MESSAGES]
         messages = [{"role": "system", "content": SYSTEM_PROMPT}, *self._history]
         response = self._client.chat.completions.create(model=self._model, messages=messages)
         reply_text = response.choices[0].message.content

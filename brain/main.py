@@ -1,14 +1,18 @@
 """Brain entry point -- hosts the WebSocket server the Renderer connects to
-(spec section 5). Build order step 4 (LLM slice): user_text in, an LLM
-reply out as speak_text -- no TTS/visemes yet, that's its own incremental
-step once this is verified working.
+(spec section 5). Build order step 4 (voice slice): user_audio (mic) or
+user_text (chat box) -> [STT ->] LLM -> TTS -> speak_text + speak_audio +
+viseme_stream, so either input path ends up going through the exact same
+reply pipeline.
 
 Run with:
     uv run main.py
 """
 
 import asyncio
+import base64
 import json
+import tempfile
+from pathlib import Path
 
 import websockets
 from websockets.exceptions import ConnectionClosed
@@ -16,16 +20,34 @@ from websockets.exceptions import ConnectionClosed
 import protocol
 from config import load_config
 from llm import LocalLLM
+from voice import FasterWhisperSTT, KokoroTTS
 
 PING_INTERVAL_SEC = 15
 
+# Browsers' MediaRecorder doesn't produce WAV -- map its common mime types
+# to a file extension so faster-whisper's decoder gets a useful hint.
+AUDIO_EXTENSION_BY_MIME = {
+    "audio/webm": ".webm",
+    "audio/ogg": ".ogg",
+    "audio/mp4": ".mp4",
+    "audio/wav": ".wav",
+    "audio/x-wav": ".wav",
+}
 
-async def handle_renderer(websocket: websockets.ServerConnection, llm: LocalLLM) -> None:
+
+class Brain:
+    def __init__(self, llm: LocalLLM, tts: KokoroTTS, stt: FasterWhisperSTT) -> None:
+        self.llm = llm
+        self.tts = tts
+        self.stt = stt
+
+
+async def handle_renderer(websocket: websockets.ServerConnection, brain: Brain) -> None:
     print("[brain] renderer connected")
     ping_task = asyncio.create_task(_ping_loop(websocket))
     try:
         async for raw in websocket:
-            await _handle_message(websocket, raw, llm)
+            await _handle_message(websocket, raw, brain)
     except ConnectionClosed:
         pass
     finally:
@@ -39,7 +61,7 @@ async def _ping_loop(websocket: websockets.ServerConnection) -> None:
         await websocket.send(json.dumps(protocol.ping()))
 
 
-async def _handle_message(websocket: websockets.ServerConnection, raw: str, llm: LocalLLM) -> None:
+async def _handle_message(websocket: websockets.ServerConnection, raw: str, brain: Brain) -> None:
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
@@ -51,32 +73,72 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, llm:
     if msg_type == protocol.READY:
         print(f"[brain] renderer ready, model={data.get('model')!r}")
     elif msg_type == protocol.PONG:
-        print("[brain] pong")
+        pass
     elif msg_type == protocol.ANIMATION_FINISHED:
         print(f"[brain] animation finished: {data.get('name')!r}")
     elif msg_type == protocol.ERROR:
         print(f"[brain] renderer reported error: {data.get('message')!r}")
     elif msg_type == protocol.USER_TEXT:
-        await _handle_user_text(websocket, data.get("text", ""), llm)
+        await _reply_to(websocket, data.get("text", ""), brain)
+    elif msg_type == protocol.USER_AUDIO:
+        await _handle_user_audio(websocket, data, brain)
     else:
         print(f"[brain] ignoring unknown message type: {msg_type!r}")
 
 
-async def _handle_user_text(websocket: websockets.ServerConnection, text: str, llm: LocalLLM) -> None:
+async def _handle_user_audio(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    audio_b64 = data.get("audio_b64") or ""
+    if not audio_b64:
+        return
+    try:
+        text = await asyncio.to_thread(_transcribe, brain.stt, audio_b64, data.get("mime_type", ""))
+    except Exception as exc:
+        print(f"[brain] STT failed: {exc!r}")
+        return
+    print(f"[brain] user_audio transcribed: {text!r}")
+    await _reply_to(websocket, text, brain)
+
+
+def _transcribe(stt: FasterWhisperSTT, audio_b64: str, mime_type: str) -> str:
+    audio_bytes = base64.b64decode(audio_b64)
+    suffix = AUDIO_EXTENSION_BY_MIME.get(mime_type.split(";")[0].strip(), ".webm")
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
+        f.write(audio_bytes)
+        temp_path = f.name
+    try:
+        return stt.transcribe(temp_path)
+    finally:
+        Path(temp_path).unlink(missing_ok=True)
+
+
+async def _reply_to(websocket: websockets.ServerConnection, text: str, brain: Brain) -> None:
     text = text.strip()
     if not text:
         return
-    print(f"[brain] user_text: {text}")
+    print(f"[brain] user said: {text}")
+
     try:
-        reply_text = await asyncio.to_thread(llm.reply, text)
+        reply_text = await asyncio.to_thread(brain.llm.reply, text)
     except Exception as exc:
         # No Brain -> Renderer error message type exists yet (protocol.md's
         # `error` is Renderer -> Brain only) -- surfacing this as speak_text
         # is a deliberate, minimal stand-in rather than adding a new message
         # type just for this. Revisit if/when that actually gets in the way.
         print(f"[brain] LLM call failed: {exc!r}")
-        reply_text = f"(couldn't reach the LLM: {exc})"
+        await websocket.send(json.dumps(protocol.speak_text(f"(couldn't reach the LLM: {exc})")))
+        return
+
     await websocket.send(json.dumps(protocol.speak_text(reply_text)))
+
+    try:
+        wav_bytes, frames = await asyncio.to_thread(brain.tts.synthesize, reply_text)
+    except Exception as exc:
+        print(f"[brain] TTS failed: {exc!r}")
+        return
+
+    audio_b64 = base64.b64encode(wav_bytes).decode("ascii")
+    await websocket.send(json.dumps(protocol.speak_audio(audio_b64, brain.tts.SAMPLE_RATE)))
+    await websocket.send(json.dumps(protocol.viseme_stream(frames)))
 
 
 async def main() -> None:
@@ -88,8 +150,14 @@ async def main() -> None:
     llm_cfg = brain_cfg["llm"]
     llm = LocalLLM(endpoint=llm_cfg["endpoint"], model=llm_cfg.get("model"), api_key=llm_cfg.get("api_key"))
 
+    print("[brain] loading TTS (Kokoro)...")
+    tts = KokoroTTS()
+    print("[brain] loading STT (faster-whisper)...")
+    stt = FasterWhisperSTT()
+    brain = Brain(llm=llm, tts=tts, stt=stt)
+
     print(f"[brain] listening on ws://{host}:{port}")
-    async with websockets.serve(lambda ws: handle_renderer(ws, llm), host, port):
+    async with websockets.serve(lambda ws: handle_renderer(ws, brain), host, port, max_size=20 * 1024 * 1024):
         await asyncio.Future()  # run forever
 
 

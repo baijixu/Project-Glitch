@@ -14,6 +14,7 @@ READY = "ready"
 ANIMATION_FINISHED = "animation_finished"
 ERROR = "error"
 USER_TEXT = "user_text"
+USER_AUDIO = "user_audio"
 
 # Brain -> Renderer message type strings.
 PING = "ping"
@@ -21,6 +22,7 @@ PLAY_ANIMATION = "play_animation"
 SET_EXPRESSION = "set_expression"
 VISEME_STREAM = "viseme_stream"
 SPEAK_TEXT = "speak_text"
+SPEAK_AUDIO = "speak_audio"
 
 
 def ping() -> dict:
@@ -29,6 +31,10 @@ def ping() -> dict:
 
 def speak_text(text: str) -> dict:
     return {"type": SPEAK_TEXT, "text": text}
+
+
+def speak_audio(audio_b64: str, sample_rate: int) -> dict:
+    return {"type": SPEAK_AUDIO, "audio_b64": audio_b64, "sample_rate": sample_rate}
 
 
 def play_animation(name: str, loop: bool = False) -> dict:

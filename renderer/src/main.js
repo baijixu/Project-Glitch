@@ -8,6 +8,8 @@ const statusEl = document.getElementById("status");
 const subtitleEl = document.getElementById("subtitle");
 const inputEl = document.getElementById("message-input");
 const sendButtonEl = document.getElementById("send-button");
+const micButtonEl = document.getElementById("mic-button");
+const micLabelEl = document.getElementById("mic-label");
 
 const canvas = document.getElementById("scene");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -58,7 +60,7 @@ const idle = new IdleController(vrm);
 idle.relaxPose();
 window.__idle = idle;
 
-const brain = new BrainClient({ url: import.meta.env.VITE_BRAIN_WS_URL, vrm, statusEl, subtitleEl, inputEl, sendButtonEl });
+const brain = new BrainClient({ url: import.meta.env.VITE_BRAIN_WS_URL, vrm, statusEl, subtitleEl, inputEl, sendButtonEl, micButtonEl, micLabelEl });
 brain.connect();
 window.__brain = brain; // for console-driven verification while building
 
@@ -69,6 +71,7 @@ function animate() {
   timer.update();
   const delta = timer.getDelta();
   idle.update(delta);
+  brain.update();
   vrm.update(delta);
   controls.update();
   renderer.render(scene, camera);

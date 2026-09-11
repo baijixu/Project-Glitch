@@ -92,3 +92,40 @@ html, body {
 #send-button:hover {
   background: #3a67c2;
 }
+
+#mic-button {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  border-radius: 18px;
+  border: none;
+  background: #555;
+  color: white;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+
+#mic-button:hover {
+  background: #444;
+}
+
+#mic-button.recording {
+  background: #d84a4a;
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@media (max-width: 480px) {
+  .mic-label {
+    display: none;
+  }
+}
