@@ -5,7 +5,10 @@
 // rather than looking like a working no-op.
 
 const RECONNECT_DELAY_MS = 3000;
-const SUBTITLE_DISPLAY_MS = 6000;
+// Fades out 10s after the text finishes streaming in, not 10s from when it
+// starts -- otherwise a long reply would only stay fully visible for a few
+// seconds after the last word appears, which reads as rushed.
+const SUBTITLE_FADE_DELAY_MS = 10000;
 
 export class BrainClient {
   constructor({ url, vrm, statusEl, subtitleEl, inputEl, sendButtonEl, micButtonEl, micLabelEl }) {
@@ -19,6 +22,8 @@ export class BrainClient {
     this.micLabelEl = micLabelEl;
     this.socket = null;
     this._subtitleTimer = null;
+    this._subtitleStreamTimer = null;
+    this._pendingSpeakText = "";
 
     this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
     this.visemeFrames = [];
@@ -141,12 +146,40 @@ export class BrainClient {
     if (this.statusEl) this.statusEl.textContent = text;
   }
 
-  _showSubtitle(text) {
+  // Reveals text word by word, paced to the actual audio duration (decoded
+  // before this is called, in _playAudio) rather than a guessed interval,
+  // so it roughly tracks her speech. Each word is its own span with a
+  // fade-in (CSS) instead of a flat textContent append, so words ease in
+  // instead of popping in instantly.
+  _startSubtitleStream(text, durationSec) {
     if (!this.subtitleEl) return;
-    this.subtitleEl.textContent = text;
-    this.subtitleEl.classList.add("visible");
+    clearInterval(this._subtitleStreamTimer);
     clearTimeout(this._subtitleTimer);
-    this._subtitleTimer = setTimeout(() => this.subtitleEl.classList.remove("visible"), SUBTITLE_DISPLAY_MS);
+
+    const words = text.split(/\s+/).filter(Boolean);
+    this.subtitleEl.replaceChildren();
+    this.subtitleEl.classList.add("visible");
+    if (words.length === 0) return;
+
+    const intervalMs = Math.max((durationSec * 1000) / words.length, 60);
+    let i = 0;
+    const revealNext = () => {
+      const span = document.createElement("span");
+      span.className = "word";
+      span.textContent = words[i];
+      this.subtitleEl.appendChild(span);
+      this.subtitleEl.appendChild(document.createTextNode(" "));
+      this.subtitleEl.scrollTop = this.subtitleEl.scrollHeight; // pin to newest text once it wraps past max-height
+      i++;
+      if (i >= words.length) {
+        clearInterval(this._subtitleStreamTimer);
+        // The 10s fade-out countdown starts once the full reply is
+        // actually visible, not from when streaming began.
+        this._subtitleTimer = setTimeout(() => this.subtitleEl.classList.remove("visible"), SUBTITLE_FADE_DELAY_MS);
+      }
+    };
+    revealNext();
+    this._subtitleStreamTimer = setInterval(revealNext, intervalMs);
   }
 
   async _playAudio(audioB64) {
@@ -161,6 +194,7 @@ export class BrainClient {
 
     this.playbackStartTime = this.audioContext.currentTime;
     this.lipSyncActive = true;
+    this._startSubtitleStream(this._pendingSpeakText, audioBuffer.duration);
     source.onended = () => {
       this.lipSyncActive = false;
       this.vrm.expressionManager?.setValue("aa", 0);
@@ -185,7 +219,9 @@ export class BrainClient {
         this.vrm.expressionManager?.setValue(data.name, data.weight);
         break;
       case "speak_text":
-        this._showSubtitle(data.text);
+        // Held until speak_audio arrives with a decoded duration to pace
+        // the streaming reveal against -- see _startSubtitleStream.
+        this._pendingSpeakText = data.text;
         break;
       case "speak_audio":
         this._playAudio(data.audio_b64);

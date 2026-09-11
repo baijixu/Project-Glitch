@@ -39,6 +39,7 @@ html, body {
   width: min(640px, 92vw);
   max-height: 4.5em;
   overflow-y: auto;
+  scroll-behavior: smooth;
   text-align: center;
   color: #fff;
   font-size: 22px;
@@ -47,8 +48,22 @@ html, body {
   -webkit-text-stroke: 4px #7b4fe0;
   paint-order: stroke fill;
   opacity: 0;
-  transition: opacity 0.2s ease;
+  transition: opacity 0.4s ease;
   pointer-events: none;
+}
+
+#subtitle .word {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(6px);
+  animation: word-in 0.25s ease forwards;
+}
+
+@keyframes word-in {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 #subtitle.visible {
