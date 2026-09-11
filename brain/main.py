@@ -11,12 +11,22 @@ Run with:
 import asyncio
 import base64
 import json
+import logging
 import sys
 import tempfile
 from pathlib import Path
 
 import websockets
 from websockets.exceptions import ConnectionClosed
+
+# discord.py and discord-ext-voice-recv report real errors (voice socket
+# failures, opus/decrypt issues, etc.) through Python's logging module,
+# not print() -- with no handler configured those were completely
+# invisible, which is exactly what made a live voice-audio problem
+# (zero packets ever reaching the sink) impossible to diagnose beyond
+# "nothing happened." WARNING+ is enough to surface real failures
+# without the DEBUG-level packet-by-packet chatter these libraries emit.
+logging.basicConfig(level=logging.WARNING, format="[%(name)s] %(levelname)s: %(message)s")
 
 # The LLM is prompted to be "friendly and conversational" and routinely
 # replies with emoji -- Windows' default console codepage (cp1252) can't
