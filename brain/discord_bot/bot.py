@@ -170,7 +170,13 @@ class DiscordBrain(discord.Client):
     async def _speak_in_voice(self, guild: discord.Guild, text: str) -> None:
         vc = self._voice_clients.get(guild.id)
         if not vc or not vc.is_connected():
+            # Logged even though it's a normal no-op (no active voice
+            # connection for this guild) -- previously silent here, which
+            # made "not connected to voice" and "connected but playback
+            # silently failed" indistinguishable from the log alone.
+            print(f"[discord-voice] not connected in {guild.name!r}, skipping speech")
             return
+        print(f"[discord-voice] synthesizing reply for {guild.name!r}: {text[:80]!r}")
         try:
             wav_bytes, _frames = await asyncio.to_thread(self._tts.synthesize, text)
         except Exception as exc:
@@ -181,12 +187,15 @@ class DiscordBrain(discord.Client):
             f.write(wav_bytes)
             reply_path = f.name
 
-        def _cleanup(_err) -> None:
+        def _cleanup(err) -> None:
+            if err:
+                print(f"[discord-voice] playback error: {err!r}")
             Path(reply_path).unlink(missing_ok=True)
 
         if vc.is_playing():
             vc.stop()  # a new reply takes priority over finishing the last one
         vc.play(discord.FFmpegPCMAudio(reply_path), after=_cleanup)
+        print(f"[discord-voice] playing reply in {vc.channel.name!r}")
 
     async def on_message(self, message: discord.Message) -> None:
         if message.author.id == self.user.id:
@@ -220,6 +229,8 @@ class DiscordBrain(discord.Client):
         if not text:
             return
 
+        print(f"[discord] ({key}) {message.author}: {text!r}")
+
         llm = self._conversations.get(key)
         if llm is None:
             llm = LocalLLM(
@@ -238,10 +249,14 @@ class DiscordBrain(discord.Client):
                 print(f"[discord] LLM call failed: {exc!r}")
                 reply_text = f"(couldn't reach the LLM: {exc})"
 
+        print(f"[discord] ({key}) reply: {reply_text!r}")
+
         for start in range(0, len(reply_text), DISCORD_MESSAGE_LIMIT):
             await message.channel.send(reply_text[start : start + DISCORD_MESSAGE_LIMIT])
 
-        if not is_dm:
+        if is_dm:
+            print("[discord] DM reply -- no guild to speak into, skipping voice")
+        else:
             await self._speak_in_voice(message.guild, reply_text)
 
 
