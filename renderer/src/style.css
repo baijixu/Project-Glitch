@@ -174,24 +174,37 @@ html, body {
 }
 
 #settings-button {
-  left: 68px;
+  right: 16px;
 }
 
 .slide-panel {
   position: fixed;
   top: 0;
-  left: 0;
   bottom: 0;
   width: min(300px, 80vw);
   background: rgba(20, 22, 32, 0.95);
-  box-shadow: 2px 0 16px rgba(0, 0, 0, 0.4);
-  transform: translateX(-100%);
+  /* Offscreen offset direction is per-panel (set below); a plain
+     per-ID transform here would beat the .open class on specificity
+     (ID > two classes) and never let it take effect. */
+  transform: translateX(var(--offscreen));
   transition: transform 0.3s ease;
   z-index: 15;
   display: flex;
   flex-direction: column;
   padding: 68px 16px 16px;
   box-sizing: border-box;
+}
+
+#history-panel {
+  left: 0;
+  --offscreen: -100%;
+  box-shadow: 2px 0 16px rgba(0, 0, 0, 0.4);
+}
+
+#settings-panel {
+  right: 0;
+  --offscreen: 100%;
+  box-shadow: -2px 0 16px rgba(0, 0, 0, 0.4);
 }
 
 .slide-panel.open {
