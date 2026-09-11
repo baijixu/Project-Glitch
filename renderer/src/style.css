@@ -257,6 +257,25 @@ html, body {
   background: #3a67c2;
 }
 
+.settings-select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  border: 1px solid #444a5c;
+  background: #14151f;
+  color: #eee;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.settings-select:focus {
+  outline: none;
+  border-color: #4a7bd8;
+}
+
 #profile-list {
   display: flex;
   flex-direction: column;

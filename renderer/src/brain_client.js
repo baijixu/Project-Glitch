@@ -53,7 +53,7 @@ export class BrainClient {
     soulExamplesEl,
     soulSaveButtonEl,
     soulCancelButtonEl,
-    avatarListEl,
+    avatarSelectEl,
     importAvatarButtonEl,
     avatarFileInputEl,
     onAvatarSwap,
@@ -88,7 +88,7 @@ export class BrainClient {
     this.soulCancelButtonEl = soulCancelButtonEl;
     this._activeSoulName = null;
     this._pendingEditSoulName = null;
-    this.avatarListEl = avatarListEl;
+    this.avatarSelectEl = avatarSelectEl;
     this.importAvatarButtonEl = importAvatarButtonEl;
     this.avatarFileInputEl = avatarFileInputEl;
     // Called with a VRM source (a URL string for the shipped default, or
@@ -150,7 +150,8 @@ export class BrainClient {
       if (e.target === this.soulModalBackdropEl) this._closeSoulModal();
     });
 
-    this._renderAvatarList([]); // shows the always-available "Glitch" entry immediately, before any `avatars` message arrives
+    this._renderAvatarList([]); // shows the always-available "Glitch" option immediately, before any `avatars` message arrives
+    this.avatarSelectEl?.addEventListener("change", () => this._loadAvatarByName(this.avatarSelectEl.value));
     this.importAvatarButtonEl?.addEventListener("click", () => this.avatarFileInputEl?.click());
     this.avatarFileInputEl?.addEventListener("change", () => {
       const file = this.avatarFileInputEl.files?.[0];
@@ -438,33 +439,24 @@ export class BrainClient {
     this._closeSoulModal();
   }
 
-  // "Glitch" (the shipped default) is always shown first even though it
-  // never appears in Brain's own `avatars` list -- it loads locally with
-  // no WS round trip at all (see avatars.py's module docstring), unlike
-  // every other entry here. No Edit button on any of these -- a VRM's
-  // binary content isn't something there's a text box for.
+  // A dropdown rather than the list-with-Load-button pattern
+  // profiles/souls use -- picking an option loads it immediately (the
+  // `change` listener in the constructor), no separate confirm action.
+  // "Glitch" (the shipped default) is always the first option even
+  // though it never appears in Brain's own `avatars` list -- it loads
+  // locally with no WS round trip at all (see avatars.py's module
+  // docstring), unlike every other option here.
   _renderAvatarList(customNames) {
-    if (!this.avatarListEl) return;
+    if (!this.avatarSelectEl) return;
     this._customAvatarNames = customNames;
-    this.avatarListEl.replaceChildren();
+    this.avatarSelectEl.replaceChildren();
     for (const name of ["Glitch", ...customNames]) {
-      const entry = document.createElement("div");
-      entry.className = "profile-entry";
-      if (name === this._activeAvatarName) entry.classList.add("active");
-
-      const label = document.createElement("span");
-      label.className = "profile-entry-name";
-      label.textContent = name;
-      entry.appendChild(label);
-
-      const loadButton = document.createElement("button");
-      loadButton.className = "profile-entry-load";
-      loadButton.textContent = name === this._activeAvatarName ? "Active" : "Load";
-      loadButton.addEventListener("click", () => this._loadAvatarByName(name));
-      entry.appendChild(loadButton);
-
-      this.avatarListEl.appendChild(entry);
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      this.avatarSelectEl.appendChild(option);
     }
+    this.avatarSelectEl.value = this._activeAvatarName;
   }
 
   _loadAvatarByName(name) {

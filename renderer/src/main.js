@@ -33,7 +33,7 @@ const soulDescriptionEl = document.getElementById("soul-description");
 const soulExamplesEl = document.getElementById("soul-examples");
 const soulSaveButtonEl = document.getElementById("soul-save-button");
 const soulCancelButtonEl = document.getElementById("soul-cancel-button");
-const avatarListEl = document.getElementById("avatar-list");
+const avatarSelectEl = document.getElementById("avatar-select");
 const importAvatarButtonEl = document.getElementById("import-avatar-button");
 const avatarFileInputEl = document.getElementById("avatar-file-input");
 
@@ -144,7 +144,7 @@ brain = new BrainClient({
   soulExamplesEl,
   soulSaveButtonEl,
   soulCancelButtonEl,
-  avatarListEl,
+  avatarSelectEl,
   importAvatarButtonEl,
   avatarFileInputEl,
   onAvatarSwap: setActiveAvatar,
