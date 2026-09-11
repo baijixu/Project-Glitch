@@ -111,7 +111,7 @@ class DiscordBrain(discord.Client):
                 print(f"[discord-voice] cleanup of stale connection failed (continuing anyway): {exc!r}")
             self._voice_clients.pop(member.guild.id, None)
 
-        vc = await self._connect_voice(after)
+        vc = await self._connect_voice(after.channel)
         if vc is None:
             return  # already logged -- nothing was left half-connected to clean up
 
