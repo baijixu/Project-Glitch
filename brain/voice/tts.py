@@ -7,6 +7,7 @@ to look right; revisit only if it doesn't.
 """
 
 import io
+import re
 
 import numpy as np
 import soundfile as sf
@@ -14,6 +15,31 @@ import soundfile as sf
 import protocol
 
 ENVELOPE_WINDOW_MS = 30
+
+# The LLM's replies routinely include emoji (it's instructed to be
+# conversational, not told to avoid them) -- Kokoro doesn't skip them, it
+# tries to vocalize them, which is exactly as bad as it sounds. Stripped
+# here, at the TTS boundary specifically, so speak_text (the on-screen
+# subtitle) still shows them -- only what's actually spoken gets sanitized.
+_EMOJI_PATTERN = re.compile(
+    "["
+    "\U0001f300-\U0001f5ff"  # symbols & pictographs
+    "\U0001f600-\U0001f64f"  # emoticons
+    "\U0001f680-\U0001f6ff"  # transport & map symbols
+    "\U0001f700-\U0001f7ff"  # symbols and pictographs extended-A / geometric shapes ext.
+    "\U0001f900-\U0001f9ff"  # supplemental symbols and pictographs
+    "\U0001fa70-\U0001faff"  # symbols and pictographs extended-A
+    "\U00002600-\U000026ff"  # miscellaneous symbols
+    "\U00002700-\U000027bf"  # dingbats
+    "\U0001f1e0-\U0001f1ff"  # regional indicators (flag emoji)
+    "\U0000fe0f"  # variation selector-16 (emoji presentation)
+    "\U0000200d"  # zero-width joiner (emoji sequences, e.g. family/skin-tone combos)
+    "]+"
+)
+
+
+def _strip_emoji(text: str) -> str:
+    return re.sub(r"\s+", " ", _EMOJI_PATTERN.sub("", text)).strip()
 
 
 class KokoroTTS:
@@ -27,6 +53,7 @@ class KokoroTTS:
 
     def synthesize(self, text: str) -> tuple[bytes, list[protocol.VisemeFrame]]:
         """Returns (wav_bytes, viseme_frames)."""
+        text = _strip_emoji(text)
         chunks = [np.asarray(audio) for _graphemes, _phonemes, audio in self._pipeline(text, voice=self._voice)]
         full_audio = np.concatenate(chunks) if chunks else np.zeros(0, dtype=np.float32)
 
