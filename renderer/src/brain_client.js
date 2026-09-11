@@ -44,6 +44,15 @@ export class BrainClient {
     profileContentEl,
     profileSaveButtonEl,
     profileCancelButtonEl,
+    soulListEl,
+    newSoulButtonEl,
+    soulModalBackdropEl,
+    soulModalTitleEl,
+    soulNameEl,
+    soulDescriptionEl,
+    soulExamplesEl,
+    soulSaveButtonEl,
+    soulCancelButtonEl,
   }) {
     this.url = url;
     this.vrm = vrm;
@@ -64,6 +73,17 @@ export class BrainClient {
     this.profileCancelButtonEl = profileCancelButtonEl;
     this._activeProfileName = null;
     this._pendingEditName = null;
+    this.soulListEl = soulListEl;
+    this.newSoulButtonEl = newSoulButtonEl;
+    this.soulModalBackdropEl = soulModalBackdropEl;
+    this.soulModalTitleEl = soulModalTitleEl;
+    this.soulNameEl = soulNameEl;
+    this.soulDescriptionEl = soulDescriptionEl;
+    this.soulExamplesEl = soulExamplesEl;
+    this.soulSaveButtonEl = soulSaveButtonEl;
+    this.soulCancelButtonEl = soulCancelButtonEl;
+    this._activeSoulName = null;
+    this._pendingEditSoulName = null;
     this.socket = null;
     this._subtitleTimer = null;
     this._subtitleStreamTimer = null;
@@ -106,6 +126,14 @@ export class BrainClient {
     });
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && !this.profileModalBackdropEl?.hidden) this._closeProfileModal();
+      if (e.key === "Escape" && !this.soulModalBackdropEl?.hidden) this._closeSoulModal();
+    });
+
+    this.newSoulButtonEl?.addEventListener("click", () => this._openSoulModal());
+    this.soulCancelButtonEl?.addEventListener("click", () => this._closeSoulModal());
+    this.soulSaveButtonEl?.addEventListener("click", () => this._saveSoul());
+    this.soulModalBackdropEl?.addEventListener("click", (e) => {
+      if (e.target === this.soulModalBackdropEl) this._closeSoulModal();
     });
   }
 
@@ -323,6 +351,71 @@ export class BrainClient {
     this._closeProfileModal();
   }
 
+  // Mirrors the profile list/edit/load methods above, for souls -- who
+  // Glitch is (brain/souls.py), kept as two separate fields (description
+  // + example dialogue) end to end rather than combined, unlike profiles.
+  _renderSoulList(names) {
+    if (!this.soulListEl) return;
+    this.soulListEl.replaceChildren();
+    for (const name of names) {
+      const entry = document.createElement("div");
+      entry.className = "profile-entry";
+      if (name === this._activeSoulName) entry.classList.add("active");
+
+      const label = document.createElement("span");
+      label.className = "profile-entry-name";
+      label.textContent = name;
+      entry.appendChild(label);
+
+      const editButton = document.createElement("button");
+      editButton.className = "profile-entry-edit";
+      editButton.textContent = "Edit";
+      editButton.addEventListener("click", () => this._editSoul(name));
+      entry.appendChild(editButton);
+
+      const loadButton = document.createElement("button");
+      loadButton.className = "profile-entry-load";
+      loadButton.textContent = name === this._activeSoulName ? "Active" : "Load";
+      loadButton.addEventListener("click", () => this._loadSoul(name));
+      entry.appendChild(loadButton);
+
+      this.soulListEl.appendChild(entry);
+    }
+  }
+
+  _loadSoul(name) {
+    this._send({ type: "load_soul", name });
+    this._activeSoulName = name;
+    this._renderSoulList([...this.soulListEl.querySelectorAll(".profile-entry-name")].map((el) => el.textContent));
+  }
+
+  _editSoul(name) {
+    this._pendingEditSoulName = name;
+    this._send({ type: "get_soul", name });
+  }
+
+  _openSoulModal(name = "", description = "", examples = "") {
+    if (!this.soulModalBackdropEl) return;
+    if (this.soulModalTitleEl) this.soulModalTitleEl.textContent = name ? "Edit Soul" : "New Soul";
+    if (this.soulNameEl) this.soulNameEl.value = name;
+    if (this.soulDescriptionEl) this.soulDescriptionEl.value = description;
+    if (this.soulExamplesEl) this.soulExamplesEl.value = examples;
+    this.soulModalBackdropEl.hidden = false;
+  }
+
+  _closeSoulModal() {
+    if (this.soulModalBackdropEl) this.soulModalBackdropEl.hidden = true;
+  }
+
+  _saveSoul() {
+    const name = this.soulNameEl?.value.trim() || "";
+    const description = this.soulDescriptionEl?.value.trim() || "";
+    const examples = this.soulExamplesEl?.value.trim() || "";
+    if (!name || !description) return;
+    this._send({ type: "save_soul", name, description, examples });
+    this._closeSoulModal();
+  }
+
   _addHistoryEntry(role, text) {
     if (!this.historyListEl) return;
     const group = document.createElement("div");
@@ -442,6 +535,15 @@ export class BrainClient {
         if (data.name === this._pendingEditName) {
           this._pendingEditName = null;
           this._openProfileModal(data.name, data.content);
+        }
+        break;
+      case "souls":
+        this._renderSoulList(data.names || []);
+        break;
+      case "soul_content":
+        if (data.name === this._pendingEditSoulName) {
+          this._pendingEditSoulName = null;
+          this._openSoulModal(data.name, data.description, data.examples);
         }
         break;
       case "play_animation":

@@ -20,9 +20,14 @@ from openai import OpenAI
 # of the above", not a settable expression Brain ever sends.
 VALID_MOODS = {"happy", "angry", "sad", "relaxed", "surprised", "neutral"}
 
-SYSTEM_PROMPT = (
-    "You are Glitch, a friendly and curious AI companion. Keep replies conversational and "
-    "fairly short. End every reply, on its own at the very end, with exactly one mood tag "
+# Who Glitch is by default, replaced (not appended to) by an active
+# custom soul (brain/souls.py) -- MOOD_TAG_INSTRUCTION below stays fixed
+# underneath either one, since the Renderer's expression system depends
+# on it regardless of which personality is currently active.
+DEFAULT_PERSONALITY = "You are Glitch, a friendly and curious AI companion. Keep replies conversational and fairly short."
+
+MOOD_TAG_INSTRUCTION = (
+    "End every reply, on its own at the very end, with exactly one mood tag "
     "chosen from: [mood: neutral] [mood: happy] [mood: sad] [mood: angry] [mood: surprised] "
     "[mood: relaxed] -- pick whichever best matches the emotional tone of what you just said."
 )
@@ -58,6 +63,7 @@ class LocalLLM:
         self._model = model
         self._history: list[dict] = []
         self._persona = ""
+        self._soul = ""
 
     def set_persona(self, persona_md: str) -> None:
         """Sets the active role-play profile (freeform markdown -- character
@@ -70,14 +76,26 @@ class LocalLLM:
         self._persona = persona_md.strip()
         self._history.clear()
 
+    def set_soul(self, soul_md: str) -> None:
+        """Sets the active soul (who Glitch is + example dialogue,
+        combined; see brain/souls.py) -- replaces DEFAULT_PERSONALITY
+        rather than adding to it, since a soul redefines who she is
+        rather than layering onto the default. Resets conversation
+        history for the same reason set_persona does: continuing an old
+        exchange as a different character would be incoherent.
+        """
+        self._soul = soul_md.strip()
+        self._history.clear()
+
     def _system_prompt(self) -> str:
-        if not self._persona:
-            return SYSTEM_PROMPT
-        return (
-            f"{SYSTEM_PROMPT}\n\nYou are role-playing with the user under this profile:\n"
-            f"{self._persona}\n\nStay in character and play out this scenario naturally "
-            "as the conversation continues."
-        )
+        personality = self._soul or DEFAULT_PERSONALITY
+        parts = [personality, MOOD_TAG_INSTRUCTION]
+        if self._persona:
+            parts.append(
+                f"You are role-playing with the user under this profile:\n{self._persona}\n\n"
+                "Stay in character and play out this scenario naturally as the conversation continues."
+            )
+        return "\n\n".join(parts)
 
     def reply(self, user_text: str) -> tuple[str, str]:
         """Returns (reply_text, mood) -- reply_text has the mood tag

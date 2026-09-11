@@ -23,6 +23,15 @@ const profileNameEl = document.getElementById("profile-name");
 const profileContentEl = document.getElementById("profile-content");
 const profileSaveButtonEl = document.getElementById("profile-save-button");
 const profileCancelButtonEl = document.getElementById("profile-cancel-button");
+const soulListEl = document.getElementById("soul-list");
+const newSoulButtonEl = document.getElementById("new-soul-button");
+const soulModalBackdropEl = document.getElementById("soul-modal-backdrop");
+const soulModalTitleEl = document.getElementById("soul-modal-title");
+const soulNameEl = document.getElementById("soul-name");
+const soulDescriptionEl = document.getElementById("soul-description");
+const soulExamplesEl = document.getElementById("soul-examples");
+const soulSaveButtonEl = document.getElementById("soul-save-button");
+const soulCancelButtonEl = document.getElementById("soul-cancel-button");
 
 const canvas = document.getElementById("scene");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -91,6 +100,15 @@ const brain = new BrainClient({
   profileContentEl,
   profileSaveButtonEl,
   profileCancelButtonEl,
+  soulListEl,
+  newSoulButtonEl,
+  soulModalBackdropEl,
+  soulModalTitleEl,
+  soulNameEl,
+  soulDescriptionEl,
+  soulExamplesEl,
+  soulSaveButtonEl,
+  soulCancelButtonEl,
 });
 brain.connect();
 window.__brain = brain; // for console-driven verification while building

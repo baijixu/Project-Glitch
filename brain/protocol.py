@@ -18,6 +18,9 @@ USER_AUDIO = "user_audio"
 SAVE_PROFILE = "save_profile"
 LOAD_PROFILE = "load_profile"
 GET_PROFILE = "get_profile"
+SAVE_SOUL = "save_soul"
+LOAD_SOUL = "load_soul"
+GET_SOUL = "get_soul"
 
 # Brain -> Renderer message type strings.
 PING = "ping"
@@ -28,6 +31,8 @@ SPEAK_TEXT = "speak_text"
 SPEAK_AUDIO = "speak_audio"
 PROFILES = "profiles"
 PROFILE_CONTENT = "profile_content"
+SOULS = "souls"
+SOUL_CONTENT = "soul_content"
 
 
 def ping() -> dict:
@@ -56,6 +61,14 @@ def profiles(names: list[str]) -> dict:
 
 def profile_content(name: str, content: str) -> dict:
     return {"type": PROFILE_CONTENT, "name": name, "content": content}
+
+
+def souls(names: list[str]) -> dict:
+    return {"type": SOULS, "names": names}
+
+
+def soul_content(name: str, description: str, examples: str) -> dict:
+    return {"type": SOUL_CONTENT, "name": name, "description": description, "examples": examples}
 
 
 @dataclass

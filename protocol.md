@@ -25,6 +25,8 @@ reports state/events back. All "thinking" happens in the Brain.
 | `speak_audio` | `audio_b64: string`, `sample_rate: number` | TTS output for the current reply -- base64-encoded WAV/PCM audio to play. Paired with a `viseme_stream` sent alongside it for lipsync timed to this same clip. |
 | `profiles` | `names: [string]` | The current list of saved role-play profile names (from `brain/profiles/*.md`). Sent once right after `ready`, and again after every `save_profile`. |
 | `profile_content` | `name: string`, `content: string` | The content of the named profile, in reply to `get_profile` -- used to pre-fill the profile editor when the user clicks Edit. |
+| `souls` | `names: [string]` | The current list of saved soul names (from `brain/souls/*.md`) -- who Glitch is, as opposed to `profiles`' user role-play context. Sent once right after `ready`, and again after every `save_soul`. |
+| `soul_content` | `name: string`, `description: string`, `examples: string` | The named soul's content, split back into its two editor fields, in reply to `get_soul`. |
 
 ## Renderer → Brain
 
@@ -39,6 +41,9 @@ reports state/events back. All "thinking" happens in the Brain.
 | `save_profile` | `name: string`, `content: string` | Create/overwrite a saved role-play profile -- `content` is one freeform markdown blob (character + scenario together), written to `brain/profiles/<name>.md`. Brain replies with an updated `profiles` list. |
 | `load_profile` | `name: string` | Make the named saved profile the active one: its content is copied into `brain/user.md` (the single file Brain's LLM reads its persona from) and folded into the system prompt for every subsequent reply. Resets conversation history -- a new profile shouldn't continue an old exchange under the previous one's premise. |
 | `get_profile` | `name: string` | Request the named profile's content, to pre-fill the profile editor for the Edit button (`save_profile` under the same name overwrites it once the user saves). Brain replies with `profile_content`. |
+| `save_soul` | `name: string`, `description: string`, `examples: string` | Create/overwrite a saved soul -- who Glitch is (`description`) and example `<user>`/`<character>` dialogue turns (`examples`), kept as two separate fields (unlike `save_profile`'s single combined blob) so the editor can show and re-populate them as two distinct boxes. Written to `brain/souls/<name>.md`. Brain replies with an updated `souls` list. |
+| `load_soul` | `name: string` | Make the named saved soul the active one: its content is copied into `brain/soul.md` and replaces the LLM's default personality (not layered on top of it, the way a loaded profile is) for every subsequent reply. The mood-tag instruction stays fixed underneath regardless. Resets conversation history. |
+| `get_soul` | `name: string` | Request the named soul's content, split back into its two fields, to pre-fill the soul editor for the Edit button. Brain replies with `soul_content`. |
 
 ## Adding a new message type
 

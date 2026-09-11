@@ -39,6 +39,7 @@ sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 import profiles
 import protocol
+import souls
 from config import load_config
 from discord_bot import build_discord_client, run_discord_bot
 from llm import LocalLLM
@@ -95,6 +96,7 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
     if msg_type == protocol.READY:
         print(f"[brain] renderer ready, model={data.get('model')!r}")
         await websocket.send(json.dumps(protocol.profiles(profiles.list_profiles())))
+        await websocket.send(json.dumps(protocol.souls(souls.list_souls())))
     elif msg_type == protocol.PONG:
         pass
     elif msg_type == protocol.ANIMATION_FINISHED:
@@ -111,6 +113,12 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
         _handle_load_profile(data, brain)
     elif msg_type == protocol.GET_PROFILE:
         await _handle_get_profile(websocket, data)
+    elif msg_type == protocol.SAVE_SOUL:
+        await _handle_save_soul(websocket, data)
+    elif msg_type == protocol.LOAD_SOUL:
+        _handle_load_soul(data, brain)
+    elif msg_type == protocol.GET_SOUL:
+        await _handle_get_soul(websocket, data)
     else:
         print(f"[brain] ignoring unknown message type: {msg_type!r}")
 
@@ -137,6 +145,42 @@ async def _handle_get_profile(websocket: websockets.ServerConnection, data: dict
         print(f"[brain] couldn't read profile {name!r}: {exc!r}")
         return
     await websocket.send(json.dumps(protocol.profile_content(name, content)))
+
+
+async def _handle_save_soul(websocket: websockets.ServerConnection, data: dict) -> None:
+    name = data.get("name", "")
+    description = data.get("description", "")
+    examples = data.get("examples", "")
+    if not name.strip() or not description.strip():
+        return
+    try:
+        souls.save_soul(name, description, examples)
+    except ValueError as exc:
+        print(f"[brain] couldn't save soul {name!r}: {exc!r}")
+        return
+    print(f"[brain] saved soul {name!r}")
+    await websocket.send(json.dumps(protocol.souls(souls.list_souls())))
+
+
+def _handle_load_soul(data: dict, brain: Brain) -> None:
+    name = data.get("name", "")
+    try:
+        content = souls.load_soul(name)
+    except (ValueError, FileNotFoundError) as exc:
+        print(f"[brain] couldn't load soul {name!r}: {exc!r}")
+        return
+    brain.llm.set_soul(content)
+    print(f"[brain] loaded soul {name!r}")
+
+
+async def _handle_get_soul(websocket: websockets.ServerConnection, data: dict) -> None:
+    name = data.get("name", "")
+    try:
+        description, examples = souls.read_soul(name)
+    except (ValueError, FileNotFoundError) as exc:
+        print(f"[brain] couldn't read soul {name!r}: {exc!r}")
+        return
+    await websocket.send(json.dumps(protocol.soul_content(name, description, examples)))
 
 
 def _handle_load_profile(data: dict, brain: Brain) -> None:
@@ -226,6 +270,10 @@ async def main() -> None:
     if active_profile:
         llm.set_persona(active_profile)
         print("[brain] primed with previously active profile from user.md")
+    active_soul = souls.read_active_soul()
+    if active_soul:
+        llm.set_soul(active_soul)
+        print("[brain] primed with previously active soul from soul.md")
 
     print("[brain] loading TTS (Kokoro)...")
     tts = KokoroTTS()

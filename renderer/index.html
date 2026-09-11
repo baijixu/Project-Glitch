@@ -25,6 +25,12 @@
           <div id="profile-list"></div>
           <button id="new-profile-button" class="settings-action-button">New Profile</button>
         </section>
+        <section class="settings-section">
+          <h3>Glitch's Soul</h3>
+          <p class="settings-hint">Define who Glitch is and how she talks, or pick a saved one.</p>
+          <div id="soul-list"></div>
+          <button id="new-soul-button" class="settings-action-button">New Soul</button>
+        </section>
       </div>
     </aside>
 
@@ -42,6 +48,30 @@
         <div class="modal-actions">
           <button id="profile-cancel-button" class="modal-button secondary">Cancel</button>
           <button id="profile-save-button" class="modal-button primary">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="soul-modal-backdrop" class="modal-backdrop" hidden>
+      <div id="soul-modal" class="modal" role="dialog" aria-labelledby="soul-modal-title">
+        <h2 id="soul-modal-title">New Soul</h2>
+        <label for="soul-name">Soul name</label>
+        <input id="soul-name" type="text" placeholder="e.g. Medieval Glitch" autocomplete="off" />
+        <label for="soul-description">Who she is</label>
+        <textarea
+          id="soul-description"
+          rows="5"
+          placeholder="Describe her personality, background, and how she should behave..."
+        ></textarea>
+        <label for="soul-examples">Example dialogue</label>
+        <textarea
+          id="soul-examples"
+          rows="5"
+          placeholder="&lt;user&gt; hi&#10;&lt;character&gt; good day fair knight"
+        ></textarea>
+        <div class="modal-actions">
+          <button id="soul-cancel-button" class="modal-button secondary">Cancel</button>
+          <button id="soul-save-button" class="modal-button primary">Save</button>
         </div>
       </div>
     </div>

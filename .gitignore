@@ -5,10 +5,12 @@
 config.yaml
 config.local.*
 
-# User-generated role-play profiles (brain/profiles.py) -- personal
-# content, not source code.
+# User-generated role-play profiles (brain/profiles.py) and Glitch souls
+# (brain/souls.py) -- personal content, not source code.
 brain/profiles/
 brain/user.md
+brain/souls/
+brain/soul.md
 
 # Python
 __pycache__/
