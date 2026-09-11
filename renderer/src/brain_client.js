@@ -28,8 +28,6 @@ export class BrainClient {
     sendButtonEl,
     micButtonEl,
     micLabelEl,
-    historyButtonEl,
-    historyPanelEl,
     historyListEl,
   }) {
     this.url = url;
@@ -40,8 +38,6 @@ export class BrainClient {
     this.sendButtonEl = sendButtonEl;
     this.micButtonEl = micButtonEl;
     this.micLabelEl = micLabelEl;
-    this.historyButtonEl = historyButtonEl;
-    this.historyPanelEl = historyPanelEl;
     this.historyListEl = historyListEl;
     this.socket = null;
     this._subtitleTimer = null;
@@ -76,10 +72,6 @@ export class BrainClient {
     this.micButtonEl?.addEventListener("pointerup", stopRecording);
     this.micButtonEl?.addEventListener("pointerleave", stopRecording);
     this.micButtonEl?.addEventListener("pointercancel", stopRecording);
-
-    this.historyButtonEl?.addEventListener("click", () => {
-      this.historyPanelEl?.classList.toggle("open");
-    });
   }
 
   connect() {

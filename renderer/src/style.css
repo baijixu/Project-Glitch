@@ -146,10 +146,9 @@ html, body {
   }
 }
 
-#history-button {
+.corner-button {
   position: fixed;
   top: 16px;
-  left: 16px;
   z-index: 20;
   width: 44px;
   height: 44px;
@@ -165,12 +164,20 @@ html, body {
   transition: background 0.2s ease, transform 0.2s ease;
 }
 
-#history-button:hover {
+.corner-button:hover {
   background: rgba(0, 0, 0, 0.6);
   transform: scale(1.05);
 }
 
-#history-panel {
+#history-button {
+  left: 16px;
+}
+
+#settings-button {
+  left: 68px;
+}
+
+.slide-panel {
   position: fixed;
   top: 0;
   left: 0;
@@ -187,15 +194,21 @@ html, body {
   box-sizing: border-box;
 }
 
-#history-panel.open {
+.slide-panel.open {
   transform: translateX(0);
 }
 
-#history-panel h2 {
+.slide-panel h2 {
   margin: 0 0 12px;
   color: #eee;
   font-size: 15px;
   font-weight: 700;
+}
+
+#settings-content {
+  color: #8a8fa0;
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 #history-list {

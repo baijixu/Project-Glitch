@@ -13,6 +13,8 @@ const micLabelEl = document.getElementById("mic-label");
 const historyButtonEl = document.getElementById("history-button");
 const historyPanelEl = document.getElementById("history-panel");
 const historyListEl = document.getElementById("history-list");
+const settingsButtonEl = document.getElementById("settings-button");
+const settingsPanelEl = document.getElementById("settings-panel");
 
 const canvas = document.getElementById("scene");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -72,12 +74,20 @@ const brain = new BrainClient({
   sendButtonEl,
   micButtonEl,
   micLabelEl,
-  historyButtonEl,
-  historyPanelEl,
   historyListEl,
 });
 brain.connect();
 window.__brain = brain; // for console-driven verification while building
+
+// Only one of the two slide-out panels should be open at a time -- they'd
+// otherwise physically overlap in the same corner of the screen.
+function togglePanel(panelEl, otherPanelEl) {
+  const opening = !panelEl.classList.contains("open");
+  panelEl.classList.toggle("open", opening);
+  if (opening) otherPanelEl.classList.remove("open");
+}
+historyButtonEl?.addEventListener("click", () => togglePanel(historyPanelEl, settingsPanelEl));
+settingsButtonEl?.addEventListener("click", () => togglePanel(settingsPanelEl, historyPanelEl));
 
 // Deliberately NOT using THREE.Timer's Page Visibility integration
 // (timer.connect(document)): it zeroes delta to exactly 0 for the entire
