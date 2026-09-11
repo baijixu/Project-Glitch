@@ -1,0 +1,4 @@
+# setup.sh's shebang line breaks ("bad interpreter") if it's ever stored
+# or checked out with CRLF line endings -- force LF regardless of the
+# cloning machine's core.autocrlf setting.
+*.sh text eol=lf

@@ -9,8 +9,11 @@ Run with:
 """
 
 import os
+import sys
 
 import webview
+
+from platform_utils import webview_backend_hint
 
 DEV_SERVER_URL = "http://localhost:5173"
 RENDERER_URL = os.environ.get("GLITCH_RENDERER_URL", DEV_SERVER_URL)
@@ -18,7 +21,14 @@ RENDERER_URL = os.environ.get("GLITCH_RENDERER_URL", DEV_SERVER_URL)
 
 def main() -> None:
     webview.create_window("Glitch", RENDERER_URL, width=900, height=700)
-    webview.start()
+    try:
+        webview.start()
+    except Exception as exc:
+        hint = webview_backend_hint(exc)
+        if hint:
+            print(f"[shell] {exc}\n{hint}", file=sys.stderr)
+            sys.exit(1)
+        raise
 
 
 if __name__ == "__main__":

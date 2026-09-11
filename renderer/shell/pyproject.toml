@@ -5,4 +5,14 @@ description = "Native window shell for the Renderer -- pywebview only, no app lo
 requires-python = ">=3.11,<3.13"
 dependencies = [
     "pywebview>=5.0",
+    # pywebview picks its backend automatically on Windows (WebView2 via
+    # pythonnet) and macOS (WKWebView via pyobjc) through its own
+    # dependency markers -- both come along for free. Linux has no such
+    # default: without this, pywebview installs with zero usable backend
+    # and fails at webview.start() (confirmed via `uv run python -c
+    # "import importlib.metadata as md; md.requires('pywebview')"`, which
+    # lists darwin/win32 backend deps but nothing unconditional for
+    # linux). The system WebKitGTK libraries this still needs (SPEC.md
+    # section 7) aren't pip-installable -- see setup.sh.
+    "pywebview[gtk]>=5.0; sys_platform == 'linux'",
 ]
