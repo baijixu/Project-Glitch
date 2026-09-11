@@ -12,4 +12,5 @@ dependencies = [
     "numpy>=1.26",
     "faster-whisper>=1.0",
     "discord.py>=2.3",
+    "discord-ext-voice-recv>=0.5.2a179",
 ]

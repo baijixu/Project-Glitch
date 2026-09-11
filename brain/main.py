@@ -174,9 +174,10 @@ async def main() -> None:
     stt = FasterWhisperSTT()
     brain = Brain(llm=llm, tts=tts, stt=stt)
 
-    # Text-chat only -- see discord_bot/bot.py's module docstring for why
-    # voice-channel presence is a separate, later phase. Optional: an unset
-    # token just skips it, so nobody who isn't using Discord needs this.
+    # Reuses the same already-loaded TTS/STT instances (expensive to
+    # load) rather than creating separate ones for Discord. Optional: an
+    # unset token just skips starting the bot, so nobody who isn't using
+    # Discord needs any of this.
     discord_cfg = brain_cfg.get("discord") or {}
     discord_token = discord_cfg.get("token")
     if discord_token:
@@ -185,6 +186,8 @@ async def main() -> None:
             llm_cfg=llm_cfg,
             allowed_user_id=discord_cfg.get("allowed_user_id"),
             allowed_channel_ids=discord_cfg.get("allowed_channel_ids") or [],
+            stt=stt,
+            tts=tts,
         )
         asyncio.create_task(run_discord_bot(discord_client, discord_token))
     else:
