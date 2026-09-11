@@ -112,8 +112,38 @@ class DiscordBrain(discord.Client):
 
         existing = self._voice_clients.get(member.guild.id)
         if existing and existing.is_connected():
-            if existing.channel.id != after.channel.id:
+            if existing.channel.id == after.channel.id:
+                return
+
+            # move_to() was confirmed live to fail silently here (a
+            # "Timed out trying to move to channel" warning with no
+            # exception this code was catching) -- she stayed in the old
+            # channel while the tracked user moved on, so any reply
+            # played into a channel nobody was listening in. Rather than
+            # trust move_to() to either succeed or raise, verify the
+            # actual resulting channel afterward and fall back to a full
+            # reconnect if it didn't land where it should have.
+            print(f"[discord-voice] following to {after.channel.name!r}")
+            try:
                 await existing.move_to(after.channel)
+            except Exception as exc:
+                print(f"[discord-voice] move_to raised {exc!r}")
+
+            if existing.is_connected() and existing.channel and existing.channel.id == after.channel.id:
+                return
+
+            print(f"[discord-voice] move_to didn't land in {after.channel.name!r}, reconnecting fresh instead")
+            try:
+                await existing.disconnect(force=True)
+            except Exception:
+                pass
+            self._voice_clients.pop(member.guild.id, None)
+
+            vc = await self._connect_voice(after.channel)
+            if vc is None:
+                return
+            self._voice_clients[member.guild.id] = vc
+            print(f"[discord-voice] joined {after.channel.name!r}")
             return
 
         if existing:
