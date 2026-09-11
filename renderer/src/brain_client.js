@@ -39,6 +39,7 @@ export class BrainClient {
     profileListEl,
     newProfileButtonEl,
     profileModalBackdropEl,
+    profileModalTitleEl,
     profileNameEl,
     profileContentEl,
     profileSaveButtonEl,
@@ -56,11 +57,13 @@ export class BrainClient {
     this.profileListEl = profileListEl;
     this.newProfileButtonEl = newProfileButtonEl;
     this.profileModalBackdropEl = profileModalBackdropEl;
+    this.profileModalTitleEl = profileModalTitleEl;
     this.profileNameEl = profileNameEl;
     this.profileContentEl = profileContentEl;
     this.profileSaveButtonEl = profileSaveButtonEl;
     this.profileCancelButtonEl = profileCancelButtonEl;
     this._activeProfileName = null;
+    this._pendingEditName = null;
     this.socket = null;
     this._subtitleTimer = null;
     this._subtitleStreamTimer = null;
@@ -259,6 +262,12 @@ export class BrainClient {
       label.textContent = name;
       entry.appendChild(label);
 
+      const editButton = document.createElement("button");
+      editButton.className = "profile-entry-edit";
+      editButton.textContent = "Edit";
+      editButton.addEventListener("click", () => this._editProfile(name));
+      entry.appendChild(editButton);
+
       const loadButton = document.createElement("button");
       loadButton.className = "profile-entry-load";
       loadButton.textContent = name === this._activeProfileName ? "Active" : "Load";
@@ -279,10 +288,23 @@ export class BrainClient {
     this._renderProfileList([...this.profileListEl.querySelectorAll(".profile-entry-name")].map((el) => el.textContent));
   }
 
-  _openProfileModal() {
+  // Asks Brain for the profile's current content (the Renderer only ever
+  // has names from the `profiles` list, not content) so the editor can
+  // be pre-filled -- see _handleMessage's "profile_content" case for
+  // where the response actually opens the modal.
+  _editProfile(name) {
+    this._pendingEditName = name;
+    this._send({ type: "get_profile", name });
+  }
+
+  // name/content prefill the fields (both editing an existing profile and
+  // creating a new one -- Cancel/Save both just look at whatever's in the
+  // fields, so no separate "mode" needs tracking beyond the modal title).
+  _openProfileModal(name = "", content = "") {
     if (!this.profileModalBackdropEl) return;
-    if (this.profileNameEl) this.profileNameEl.value = "";
-    if (this.profileContentEl) this.profileContentEl.value = "";
+    if (this.profileModalTitleEl) this.profileModalTitleEl.textContent = name ? "Edit Profile" : "New Profile";
+    if (this.profileNameEl) this.profileNameEl.value = name;
+    if (this.profileContentEl) this.profileContentEl.value = content;
     this.profileModalBackdropEl.hidden = false;
   }
 
@@ -294,6 +316,9 @@ export class BrainClient {
     const name = this.profileNameEl?.value.trim() || "";
     const content = this.profileContentEl?.value.trim() || "";
     if (!name || !content) return;
+    // Saving under the same name Edit opened with overwrites that
+    // profile; changing the name instead saves as a new one alongside
+    // it -- both are just save_profile, no separate "update" message.
     this._send({ type: "save_profile", name, content });
     this._closeProfileModal();
   }
@@ -412,6 +437,12 @@ export class BrainClient {
         break;
       case "profiles":
         this._renderProfileList(data.names || []);
+        break;
+      case "profile_content":
+        if (data.name === this._pendingEditName) {
+          this._pendingEditName = null;
+          this._openProfileModal(data.name, data.content);
+        }
         break;
       case "play_animation":
         console.warn("[brain] play_animation not yet implemented:", data);

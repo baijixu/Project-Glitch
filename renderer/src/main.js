@@ -18,6 +18,7 @@ const settingsPanelEl = document.getElementById("settings-panel");
 const profileListEl = document.getElementById("profile-list");
 const newProfileButtonEl = document.getElementById("new-profile-button");
 const profileModalBackdropEl = document.getElementById("profile-modal-backdrop");
+const profileModalTitleEl = document.getElementById("profile-modal-title");
 const profileNameEl = document.getElementById("profile-name");
 const profileContentEl = document.getElementById("profile-content");
 const profileSaveButtonEl = document.getElementById("profile-save-button");
@@ -85,6 +86,7 @@ const brain = new BrainClient({
   profileListEl,
   newProfileButtonEl,
   profileModalBackdropEl,
+  profileModalTitleEl,
   profileNameEl,
   profileContentEl,
   profileSaveButtonEl,

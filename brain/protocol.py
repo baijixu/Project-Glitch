@@ -17,6 +17,7 @@ USER_TEXT = "user_text"
 USER_AUDIO = "user_audio"
 SAVE_PROFILE = "save_profile"
 LOAD_PROFILE = "load_profile"
+GET_PROFILE = "get_profile"
 
 # Brain -> Renderer message type strings.
 PING = "ping"
@@ -26,6 +27,7 @@ VISEME_STREAM = "viseme_stream"
 SPEAK_TEXT = "speak_text"
 SPEAK_AUDIO = "speak_audio"
 PROFILES = "profiles"
+PROFILE_CONTENT = "profile_content"
 
 
 def ping() -> dict:
@@ -50,6 +52,10 @@ def set_expression(name: str, weight: float) -> dict:
 
 def profiles(names: list[str]) -> dict:
     return {"type": PROFILES, "names": names}
+
+
+def profile_content(name: str, content: str) -> dict:
+    return {"type": PROFILE_CONTENT, "name": name, "content": content}
 
 
 @dataclass

@@ -24,6 +24,7 @@ reports state/events back. All "thinking" happens in the Brain.
 | `speak_text` | `text: string` | The LLM's reply, to display as an on-screen subtitle. Sent alongside `speak_audio`/`viseme_stream` once TTS is in the loop -- audio playback is the real "she's speaking" signal, this is just the subtitle companion to it. |
 | `speak_audio` | `audio_b64: string`, `sample_rate: number` | TTS output for the current reply -- base64-encoded WAV/PCM audio to play. Paired with a `viseme_stream` sent alongside it for lipsync timed to this same clip. |
 | `profiles` | `names: [string]` | The current list of saved role-play profile names (from `brain/profiles/*.md`). Sent once right after `ready`, and again after every `save_profile`. |
+| `profile_content` | `name: string`, `content: string` | The content of the named profile, in reply to `get_profile` -- used to pre-fill the profile editor when the user clicks Edit. |
 
 ## Renderer → Brain
 
@@ -37,6 +38,7 @@ reports state/events back. All "thinking" happens in the Brain.
 | `user_audio` | `audio_b64: string`, `mime_type: string` | Push-to-talk mic recording -- transcribed Brain-side (STT) and handled exactly like `user_text` once transcribed. |
 | `save_profile` | `name: string`, `content: string` | Create/overwrite a saved role-play profile -- `content` is one freeform markdown blob (character + scenario together), written to `brain/profiles/<name>.md`. Brain replies with an updated `profiles` list. |
 | `load_profile` | `name: string` | Make the named saved profile the active one: its content is copied into `brain/user.md` (the single file Brain's LLM reads its persona from) and folded into the system prompt for every subsequent reply. Resets conversation history -- a new profile shouldn't continue an old exchange under the previous one's premise. |
+| `get_profile` | `name: string` | Request the named profile's content, to pre-fill the profile editor for the Edit button (`save_profile` under the same name overwrites it once the user saves). Brain replies with `profile_content`. |
 
 ## Adding a new message type
 

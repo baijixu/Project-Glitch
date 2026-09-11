@@ -34,10 +34,17 @@ def load_profile(name: str) -> str:
     """Copies the named profile's content into user.md (making it the
     active one) and returns that content.
     """
-    path = PROFILES_DIR / f"{_sanitize_name(name)}.md"
-    content = path.read_text(encoding="utf-8")
+    content = read_profile(name)
     USER_MD_PATH.write_text(content, encoding="utf-8")
     return content
+
+
+def read_profile(name: str) -> str:
+    """Reads a profile's content without activating it -- used to
+    pre-fill the profile editor for the Edit button (get_profile).
+    """
+    path = PROFILES_DIR / f"{_sanitize_name(name)}.md"
+    return path.read_text(encoding="utf-8")
 
 
 def read_active_profile() -> str:

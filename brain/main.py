@@ -109,6 +109,8 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
         await _handle_save_profile(websocket, data, brain)
     elif msg_type == protocol.LOAD_PROFILE:
         _handle_load_profile(data, brain)
+    elif msg_type == protocol.GET_PROFILE:
+        await _handle_get_profile(websocket, data)
     else:
         print(f"[brain] ignoring unknown message type: {msg_type!r}")
 
@@ -125,6 +127,16 @@ async def _handle_save_profile(websocket: websockets.ServerConnection, data: dic
         return
     print(f"[brain] saved profile {name!r}")
     await websocket.send(json.dumps(protocol.profiles(profiles.list_profiles())))
+
+
+async def _handle_get_profile(websocket: websockets.ServerConnection, data: dict) -> None:
+    name = data.get("name", "")
+    try:
+        content = profiles.read_profile(name)
+    except (ValueError, FileNotFoundError) as exc:
+        print(f"[brain] couldn't read profile {name!r}: {exc!r}")
+        return
+    await websocket.send(json.dumps(protocol.profile_content(name, content)))
 
 
 def _handle_load_profile(data: dict, brain: Brain) -> None:
