@@ -64,14 +64,27 @@ const brain = new BrainClient({ url: import.meta.env.VITE_BRAIN_WS_URL, vrm, sta
 brain.connect();
 window.__brain = brain; // for console-driven verification while building
 
+// Deliberately NOT using THREE.Timer's Page Visibility integration
+// (timer.connect(document)): it zeroes delta to exactly 0 for the entire
+// time document.hidden is true, which doesn't just "avoid a huge jump on
+// refocus" -- it freezes every delta-driven animation (idle breathing/sway,
+// mood expression crossfade) for as long as the page is backgrounded, and
+// forever if it never receives a visibilitychange transition back to
+// visible. Confirmed hitting this directly: mood weight stayed pinned at
+// exactly 0 across 2s of active playback while testing in an automated
+// browser context that reports document.hidden = true persistently -- the
+// same failure mode a real pywebview window losing OS focus could hit.
+// Capping delta directly gets the one thing that integration was actually
+// for (no runaway jump after a real long pause) without silently pausing
+// her.
+const MAX_DELTA_SEC = 0.1;
 const timer = new THREE.Timer();
-timer.connect(document); // Page Visibility API -- avoids a huge delta on tab refocus
 function animate() {
   requestAnimationFrame(animate);
   timer.update();
-  const delta = timer.getDelta();
+  const delta = Math.min(timer.getDelta(), MAX_DELTA_SEC);
   idle.update(delta);
-  brain.update();
+  brain.update(delta);
   vrm.update(delta);
   controls.update();
   renderer.render(scene, camera);

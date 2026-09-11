@@ -10,6 +10,14 @@ const RECONNECT_DELAY_MS = 3000;
 // seconds after the last word appears, which reads as rushed.
 const SUBTITLE_FADE_DELAY_MS = 10000;
 
+// This VRM's actual mood expression presets (confirmed via
+// vrm.expressionManager.expressionMap) -- "neutral" isn't in this list on
+// purpose, it means "fade all of these to 0" rather than being a settable
+// expression of its own. Treated as mutually exclusive: setting one fades
+// the rest out, matching how a face can only show one mood at a time.
+const MOODS = ["happy", "sad", "surprised", "angry", "relaxed"];
+const EXPRESSION_FADE_SEC = 0.3;
+
 export class BrainClient {
   constructor({ url, vrm, statusEl, subtitleEl, inputEl, sendButtonEl, micButtonEl, micLabelEl }) {
     this.url = url;
@@ -29,6 +37,9 @@ export class BrainClient {
     this.visemeFrames = [];
     this.playbackStartTime = 0;
     this.lipSyncActive = false;
+
+    this.moodWeights = Object.fromEntries(MOODS.map((m) => [m, 0]));
+    this.moodTargets = Object.fromEntries(MOODS.map((m) => [m, 0]));
 
     this.mediaRecorder = null;
     this.recordedChunks = [];
@@ -77,15 +88,51 @@ export class BrainClient {
   // Called once per render frame from main.js's animate() loop -- drives
   // lipsync by indexing the current viseme_stream by elapsed playback time,
   // same approach as timing any other audio-synced animation off
-  // audioContext.currentTime rather than wall-clock time.
-  update() {
-    if (!this.lipSyncActive) return;
-    const elapsed = this.audioContext.currentTime - this.playbackStartTime;
-    const frame = this.visemeFrames.find((f, i) => {
-      const next = this.visemeFrames[i + 1];
-      return elapsed >= f.t && (!next || elapsed < next.t);
-    });
-    this.vrm.expressionManager?.setValue("aa", frame ? frame.weight : 0);
+  // audioContext.currentTime rather than wall-clock time. Also crossfades
+  // mood expression weights toward their targets (set by _setMood) instead
+  // of snapping instantly, so a mood change reads as an actual expression
+  // change rather than a face slamming into place.
+  update(delta) {
+    if (this.lipSyncActive) {
+      const elapsed = this.audioContext.currentTime - this.playbackStartTime;
+      const frame = this.visemeFrames.find((f, i) => {
+        const next = this.visemeFrames[i + 1];
+        return elapsed >= f.t && (!next || elapsed < next.t);
+      });
+      this.vrm.expressionManager?.setValue("aa", frame ? frame.weight : 0);
+    }
+
+    for (const name of MOODS) {
+      const target = this.moodTargets[name];
+      let current = this.moodWeights[name];
+      if (current === target) continue;
+      const step = delta / EXPRESSION_FADE_SEC;
+      current = target > current ? Math.min(current + step, target) : Math.max(current - step, target);
+      this.moodWeights[name] = current;
+      this.vrm.expressionManager?.setValue(name, current);
+    }
+  }
+
+  // Mutually exclusive: setting one mood fades every other mood to 0.
+  // "neutral" (or anything else outside MOODS) means "fade them all out".
+  _setMood(name, weight) {
+    for (const m of MOODS) {
+      this.moodTargets[m] = m === name ? weight : 0;
+    }
+  }
+
+  // Snaps straight back to neutral rather than just retargeting for
+  // update() to crossfade toward -- if the tab loses focus/visibility
+  // while she's talking, requestAnimationFrame gets throttled or paused by
+  // the browser, so a retarget-only reset can leave the last mood's
+  // expression visibly frozen (e.g. stuck "surprised") until the tab
+  // regains focus, however long that takes.
+  _resetMoodImmediate() {
+    for (const name of MOODS) {
+      this.moodTargets[name] = 0;
+      this.moodWeights[name] = 0;
+      this.vrm.expressionManager?.setValue(name, 0);
+    }
   }
 
   _sendCurrentInput() {
@@ -206,6 +253,7 @@ export class BrainClient {
     source.onended = () => {
       this.lipSyncActive = false;
       this.vrm.expressionManager?.setValue("aa", 0);
+      this._resetMoodImmediate();
     };
     source.start();
   }
@@ -224,7 +272,7 @@ export class BrainClient {
         this._send({ type: "pong" });
         break;
       case "set_expression":
-        this.vrm.expressionManager?.setValue(data.name, data.weight);
+        this._setMood(data.name, data.weight);
         break;
       case "speak_text":
         // Held until speak_audio arrives with a decoded duration to pace

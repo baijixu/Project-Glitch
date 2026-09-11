@@ -11,11 +11,22 @@ Run with:
 import asyncio
 import base64
 import json
+import sys
 import tempfile
 from pathlib import Path
 
 import websockets
 from websockets.exceptions import ConnectionClosed
+
+# The LLM is prompted to be "friendly and conversational" and routinely
+# replies with emoji -- Windows' default console codepage (cp1252) can't
+# encode those, so any print() touching raw LLM text would crash the whole
+# connection handler (confirmed: a debug print of the raw reply took down a
+# live request with UnicodeEncodeError on a party-popper emoji). Reconfigure
+# to UTF-8 with replacement so logging never crashes on content the LLM is
+# explicitly encouraged to produce.
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 import protocol
 from config import load_config
@@ -118,7 +129,7 @@ async def _reply_to(websocket: websockets.ServerConnection, text: str, brain: Br
     print(f"[brain] user said: {text}")
 
     try:
-        reply_text = await asyncio.to_thread(brain.llm.reply, text)
+        reply_text, mood = await asyncio.to_thread(brain.llm.reply, text)
     except Exception as exc:
         # No Brain -> Renderer error message type exists yet (protocol.md's
         # `error` is Renderer -> Brain only) -- surfacing this as speak_text
@@ -128,6 +139,12 @@ async def _reply_to(websocket: websockets.ServerConnection, text: str, brain: Br
         await websocket.send(json.dumps(protocol.speak_text(f"(couldn't reach the LLM: {exc})")))
         return
 
+    print(f"[brain] mood: {mood}")
+    # Sent before speak_text/speak_audio so her face is already changing by
+    # the time she starts talking, not lagging a beat behind. Sent even for
+    # "neutral" -- the Renderer treats that as "fade every mood expression
+    # back to 0", which is exactly right after a mood-carrying reply.
+    await websocket.send(json.dumps(protocol.set_expression(mood, 1.0)))
     await websocket.send(json.dumps(protocol.speak_text(reply_text)))
 
     try:
