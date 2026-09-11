@@ -73,11 +73,20 @@ const floor = new THREE.Mesh(
 floor.rotation.x = -Math.PI / 2;
 scene.add(floor);
 
-window.addEventListener("resize", () => {
+function handleViewportResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
-});
+}
+window.addEventListener("resize", handleViewportResize);
+// window's own "resize" doesn't fire reliably for a phone's on-screen
+// keyboard opening/closing on every browser -- visualViewport's is the
+// event actually meant for this (paired with index.html's
+// interactive-widget=resizes-content, which is what makes
+// window.innerWidth/innerHeight report the real post-keyboard size in
+// the first place; without it this would just be listening for an
+// accurate signal that never arrives).
+window.visualViewport?.addEventListener("resize", handleViewportResize);
 
 // vrm/idle are mutable (not const) -- setActiveAvatar reassigns both on
 // every swap, and animate()'s closure below always reads the current

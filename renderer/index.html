@@ -2,7 +2,15 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- interactive-widget=resizes-content (Chrome/Android 108+): makes the
+         on-screen keyboard actually shrink the layout viewport instead of
+         just panning/overlaying it -- without this, position:fixed elements
+         (the chat bar) and normal-flow ones (the 3D canvas, since her head
+         going out of frame when the keyboard opens is the canvas being
+         panned along with the page, not a camera bug) both end up
+         misplaced relative to the real visible area once a phone's
+         keyboard is open. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
     <title>Glitch</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
