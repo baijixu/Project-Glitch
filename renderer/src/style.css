@@ -566,6 +566,10 @@ body.overlay-chat-active #overlay-resend-button {
 
 .settings-section {
   margin-bottom: 16px;
+  padding: 12px;
+  border: 1px solid #444a5c;
+  border-radius: 10px;
+  box-sizing: border-box;
 }
 
 .settings-section h3 {
@@ -621,6 +625,16 @@ body.overlay-chat-active #overlay-resend-button {
    Confirmed as a real miss on a phone, not just a hypothetical. */
 #clear-chat-history-button {
   margin-top: 28px;
+}
+
+/* Same 8px rhythm as .settings-action-button ~ .settings-action-button,
+   restated explicitly here since it doesn't apply on its own: Save Memory
+   Server sits one level deeper than Download Memory (inside this wrapper,
+   see index.html), and a sibling combinator can't reach across that
+   boundary -- confirmed live, the two buttons rendered touching with no
+   gap between them without this. */
+#hindsight-config-fields {
+  margin-bottom: 8px;
 }
 
 /* Scoped as .settings-section > .settings-toggle-row (not just

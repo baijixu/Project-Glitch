@@ -164,6 +164,12 @@ export class BrainClient {
     micEnabledToggleInputEl,
     micAlwaysOnToggleInputEl,
     memoryToggleInputEl,
+    memoryProviderSelectEl,
+    hindsightConfigFieldsEl,
+    hindsightApiUrlEl,
+    hindsightApiKeyEl,
+    hindsightBankIdEl,
+    saveHindsightConfigButtonEl,
     downloadMemoryButtonEl,
     clearMemoryButtonEl,
     openSoulUserEditorButtonEl,
@@ -318,6 +324,18 @@ export class BrainClient {
     this.micEnabledToggleInputEl = micEnabledToggleInputEl;
     this.micAlwaysOnToggleInputEl = micAlwaysOnToggleInputEl;
     this.memoryToggleInputEl = memoryToggleInputEl;
+    this.memoryProviderSelectEl = memoryProviderSelectEl;
+    this.hindsightConfigFieldsEl = hindsightConfigFieldsEl;
+    this.hindsightApiUrlEl = hindsightApiUrlEl;
+    this.hindsightApiKeyEl = hindsightApiKeyEl;
+    this.hindsightBankIdEl = hindsightBankIdEl;
+    this.saveHindsightConfigButtonEl = saveHindsightConfigButtonEl;
+    this.memoryProviderSelectEl?.addEventListener("change", () => {
+      const provider = this.memoryProviderSelectEl.value;
+      this._renderMemoryProviderVisibility(provider);
+      this._send({ type: "set_memory_provider", provider });
+    });
+    this.saveHindsightConfigButtonEl?.addEventListener("click", () => this._saveHindsightConfig());
     this.downloadMemoryButtonEl = downloadMemoryButtonEl;
     this.clearMemoryButtonEl = clearMemoryButtonEl;
     this._pendingMemoryDownload = false;
@@ -1838,6 +1856,31 @@ export class BrainClient {
     this._send({ type: "save_harness_key", key });
   }
 
+  // Everything in the Memory section that depends on which backend is
+  // picked. The connection fields are shown only for "hindsight" --
+  // picking "local" hides them again without clearing whatever was
+  // typed, so switching back and forth doesn't lose a half-filled-in
+  // server URL. Download/Clear Memory are the inverse: local-only --
+  // Hindsight has its own server-side tools for that, and "Clear Memory"
+  // there means deleting and recreating the whole bank (memory.py's
+  // clear()), a bigger and more destructive action than clearing a local
+  // flat file, so this deliberately doesn't offer it as a casual
+  // Settings-panel button for that backend.
+  _renderMemoryProviderVisibility(provider) {
+    const isHindsight = provider === "hindsight";
+    if (this.hindsightConfigFieldsEl) this.hindsightConfigFieldsEl.hidden = !isHindsight;
+    if (this.downloadMemoryButtonEl) this.downloadMemoryButtonEl.hidden = isHindsight;
+    if (this.clearMemoryButtonEl) this.clearMemoryButtonEl.hidden = isHindsight;
+  }
+
+  _saveHindsightConfig() {
+    const apiUrl = this.hindsightApiUrlEl?.value.trim() || "";
+    const apiKey = this.hindsightApiKeyEl?.value.trim() || "";
+    const bankId = this.hindsightBankIdEl?.value.trim() || "";
+    if (!apiUrl) return;
+    this._send({ type: "save_hindsight_config", api_url: apiUrl, api_key: apiKey, bank_id: bankId });
+  }
+
   // Always prepends None (never sent by Brain, see harness.py's
   // NONE_NAME) and always sets .value, defaulting to None when nothing's
   // active -- the toggle (see _renderHarnessState) is what actually means
@@ -2795,6 +2838,19 @@ export class BrainClient {
         break;
       case "memory_state":
         if (this.memoryToggleInputEl) this.memoryToggleInputEl.checked = !!data.active;
+        break;
+      case "memory_provider_state":
+        if (this.memoryProviderSelectEl) this.memoryProviderSelectEl.value = data.provider || "local";
+        this._renderMemoryProviderVisibility(data.provider || "local");
+        break;
+      case "hindsight_config":
+        // Pre-fills the fields, but not while the user has one of them
+        // focused (mid-edit, about to Save) -- same reasoning as
+        // harness_state's own switch-key field, so a config broadcast
+        // triggered by another device can't yank out what's being typed.
+        if (this.hindsightApiUrlEl && document.activeElement !== this.hindsightApiUrlEl) this.hindsightApiUrlEl.value = data.api_url || "";
+        if (this.hindsightApiKeyEl && document.activeElement !== this.hindsightApiKeyEl) this.hindsightApiKeyEl.value = data.api_key || "";
+        if (this.hindsightBankIdEl && document.activeElement !== this.hindsightBankIdEl) this.hindsightBankIdEl.value = data.bank_id || "";
         break;
       case "memory_content":
         if (this._pendingMemoryDownload) {

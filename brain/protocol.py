@@ -48,6 +48,8 @@ SET_VOICE_ACTIVE = "set_voice_active"
 SET_MEMORY_ACTIVE = "set_memory_active"
 CLEAR_MEMORY = "clear_memory"
 GET_MEMORY_CONTENT = "get_memory_content"
+SET_MEMORY_PROVIDER = "set_memory_provider"
+SAVE_HINDSIGHT_CONFIG = "save_hindsight_config"
 GET_SOUL_AND_USER = "get_soul_and_user"
 SAVE_SOUL_AND_USER = "save_soul_and_user"
 GET_NOTES = "get_notes"
@@ -74,6 +76,8 @@ ROLEPLAY_STATE = "roleplay_state"
 VOICE_STATE = "voice_state"
 MEMORY_STATE = "memory_state"
 MEMORY_CONTENT = "memory_content"
+MEMORY_PROVIDER_STATE = "memory_provider_state"
+HINDSIGHT_CONFIG = "hindsight_config"
 SOUL_AND_USER_CONTENT = "soul_and_user_content"
 NOTES_CONTENT = "notes_content"
 MEMORY_LEARNED = "memory_learned"
@@ -196,14 +200,36 @@ def memory_content(entries: list[str]) -> dict:
 
 
 def memory_learned(fact: str) -> dict:
-    """Sent once, right when brain/memory.py actually gains a new fact --
-    not on every extraction attempt (see main.py's _maybe_extract_memory),
-    only when something new was genuinely added. Lets the Renderer surface
-    a brief toast + a chat-history entry so it's not a silent background
-    process. Unlike debug_event, this is always sent regardless of the
-    Debugging toggle -- it's a real user-facing feature, not diagnostics.
+    """Sent once, right when brain/memory.py's "local" provider actually
+    gains a new fact -- not on every extraction attempt (see main.py's
+    _maybe_retain_memory), only when something new was genuinely added.
+    Never sent for the "hindsight" provider: its own retain() decides
+    what's worth keeping server-side and doesn't hand back the specific
+    extracted fact synchronously the way local extraction does. Lets the
+    Renderer surface a brief toast + a chat-history entry so it's not a
+    silent background process. Unlike debug_event, this is always sent
+    regardless of the Debugging toggle -- it's a real user-facing
+    feature, not diagnostics.
     """
     return {"type": MEMORY_LEARNED, "fact": fact}
+
+
+def memory_provider_state(provider: str) -> dict:
+    """Which memory backend is currently active ("local" or "hindsight",
+    see brain/memory.py) -- sent on `ready`, and again after every
+    set_memory_provider, to every connected device (brain.llm is shared
+    across all of them, so this isn't a per-connection preference).
+    """
+    return {"type": MEMORY_PROVIDER_STATE, "provider": provider}
+
+
+def hindsight_config(api_url: str, api_key: str, bank_id: str) -> dict:
+    """The saved Hindsight connection details (brain/memory.py) -- sent on
+    `ready`, and again after every save_hindsight_config, to pre-fill the
+    Settings panel's Memory Server fields. api_key is echoed back the same
+    way a saved TTS/LLM/harness engine's api_key already is.
+    """
+    return {"type": HINDSIGHT_CONFIG, "api_url": api_url, "api_key": api_key, "bank_id": bank_id}
 
 
 def no_reply() -> dict:

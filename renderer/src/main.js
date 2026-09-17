@@ -26,6 +26,12 @@ const desktopCaptureEnabledToggleInputEl = document.getElementById("desktop-capt
 const micEnabledToggleInputEl = document.getElementById("mic-enabled-toggle");
 const micAlwaysOnToggleInputEl = document.getElementById("mic-always-on-toggle");
 const memoryToggleInputEl = document.getElementById("memory-toggle");
+const memoryProviderSelectEl = document.getElementById("memory-provider-select");
+const hindsightConfigFieldsEl = document.getElementById("hindsight-config-fields");
+const hindsightApiUrlEl = document.getElementById("hindsight-api-url");
+const hindsightApiKeyEl = document.getElementById("hindsight-api-key");
+const hindsightBankIdEl = document.getElementById("hindsight-bank-id");
+const saveHindsightConfigButtonEl = document.getElementById("save-hindsight-config-button");
 const downloadMemoryButtonEl = document.getElementById("download-memory-button");
 const clearMemoryButtonEl = document.getElementById("clear-memory-button");
 const openSoulUserEditorButtonEl = document.getElementById("open-soul-user-editor-button");
@@ -316,6 +322,12 @@ brain = new BrainClient({
   micEnabledToggleInputEl,
   micAlwaysOnToggleInputEl,
   memoryToggleInputEl,
+  memoryProviderSelectEl,
+  hindsightConfigFieldsEl,
+  hindsightApiUrlEl,
+  hindsightApiKeyEl,
+  hindsightBankIdEl,
+  saveHindsightConfigButtonEl,
   downloadMemoryButtonEl,
   clearMemoryButtonEl,
   openSoulUserEditorButtonEl,

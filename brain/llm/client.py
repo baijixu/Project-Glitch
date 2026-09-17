@@ -163,7 +163,9 @@ MAX_REPLY_TOKENS_THINKING = 8000
 # A short phrase at most -- this call only ever needs to return "NONE" or
 # one compact fact, never a real reply, so this is deliberately far below
 # MAX_REPLY_TOKENS. Keeps this background call cheap and fast regardless of
-# how the main conversational reply is behaving.
+# how the main conversational reply is behaving. Only used by the "local"
+# memory provider (memory.py) -- the "hindsight" provider does its own
+# extraction server-side and never calls maybe_extract_memory at all.
 MAX_MEMORY_EXTRACT_TOKENS = 200
 
 _MEMORY_EXTRACT_SYSTEM_PROMPT = (
@@ -374,8 +376,9 @@ class LocalLLM:
         return content
 
     def maybe_extract_memory(self, user_text: str, reply_text: str, existing_entries: list[str]) -> str | None:
-        """One extra lightweight chat.completions.create call, entirely
-        separate from self._history/self._system_prompt -- looks at a
+        """The "local" memory provider's own extraction step (memory.py) --
+        one extra lightweight chat.completions.create call, entirely
+        separate from self._history/self._system_prompt, that looks at a
         single already-completed exchange and returns a new durable fact
         as a short phrase, or None if nothing new/durable came up.
         Deliberately not a method on HarnessLLM: main.py only ever calls

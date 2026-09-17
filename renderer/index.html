@@ -127,6 +127,32 @@
               stays make-believe) and remember them across restarts. Her own memory, separate from
               anything a connected harness remembers on its own.
             </p>
+            <label for="memory-provider-select">Memory backend</label>
+            <select id="memory-provider-select" class="settings-select">
+              <option value="local">Local (built-in, no setup needed)</option>
+              <option value="hindsight">Hindsight (semantic memory server)</option>
+            </select>
+            <div id="hindsight-config-fields" hidden>
+              <label for="hindsight-api-url">Hindsight server URL</label>
+              <input
+                id="hindsight-api-url"
+                type="text"
+                placeholder="e.g. http://localhost:8899"
+                autocomplete="off"
+                class="settings-text-input"
+              />
+              <label for="hindsight-api-key">API key (optional)</label>
+              <input id="hindsight-api-key" type="password" autocomplete="off" class="settings-text-input" />
+              <label for="hindsight-bank-id">Bank ID</label>
+              <input
+                id="hindsight-bank-id"
+                type="text"
+                placeholder="e.g. glitch-native"
+                autocomplete="off"
+                class="settings-text-input"
+              />
+              <button id="save-hindsight-config-button" class="settings-action-button">Save Memory Server</button>
+            </div>
             <button id="download-memory-button" class="settings-action-button">Download Memory</button>
             <button id="clear-memory-button" class="settings-action-button danger">Clear Memory</button>
           </section>

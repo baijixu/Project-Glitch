@@ -478,11 +478,16 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
     elif msg_type == protocol.SET_MEMORY_ACTIVE:
         memory.set_memory_active(bool(data.get("active")))
     elif msg_type == protocol.CLEAR_MEMORY:
-        memory.clear_memory()
+        await memory.clear()
         if isinstance(brain.llm, LocalLLM):
             brain.llm.set_memory("")
     elif msg_type == protocol.GET_MEMORY_CONTENT:
-        await websocket.send(json.dumps(protocol.memory_content(memory.read_memory_entries())))
+        await websocket.send(json.dumps(protocol.memory_content(await memory.read_entries())))
+    elif msg_type == protocol.SET_MEMORY_PROVIDER:
+        memory.set_provider(data.get("provider") or memory.LOCAL_PROVIDER)
+        await _broadcast(protocol.memory_provider_state(memory.read_provider()))
+    elif msg_type == protocol.SAVE_HINDSIGHT_CONFIG:
+        await _handle_save_hindsight_config(data)
     elif msg_type == protocol.GET_SOUL_AND_USER:
         await websocket.send(
             json.dumps(protocol.soul_and_user_content(souls.read_active_soul(), profiles.read_active_profile()))
@@ -547,6 +552,15 @@ async def _handle_ready(websocket: websockets.ServerConnection, data: dict) -> N
     await websocket.send(json.dumps(protocol.roleplay_state(profiles.read_roleplay_active())))
     await websocket.send(json.dumps(protocol.voice_state(voice_settings.read_voice_active())))
     await websocket.send(json.dumps(protocol.memory_state(memory.read_memory_active())))
+    await websocket.send(json.dumps(protocol.memory_provider_state(memory.read_provider())))
+    hindsight_cfg = memory.read_hindsight_config()
+    await websocket.send(
+        json.dumps(
+            protocol.hindsight_config(
+                hindsight_cfg.get("api_url", ""), hindsight_cfg.get("api_key", ""), hindsight_cfg.get("bank_id", "")
+            )
+        )
+    )
     await websocket.send(json.dumps(protocol.tts_engines(tts_engines.list_engines(), tts_engines.read_active_engine_name())))
     await _send_tts_voices(websocket, tts_engines.read_active_engine_name())
     await websocket.send(json.dumps(protocol.llm_engines(llm_engines.list_engines(), llm_engines.read_active_engine_name())))
@@ -1128,7 +1142,10 @@ def _build_llm(name: str) -> LocalLLM | NoneLLM:
     active_soul = souls.read_active_soul()
     if active_soul:
         llm.set_soul(active_soul)
-    llm.set_memory(memory.read_memory_block())
+    # No memory priming here -- unlike the old flat-file version, there's
+    # no fixed block to prime with at build time, only whatever's relevant
+    # to each turn's own message (see _reply_to, which calls set_memory
+    # fresh before every reply). self._memory already defaults to "".
     active_profile = profiles.read_active_profile()
     if active_profile and profiles.read_roleplay_active():
         llm.set_persona(active_profile)
@@ -1292,6 +1309,32 @@ async def _handle_save_harness_key(websocket: websockets.ServerConnection, data:
     _HARNESS_SWITCH_KEY = key or None
     print(f"[brain] harness switch key {'updated' if key else 'cleared'}")
     await _send_harness_state(websocket)
+
+
+async def _handle_save_hindsight_config(data: dict) -> None:
+    """Saves the Settings panel's Memory Server fields, points memory.py's
+    Hindsight client at the new server, and ensures the bank exists there
+    -- broadcast to every connected device (not just the one that saved
+    it) since this is shared state the same way harness_health/tts_health
+    are, not a per-connection preference. Doesn't touch which provider is
+    active (memory.py's own read_provider()) -- that's the Memory backend
+    dropdown's job (set_memory_provider), kept independent so filling in
+    connection details doesn't silently switch someone off local memory
+    before they're ready to.
+    """
+    api_url = data.get("api_url", "").strip()
+    api_key = data.get("api_key", "").strip()
+    bank_id = data.get("bank_id", "").strip() or "glitch-native"
+    if _fields_too_long(api_url, api_key, bank_id):
+        return
+    memory.save_hindsight_config(api_url, api_key, bank_id)
+    if api_url:
+        try:
+            await memory.ensure_bank()
+        except Exception as exc:
+            print(f"[brain] couldn't reach hindsight server {api_url!r}: {exc!r}")
+    print(f"[brain] saved hindsight config (bank {bank_id!r})")
+    await _broadcast(protocol.hindsight_config(api_url, api_key, bank_id))
 
 
 def _handle_set_debug_active(websocket: websockets.ServerConnection, data: dict) -> None:
@@ -1553,6 +1596,43 @@ async def _reply_to(
         return
     print(f"[brain] user said: {text!r}" + (" (+ image)" if image_b64 else ""))
 
+    # isinstance guard: same reasoning as every other brain.llm-touching
+    # call in this file -- HarnessLLM has no set_memory at all, and it
+    # manages its own memory externally anyway (see memory.py's own
+    # docstring). recall_for_prompt is provider-agnostic (memory.py's own
+    # read_provider() decides local-vs-hindsight) -- for hindsight this is
+    # recalled fresh for THIS message every turn, not just primed once at
+    # LLM-build time, so different questions actually surface different
+    # relevant memories instead of one static block; for local it's just
+    # the one flat block, same as before. Never lets a lookup failure
+    # break the reply itself -- a turn with no memory applied is still a
+    # perfectly good reply.
+    #
+    # Gated on role-play being OFF, same as _maybe_retain_memory's own
+    # gate below -- the user was explicit that RP should pause memory
+    # entirely, not just stop learning new things during it: she
+    # shouldn't be drawing on real-user facts while in character either.
+    # No text (an image-only turn) leaves whatever a previous turn set
+    # alone rather than clearing it -- there's nothing to recall against,
+    # but that's not the same as "pause memory", so this only clears when
+    # there actually was a message and memory was skipped for it.
+    if text and isinstance(brain.llm, LocalLLM):
+        if memory.read_memory_active() and not profiles.read_roleplay_active():
+            recall_start = time.monotonic()
+            try:
+                relevant = await memory.recall_for_prompt(text)
+            except Exception as exc:
+                await _debug_log(websocket, "memory", f"recall failed: {exc!r}", (time.monotonic() - recall_start) * 1000)
+            else:
+                brain.llm.set_memory(relevant)
+                await _debug_log(websocket, "memory", "recall ok", (time.monotonic() - recall_start) * 1000)
+        else:
+            # Role-play active, or memory turned off -- clears whatever a
+            # previous turn set so it can't linger into this one (e.g.
+            # role-play just got turned on with a stale recall still
+            # sitting in the system prompt from right before).
+            brain.llm.set_memory("")
+
     llm_start = time.monotonic()
     try:
         reply_text, mood = await asyncio.to_thread(brain.llm.reply, text, image_b64, image_mime)
@@ -1597,7 +1677,7 @@ async def _reply_to(
     # Fire-and-forget: must never slow down or affect the reply the user
     # already has. Runs regardless of whether voice/TTS succeeds below --
     # it only needs the text of what was actually said.
-    asyncio.create_task(_maybe_extract_memory(websocket, text, reply_text, brain))
+    asyncio.create_task(_maybe_retain_memory(websocket, text, reply_text, brain))
 
     if not voice_settings.read_voice_active():
         await _debug_log(websocket, "tts", "voice is off -- skipping synthesis")
@@ -1621,25 +1701,44 @@ async def _reply_to(
     await websocket.send(json.dumps(protocol.viseme_stream(frames)))
 
 
-async def _maybe_extract_memory(websocket: websockets.ServerConnection, user_text: str, reply_text: str, brain: Brain) -> None:
+async def _maybe_retain_memory(websocket: websockets.ServerConnection, user_text: str, reply_text: str, brain: Brain) -> None:
     """Glitch's own native memory (brain/memory.py) -- entirely separate
     from anything Hermes does with its own memory. Gated on three things:
     not the harness (isinstance check, not a duck-typed call -- HarnessLLM
-    has no maybe_extract_memory method at all, on purpose), the feature's
-    own on/off toggle, and role-play being OFF -- the user was explicit
-    that in-character role-play content must never be captured as fact
-    about them, and skipping extraction entirely during role-play is the
-    simplest way to guarantee that rather than trying to classify
-    fiction-vs-real-signal reliably.
+    has no set_memory at all, on purpose, and manages its own memory
+    externally anyway), the feature's own on/off toggle, and role-play
+    being OFF -- the user was explicit that in-character role-play content
+    must never be captured as fact about them, and skipping retention
+    entirely during role-play is the simplest way to guarantee that
+    rather than trying to classify fiction-vs-real-signal reliably.
 
-    Wrapped in one broad try/except: a failure here must never surface to
+    Branches on the active provider (memory.py's own read_provider()):
+    "hindsight" hands the raw exchange straight to Hindsight's own
+    retain(), which decides server-side what's worth keeping and doesn't
+    hand back the specific fact synchronously, so no memory_learned gets
+    sent for that path. "local" restores the original flat-file
+    behavior -- one extra lightweight LLM call
+    (LocalLLM.maybe_extract_memory) judges whether there's exactly one
+    new durable fact, and memory_learned only fires when something
+    genuinely new was added (never for a duplicate/no-op).
+
+    Wrapped in try/except throughout: a failure here must never surface to
     the user or affect anything else, it's a pure background nice-to-have.
     """
     if not isinstance(brain.llm, LocalLLM) or not memory.read_memory_active() or profiles.read_roleplay_active():
         return
     start = time.monotonic()
+    if memory.read_provider() == memory.HINDSIGHT_PROVIDER:
+        try:
+            await memory.retain_exchange(user_text, reply_text)
+        except Exception as exc:
+            await _debug_log(websocket, "memory", f"retain failed: {exc!r}", (time.monotonic() - start) * 1000)
+            return
+        await _debug_log(websocket, "memory", "retained", (time.monotonic() - start) * 1000)
+        return
+
     try:
-        fact = await asyncio.to_thread(brain.llm.maybe_extract_memory, user_text, reply_text, memory.read_memory_entries())
+        fact = await asyncio.to_thread(brain.llm.maybe_extract_memory, user_text, reply_text, memory.read_local_entries())
     except Exception as exc:
         await _debug_log(websocket, "memory", f"extraction failed: {exc!r}", (time.monotonic() - start) * 1000)
         return
@@ -1649,7 +1748,7 @@ async def _maybe_extract_memory(websocket: websockets.ServerConnection, user_tex
     # Never logs the fact itself -- category/timing only, same reasoning
     # as every other _debug_log call in this file (never conversation
     # content, and a remembered fact about the user is exactly that).
-    if not memory.add_memory_entry(fact):
+    if not memory.add_local_entry(fact):
         # Exact-duplicate re-add -- nothing actually changed, so no
         # memory_learned notification either (would be a false "learned
         # something new" for a fact she already had).
@@ -1662,7 +1761,7 @@ async def _maybe_extract_memory(websocket: websockets.ServerConnection, user_tex
     # connection's set_harness_active to reassign it out from under this
     # task in the meantime. HarnessLLM has no set_memory at all.
     if isinstance(brain.llm, LocalLLM):
-        brain.llm.set_memory(memory.read_memory_block())
+        brain.llm.set_memory(memory.read_local_block())
     await _debug_log(websocket, "memory", "learned something new", (time.monotonic() - start) * 1000)
     await websocket.send(json.dumps(protocol.memory_learned(fact)))
 
@@ -1690,6 +1789,35 @@ async def main() -> None:
     # way it used to (llm_cfg["endpoint"] was required before this).
     llm_cfg = brain_cfg.get("llm") or {}
     _DEFAULT_LLM_CONFIG.update(endpoint=llm_cfg.get("endpoint"), model=llm_cfg.get("model"), api_key=llm_cfg.get("api_key"))
+
+    # Optional, same graceful-degradation reasoning as llm above -- with
+    # nothing configured (neither a saved hindsight_config.json nor this
+    # seed), memory.py's hindsight_* functions all stay no-ops rather than
+    # main() requiring this upfront, and the "local" provider (nothing to
+    # set up) is what's actually used regardless. The saved-via-the-app
+    # config always wins once it exists; config.yaml's own block is only a
+    # one-time seed for a machine that's never had one saved yet -- same
+    # pattern as harness_switch_key just below. Seeding also writes the
+    # seed straight into the saved file (not just into the live client),
+    # so the Settings panel's Memory Server fields show real values on
+    # first connect instead of looking unconfigured when it's actually
+    # working.
+    had_saved_provider = memory.has_saved_provider()
+    hindsight_cfg = memory.read_hindsight_config() or brain_cfg.get("hindsight") or {}
+    if hindsight_cfg.get("api_url"):
+        memory.save_hindsight_config(
+            hindsight_cfg["api_url"], hindsight_cfg.get("api_key") or "", hindsight_cfg.get("bank_id") or "glitch-native"
+        )
+        await memory.ensure_bank()
+        # Also a one-time seed: nothing explicitly chosen yet (no Memory
+        # backend dropdown pick saved), but hindsight is configured, so
+        # default to actually using it rather than silently leaving what
+        # was just set up unused in favor of "local". Skipped once
+        # memory_provider.txt exists -- from then on the dropdown's own
+        # choice always wins, same as harness's own saved-list migration.
+        if not had_saved_provider:
+            memory.set_provider(memory.HINDSIGHT_PROVIDER)
+
     _HARNESS_CONFIGS.update(brain_cfg.get("harness") or {})
     # One-time migration: config.yaml's brain.harness block used to be the
     # only way to configure a harness (a small, fixed, code-defined list).

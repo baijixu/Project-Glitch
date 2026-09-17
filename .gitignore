@@ -24,6 +24,9 @@ brain/voice_active.txt
 # content, and separate from anything Hermes keeps in its own memory.
 brain/memory.md
 brain/memory_active.txt
+brain/memory_provider.txt
+# Can hold an api_key, same reasoning as tts_engines/llm_engines below.
+brain/hindsight_config.json
 
 # Saved speech (TTS) engine configs (brain/tts_engines.py) -- each file can
 # hold an api_key, a secret same as config.yaml's.
