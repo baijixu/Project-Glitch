@@ -16,42 +16,213 @@
   </head>
   <body>
     <canvas id="scene"></canvas>
+    <!-- Shown instead of the canvas when the active avatar is a flat .png
+         rather than a .vrm -- there's no 3D scene to render for a static
+         image, so this replaces it entirely rather than being composited
+         on top (see main.js's setActiveAvatar). -->
+    <img id="avatar-image" alt="" hidden />
     <div id="status"></div>
     <div id="subtitle"></div>
+    <div id="bubble-overlay"></div>
+    <div id="memory-toast"></div>
     <button id="history-button" class="corner-button" title="Chat history">🌸</button>
     <aside id="history-panel" class="slide-panel">
       <h2>Chat History</h2>
       <div id="history-list"></div>
+      <button id="resend-last-button" class="settings-action-button">Resend Last</button>
+      <button id="clear-chat-history-button" class="settings-action-button danger">Clear Chat</button>
     </aside>
     <span id="connection-light" class="connection-light" title="Connection to Brain"></span>
+    <span id="harness-light" class="connection-light" title="Hermes harness status"></span>
+    <span id="tts-light" class="connection-light" title="Speech engine status"></span>
+    <span id="roleplay-badge" class="rp-badge" title="Role-play">RP</span>
     <button id="settings-button" class="corner-button" title="Settings">⚙️</button>
     <aside id="settings-panel" class="slide-panel">
       <h2>Settings</h2>
       <div id="settings-content">
-        <section class="settings-section">
-          <h3>User Profile</h3>
-          <p class="settings-hint">Pick a saved profile to role-play with Glitch, or create a new one.</p>
-          <select id="profile-select" class="settings-select"></select>
-          <div class="settings-button-row">
-            <button id="edit-profile-button" class="settings-action-button secondary">Edit</button>
-            <button id="new-profile-button" class="settings-action-button">New Profile</button>
-          </div>
+        <section id="quick-toggles-section" class="settings-section">
+          <label class="settings-toggle-row">
+            <span>Voice</span>
+            <span class="settings-toggle">
+              <input type="checkbox" id="voice-toggle" class="settings-toggle-input" checked />
+              <span class="settings-toggle-track"></span>
+            </span>
+          </label>
+          <label class="settings-toggle-row">
+            <span>Camera</span>
+            <span class="settings-toggle">
+              <input type="checkbox" id="camera-enabled-toggle" class="settings-toggle-input" checked />
+              <span class="settings-toggle-track"></span>
+            </span>
+          </label>
+          <label class="settings-toggle-row">
+            <span>Screen Capture</span>
+            <span class="settings-toggle">
+              <input type="checkbox" id="desktop-capture-enabled-toggle" class="settings-toggle-input" checked />
+              <span class="settings-toggle-track"></span>
+            </span>
+          </label>
+          <label class="settings-toggle-row">
+            <span>Microphone</span>
+            <span class="settings-toggle">
+              <input type="checkbox" id="mic-enabled-toggle" class="settings-toggle-input" checked />
+              <span class="settings-toggle-track"></span>
+            </span>
+          </label>
+          <label class="settings-toggle-row">
+            <span>Microphone Always On</span>
+            <span class="settings-toggle">
+              <input type="checkbox" id="mic-always-on-toggle" class="settings-toggle-input" />
+              <span class="settings-toggle-track"></span>
+            </span>
+          </label>
+          <label class="settings-toggle-row">
+            <span>Chat Bubbles Over Avatar</span>
+            <span class="settings-toggle">
+              <input type="checkbox" id="overlay-chat-toggle" class="settings-toggle-input" />
+              <span class="settings-toggle-track"></span>
+            </span>
+          </label>
         </section>
-        <section class="settings-section">
-          <h3>Glitch's Soul</h3>
-          <p class="settings-hint">Define who Glitch is and how she talks, or pick a saved one.</p>
-          <select id="soul-select" class="settings-select"></select>
+        <div id="harness-lockable">
+          <section class="settings-section">
+            <label class="settings-toggle-row">
+              <span>Role-play</span>
+              <span class="settings-toggle">
+                <input type="checkbox" id="roleplay-toggle" class="settings-toggle-input" />
+                <span class="settings-toggle-track"></span>
+              </span>
+            </label>
+            <div id="profile-options">
+              <h3>User RP Persona</h3>
+              <p class="settings-hint">Pick a saved profile to role-play with Glitch, or create a new one.</p>
+              <select id="profile-select" class="settings-select"></select>
+              <div class="settings-button-row">
+                <button id="edit-profile-button" class="icon-button" title="Edit profile">✏️</button>
+                <button id="new-profile-button" class="icon-button" title="New profile">➕</button>
+                <button id="delete-profile-button" class="icon-button danger" title="Delete profile">🗑️</button>
+              </div>
+            </div>
+          </section>
+          <section id="soul-section" class="settings-section">
+            <h3>Glitch RP Persona</h3>
+            <p class="settings-hint">Define who Glitch is and how she talks, or pick a saved one.</p>
+            <select id="soul-select" class="settings-select"></select>
+            <div class="settings-button-row">
+              <button id="edit-soul-button" class="icon-button" title="Edit soul">✏️</button>
+              <button id="new-soul-button" class="icon-button" title="New soul">➕</button>
+              <button id="delete-soul-button" class="icon-button danger" title="Delete soul">🗑️</button>
+            </div>
+          </section>
+          <section id="memory-section" class="settings-section">
+            <label class="settings-toggle-row">
+              <span>Remember Me</span>
+              <span class="settings-toggle">
+                <input type="checkbox" id="memory-toggle" class="settings-toggle-input" checked />
+                <span class="settings-toggle-track"></span>
+              </span>
+            </label>
+            <p class="settings-hint">
+              Lets Glitch pick up durable facts about you as you talk (not during role-play -- that
+              stays make-believe) and remember them across restarts. Her own memory, separate from
+              anything a connected harness remembers on its own.
+            </p>
+            <button id="download-memory-button" class="settings-action-button">Download Memory</button>
+            <button id="clear-memory-button" class="settings-action-button danger">Clear Memory</button>
+          </section>
+          <section class="settings-section">
+            <h3>Avatar</h3>
+            <p class="settings-hint">
+              Pick an installed avatar, or import your own .vrm or .png. A .png avatar is a flat
+              image -- the camera can't be panned around it.
+            </p>
+            <select id="avatar-select" class="settings-select"></select>
+            <button id="import-avatar-button" class="settings-action-button">Import VRM</button>
+            <input id="avatar-file-input" type="file" accept=".vrm" hidden />
+            <button id="import-avatar-png-button" class="settings-action-button">Import PNG</button>
+            <input id="avatar-png-file-input" type="file" accept=".png" hidden />
+          </section>
+          <section class="settings-section">
+            <h3>Speech Engine</h3>
+            <p class="settings-hint">Pick a saved speech engine, or add one (e.g. Kokoro running in Docker).</p>
+            <select id="tts-engine-select" class="settings-select"></select>
+            <div class="settings-button-row">
+              <button id="edit-tts-engine-button" class="icon-button" title="Edit speech engine">✏️</button>
+              <button id="new-tts-engine-button" class="icon-button" title="New speech engine">➕</button>
+              <button id="delete-tts-engine-button" class="icon-button danger" title="Delete speech engine">🗑️</button>
+            </div>
+            <select id="tts-voice-select" class="settings-select" hidden></select>
+            <button id="create-tts-voice-button" class="settings-action-button" hidden>Create Blended Voice</button>
+          </section>
+          <section class="settings-section">
+            <h3>LLM</h3>
+            <p class="settings-hint">Pick a saved LLM engine, or add one (e.g. LM Studio, llama-server).</p>
+            <select id="llm-engine-select" class="settings-select"></select>
+            <div class="settings-button-row">
+              <button id="edit-llm-engine-button" class="icon-button" title="Edit LLM engine">✏️</button>
+              <button id="new-llm-engine-button" class="icon-button" title="New LLM engine">➕</button>
+              <button id="delete-llm-engine-button" class="icon-button danger" title="Delete LLM engine">🗑️</button>
+            </div>
+          </section>
+        </div>
+        <section id="harness-section" class="settings-section">
+          <label class="settings-toggle-row">
+            <span>Harness</span>
+            <span class="settings-toggle">
+              <input type="checkbox" id="harness-toggle" class="settings-toggle-input" />
+              <span class="settings-toggle-track"></span>
+            </span>
+          </label>
+          <p class="settings-hint">
+            Plug Glitch into an external agent harness -- she'll use it as her brain instead of
+            everything above. Pick which saved harness below, then flip this on to connect.
+          </p>
+          <select id="harness-select" class="settings-select"></select>
           <div class="settings-button-row">
-            <button id="edit-soul-button" class="settings-action-button secondary">Edit</button>
-            <button id="new-soul-button" class="settings-action-button">New Soul</button>
+            <button id="edit-harness-button" class="icon-button" title="Edit harness">✏️</button>
+            <button id="new-harness-button" class="icon-button" title="New harness">➕</button>
+            <button id="delete-harness-button" class="icon-button danger" title="Delete harness">🗑️</button>
           </div>
+          <label for="harness-switch-key">Switch key (required to connect -- set once)</label>
+          <input id="harness-switch-key" type="password" autocomplete="off" class="settings-text-input" />
+          <button id="save-harness-key-button" class="settings-action-button">Save Switch Key</button>
         </section>
-        <section class="settings-section">
-          <h3>Avatar</h3>
-          <p class="settings-hint">Pick an installed avatar, or import your own .vrm file.</p>
-          <select id="avatar-select" class="settings-select"></select>
-          <button id="import-avatar-button" class="settings-action-button">Import VRM</button>
-          <input id="avatar-file-input" type="file" accept=".vrm" hidden />
+        <section id="soul-user-editor-section" class="settings-section">
+          <h3>Soul &amp; User Files</h3>
+          <p class="settings-hint">
+            Directly edit the raw files Glitch actually reads from -- her permanent soul.md and
+            your user.md -- without going through the named saved souls/profiles above.
+          </p>
+          <button id="open-soul-user-editor-button" class="settings-action-button">Edit Soul &amp; User Files</button>
+        </section>
+        <section id="debug-section" class="settings-section">
+          <label class="settings-toggle-row">
+            <span>Debugging</span>
+            <span class="settings-toggle">
+              <input type="checkbox" id="debug-toggle" class="settings-toggle-input" checked />
+              <span class="settings-toggle-track"></span>
+            </span>
+          </label>
+          <p class="settings-hint">
+            Records connection status, timing, and errors while this is on -- never your
+            conversation with Glitch. Turn on, reproduce the problem, then download the log to
+            send for debugging.
+          </p>
+          <button id="download-debug-log-button" class="settings-action-button">Download Debug Log</button>
+        </section>
+        <section id="restart-section" class="settings-section">
+          <p class="settings-hint">
+            Restarts Glitch's Brain process -- reloads config.yaml and every engine/soul/profile
+            from disk, and reconnects automatically. Ends her current conversation history.
+          </p>
+          <button id="restart-brain-button" class="settings-action-button danger">Restart Brain</button>
+        </section>
+        <section id="notes-section" class="settings-section">
+          <p class="settings-hint">
+            A free-form scratchpad for your own ideas and todos -- never read by Glitch or sent
+            anywhere. Saved to a plain text file (brain/notes.md).
+          </p>
+          <button id="open-notes-button" class="settings-action-button">Notes</button>
         </section>
       </div>
     </aside>
@@ -97,12 +268,198 @@
         </div>
       </div>
     </div>
-    <div id="chat-bar">
-      <input id="message-input" type="text" placeholder="Type a message to Glitch..." autocomplete="off" />
-      <button id="send-button">Send</button>
+    <div id="tts-engine-modal-backdrop" class="modal-backdrop" hidden>
+      <div id="tts-engine-modal" class="modal" role="dialog" aria-labelledby="tts-engine-modal-title">
+        <h2 id="tts-engine-modal-title">New Speech Engine</h2>
+        <label for="tts-engine-name">Name</label>
+        <input id="tts-engine-name" type="text" placeholder="e.g. Kokoro (Docker)" autocomplete="off" />
+        <label for="tts-engine-endpoint">HTTP endpoint</label>
+        <input
+          id="tts-engine-endpoint"
+          type="text"
+          placeholder="e.g. http://localhost:8880/v1"
+          autocomplete="off"
+        />
+        <label for="tts-engine-api-key">API key (optional)</label>
+        <input id="tts-engine-api-key" type="password" autocomplete="off" />
+        <label for="tts-engine-voice">Voice (optional)</label>
+        <input id="tts-engine-voice" type="text" placeholder="e.g. af_heart" autocomplete="off" />
+        <label for="tts-engine-model">Model (optional)</label>
+        <input id="tts-engine-model" type="text" placeholder="e.g. kokoro (blank uses that default)" autocomplete="off" />
+        <label for="tts-engine-voices-dir">Voices folder (optional)</label>
+        <input
+          id="tts-engine-voices-dir"
+          type="text"
+          placeholder="Local folder shared with the server, for saving blended voices"
+          autocomplete="off"
+        />
+        <div class="modal-actions">
+          <button id="tts-engine-cancel-button" class="modal-button secondary">Cancel</button>
+          <button id="tts-engine-save-button" class="modal-button primary">Save</button>
+        </div>
+      </div>
+    </div>
+    <div id="kokoro-blend-modal-backdrop" class="modal-backdrop" hidden>
+      <div id="kokoro-blend-modal" class="modal" role="dialog" aria-labelledby="kokoro-blend-modal-title">
+        <h2 id="kokoro-blend-modal-title">Create Blended Voice</h2>
+        <p class="settings-hint">
+          Combines existing voices from this engine's own library by weight. See its
+          <code>/v1/audio/voices</code> list for names (e.g. af_heart, af_bella, am_adam).
+        </p>
+        <label for="kokoro-blend-name">Name</label>
+        <input id="kokoro-blend-name" type="text" placeholder="e.g. MyVoice" autocomplete="off" />
+        <label for="kokoro-blend-spec">Blend</label>
+        <input id="kokoro-blend-spec" type="text" placeholder="e.g. af_sky(1)+af_bella(0.8)" autocomplete="off" />
+        <div class="modal-actions">
+          <button id="kokoro-blend-cancel-button" class="modal-button secondary">Cancel</button>
+          <button id="kokoro-blend-create-button" class="modal-button primary">Create</button>
+        </div>
+      </div>
+    </div>
+    <div id="llm-engine-modal-backdrop" class="modal-backdrop" hidden>
+      <div id="llm-engine-modal" class="modal" role="dialog" aria-labelledby="llm-engine-modal-title">
+        <h2 id="llm-engine-modal-title">New LLM Engine</h2>
+        <label for="llm-engine-name">Name</label>
+        <input id="llm-engine-name" type="text" placeholder="e.g. LM Studio" autocomplete="off" />
+        <label for="llm-engine-provider">Provider</label>
+        <select id="llm-engine-provider" class="settings-select">
+          <option value="openai">OpenAI-compatible (LM Studio, llama-server, etc.)</option>
+          <option value="ollama">Ollama (native API)</option>
+        </select>
+        <label for="llm-engine-endpoint">HTTP endpoint</label>
+        <input
+          id="llm-engine-endpoint"
+          type="text"
+          placeholder="e.g. http://localhost:1234/v1"
+          autocomplete="off"
+        />
+        <label for="llm-engine-model">Model (optional)</label>
+        <input
+          id="llm-engine-model"
+          type="text"
+          list="llm-engine-model-options"
+          placeholder="whatever the endpoint has loaded"
+          autocomplete="off"
+        />
+        <datalist id="llm-engine-model-options"></datalist>
+        <button id="fetch-llm-models-button" type="button" class="modal-button secondary">
+          Fetch available models
+        </button>
+        <label for="llm-engine-api-key">API key (optional)</label>
+        <input id="llm-engine-api-key" type="password" autocomplete="off" />
+        <label id="llm-engine-think-row" class="settings-toggle-row" hidden>
+          <span>Enable Thinking</span>
+          <span class="settings-toggle">
+            <input type="checkbox" id="llm-engine-think-toggle" class="settings-toggle-input" />
+            <span class="settings-toggle-track"></span>
+          </span>
+        </label>
+        <p id="llm-engine-think-hint" class="settings-hint" hidden>
+          Off means instant replies with no reasoning at all -- Ollama's native API is the only backend here where this switch is actually honored.
+        </p>
+        <div class="modal-actions">
+          <button id="llm-engine-cancel-button" class="modal-button secondary">Cancel</button>
+          <button id="llm-engine-save-button" class="modal-button primary">Save</button>
+        </div>
+      </div>
+    </div>
+    <div id="harness-confirm-modal-backdrop" class="modal-backdrop" hidden>
+      <div id="harness-confirm-modal" class="modal" role="dialog" aria-labelledby="harness-confirm-modal-title">
+        <h2 id="harness-confirm-modal-title">Connect to Harness</h2>
+        <p id="harness-confirm-modal-text" class="settings-hint"></p>
+        <div class="modal-actions">
+          <button id="harness-confirm-cancel-button" class="modal-button secondary">Cancel</button>
+          <button id="harness-confirm-connect-button" class="modal-button primary">Connect</button>
+        </div>
+      </div>
+    </div>
+    <div id="harness-modal-backdrop" class="modal-backdrop" hidden>
+      <div id="harness-modal" class="modal" role="dialog" aria-labelledby="harness-modal-title">
+        <h2 id="harness-modal-title">New Harness</h2>
+        <label for="harness-name">Name</label>
+        <input id="harness-name" type="text" placeholder="e.g. Hermes" autocomplete="off" />
+        <label for="harness-endpoint">HTTP endpoint</label>
+        <input id="harness-endpoint" type="text" placeholder="e.g. http://localhost:8642/v1" autocomplete="off" />
+        <label for="harness-model">Model (optional)</label>
+        <input
+          id="harness-model"
+          type="text"
+          placeholder="only needed if your harness requires a specific model/agent id"
+          autocomplete="off"
+        />
+        <label for="harness-api-key">API key (optional)</label>
+        <input id="harness-api-key" type="password" autocomplete="off" />
+        <div class="modal-actions">
+          <button id="harness-modal-cancel-button" class="modal-button secondary">Cancel</button>
+          <button id="harness-modal-save-button" class="modal-button primary">Save</button>
+        </div>
+      </div>
+    </div>
+    <div id="roleplay-confirm-modal-backdrop" class="modal-backdrop" hidden>
+      <div id="roleplay-confirm-modal" class="modal" role="dialog" aria-labelledby="roleplay-confirm-modal-title">
+        <h2 id="roleplay-confirm-modal-title">Role-play Requires Ollama</h2>
+        <p class="settings-hint">
+          A role-play persona gives her a lot more to reason through than her default soul does, which can mean long
+          waits or empty replies on a reasoning model. Turning role-play on switches her to the saved "Ollama" LLM
+          engine, which can reliably disable thinking entirely -- unlike LM Studio's best-effort token budget.
+        </p>
+        <label id="roleplay-confirm-think-row" class="settings-toggle-row">
+          <span>Enable Thinking</span>
+          <span class="settings-toggle">
+            <input type="checkbox" id="roleplay-confirm-think-toggle" class="settings-toggle-input" />
+            <span class="settings-toggle-track"></span>
+          </span>
+        </label>
+        <div class="modal-actions">
+          <button id="roleplay-confirm-cancel-button" class="modal-button secondary">Cancel</button>
+          <button id="roleplay-confirm-enable-button" class="modal-button primary">Enable Role-play</button>
+        </div>
+      </div>
+    </div>
+    <div id="soul-user-editor-modal-backdrop" class="modal-backdrop" hidden>
+      <div id="soul-user-editor-modal" class="modal" role="dialog" aria-labelledby="soul-user-editor-modal-title">
+        <h2 id="soul-user-editor-modal-title">Edit Soul &amp; User Files</h2>
+        <p class="settings-hint">
+          These are the raw, currently-active files Glitch reads from directly -- editing them here
+          bypasses the named saved souls/profiles entirely.
+        </p>
+        <label for="soul-user-editor-soul">soul.md -- who Glitch permanently is</label>
+        <textarea id="soul-user-editor-soul" rows="8"></textarea>
+        <label for="soul-user-editor-user">user.md -- who you are</label>
+        <textarea id="soul-user-editor-user" rows="8"></textarea>
+        <div class="modal-actions">
+          <button id="soul-user-editor-cancel-button" class="modal-button secondary">Cancel</button>
+          <button id="soul-user-editor-save-button" class="modal-button primary">Save</button>
+        </div>
+      </div>
+    </div>
+    <div id="notes-modal-backdrop" class="modal-backdrop" hidden>
+      <div id="notes-modal" class="modal" role="dialog" aria-labelledby="notes-modal-title">
+        <h2 id="notes-modal-title">Notes</h2>
+        <textarea id="notes-textarea" rows="14" placeholder="Jot down ideas, todos, anything..."></textarea>
+        <div class="modal-actions">
+          <button id="notes-cancel-button" class="modal-button secondary">Cancel</button>
+          <button id="notes-save-button" class="modal-button primary">Save</button>
+        </div>
+      </div>
+    </div>
+    <div id="side-actions">
+      <button id="camera-vision-button" class="vision-button" title="Show her your camera">📷</button>
+      <button id="desktop-vision-button" class="vision-button" title="Show her your screen">🖥️</button>
       <button id="mic-button" title="Hold to talk">
         <span class="mic-icon">🎤</span><span id="mic-label" class="mic-label"> Hold to talk</span>
       </button>
+    </div>
+    <div id="chat-bar">
+      <!-- Only shown while "Chat Bubbles Over Avatar" is active -- that mode
+           has no other easy way to resend the last prompt without opening
+           the (much wider, phone-covering) History panel; the normal mode
+           already has Resend Last right there in that panel. See style.css. -->
+      <button id="overlay-resend-button" class="vision-button" title="Resend last message">↻</button>
+      <button id="file-upload-button" class="vision-button" title="Attach a picture or text file">📎</button>
+      <input id="file-upload-input" type="file" accept="image/*,.txt,.md,.csv,.json,.log,.yaml,.yml" hidden />
+      <input id="message-input" type="text" placeholder="Type a message to Glitch..." autocomplete="off" />
+      <button id="send-button">Send</button>
     </div>
     <script type="module" src="/src/main.js"></script>
   </body>

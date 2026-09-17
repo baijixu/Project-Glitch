@@ -7,19 +7,53 @@ import { BrainClient } from "./brain_client.js";
 
 const statusEl = document.getElementById("status");
 const subtitleEl = document.getElementById("subtitle");
+const bubbleOverlayEl = document.getElementById("bubble-overlay");
+const overlayChatToggleInputEl = document.getElementById("overlay-chat-toggle");
+const memoryToastEl = document.getElementById("memory-toast");
 const inputEl = document.getElementById("message-input");
+const chatBarEl = document.getElementById("chat-bar");
+const sideActionsEl = document.getElementById("side-actions");
 const sendButtonEl = document.getElementById("send-button");
+const overlayResendButtonEl = document.getElementById("overlay-resend-button");
+const fileUploadButtonEl = document.getElementById("file-upload-button");
+const fileUploadInputEl = document.getElementById("file-upload-input");
+const cameraVisionButtonEl = document.getElementById("camera-vision-button");
+const desktopVisionButtonEl = document.getElementById("desktop-vision-button");
 const micButtonEl = document.getElementById("mic-button");
+const voiceToggleInputEl = document.getElementById("voice-toggle");
+const cameraEnabledToggleInputEl = document.getElementById("camera-enabled-toggle");
+const desktopCaptureEnabledToggleInputEl = document.getElementById("desktop-capture-enabled-toggle");
+const micEnabledToggleInputEl = document.getElementById("mic-enabled-toggle");
+const micAlwaysOnToggleInputEl = document.getElementById("mic-always-on-toggle");
+const memoryToggleInputEl = document.getElementById("memory-toggle");
+const downloadMemoryButtonEl = document.getElementById("download-memory-button");
+const clearMemoryButtonEl = document.getElementById("clear-memory-button");
+const openSoulUserEditorButtonEl = document.getElementById("open-soul-user-editor-button");
+const soulUserEditorModalBackdropEl = document.getElementById("soul-user-editor-modal-backdrop");
+const soulUserEditorSoulEl = document.getElementById("soul-user-editor-soul");
+const soulUserEditorUserEl = document.getElementById("soul-user-editor-user");
+const soulUserEditorSaveButtonEl = document.getElementById("soul-user-editor-save-button");
+const soulUserEditorCancelButtonEl = document.getElementById("soul-user-editor-cancel-button");
 const micLabelEl = document.getElementById("mic-label");
 const historyButtonEl = document.getElementById("history-button");
 const historyPanelEl = document.getElementById("history-panel");
 const historyListEl = document.getElementById("history-list");
+const resendLastButtonEl = document.getElementById("resend-last-button");
+const clearHistoryButtonEl = document.getElementById("clear-chat-history-button");
 const connectionLightEl = document.getElementById("connection-light");
+const harnessLightEl = document.getElementById("harness-light");
+const ttsLightEl = document.getElementById("tts-light");
 const settingsButtonEl = document.getElementById("settings-button");
 const settingsPanelEl = document.getElementById("settings-panel");
+const settingsContentEl = document.getElementById("settings-content");
+const roleplayToggleInputEl = document.getElementById("roleplay-toggle");
+const roleplayBadgeEl = document.getElementById("roleplay-badge");
+const profileOptionsEl = document.getElementById("profile-options");
+const soulSectionEl = document.getElementById("soul-section");
 const profileSelectEl = document.getElementById("profile-select");
 const editProfileButtonEl = document.getElementById("edit-profile-button");
 const newProfileButtonEl = document.getElementById("new-profile-button");
+const deleteProfileButtonEl = document.getElementById("delete-profile-button");
 const profileModalBackdropEl = document.getElementById("profile-modal-backdrop");
 const profileModalTitleEl = document.getElementById("profile-modal-title");
 const profileNameEl = document.getElementById("profile-name");
@@ -29,6 +63,7 @@ const profileCancelButtonEl = document.getElementById("profile-cancel-button");
 const soulSelectEl = document.getElementById("soul-select");
 const editSoulButtonEl = document.getElementById("edit-soul-button");
 const newSoulButtonEl = document.getElementById("new-soul-button");
+const deleteSoulButtonEl = document.getElementById("delete-soul-button");
 const soulModalBackdropEl = document.getElementById("soul-modal-backdrop");
 const soulModalTitleEl = document.getElementById("soul-modal-title");
 const soulNameEl = document.getElementById("soul-name");
@@ -39,6 +74,80 @@ const soulCancelButtonEl = document.getElementById("soul-cancel-button");
 const avatarSelectEl = document.getElementById("avatar-select");
 const importAvatarButtonEl = document.getElementById("import-avatar-button");
 const avatarFileInputEl = document.getElementById("avatar-file-input");
+const importAvatarPngButtonEl = document.getElementById("import-avatar-png-button");
+const avatarPngFileInputEl = document.getElementById("avatar-png-file-input");
+const avatarImageEl = document.getElementById("avatar-image");
+const ttsEngineSelectEl = document.getElementById("tts-engine-select");
+const editTtsEngineButtonEl = document.getElementById("edit-tts-engine-button");
+const newTtsEngineButtonEl = document.getElementById("new-tts-engine-button");
+const deleteTtsEngineButtonEl = document.getElementById("delete-tts-engine-button");
+const ttsEngineModalBackdropEl = document.getElementById("tts-engine-modal-backdrop");
+const ttsEngineModalTitleEl = document.getElementById("tts-engine-modal-title");
+const ttsEngineNameEl = document.getElementById("tts-engine-name");
+const ttsEngineEndpointEl = document.getElementById("tts-engine-endpoint");
+const ttsEngineApiKeyEl = document.getElementById("tts-engine-api-key");
+const ttsEngineVoiceEl = document.getElementById("tts-engine-voice");
+const ttsEngineModelEl = document.getElementById("tts-engine-model");
+const ttsEngineVoicesDirEl = document.getElementById("tts-engine-voices-dir");
+const ttsEngineSaveButtonEl = document.getElementById("tts-engine-save-button");
+const ttsEngineCancelButtonEl = document.getElementById("tts-engine-cancel-button");
+const ttsVoiceSelectEl = document.getElementById("tts-voice-select");
+const createTtsVoiceButtonEl = document.getElementById("create-tts-voice-button");
+const kokoroBlendModalBackdropEl = document.getElementById("kokoro-blend-modal-backdrop");
+const kokoroBlendNameEl = document.getElementById("kokoro-blend-name");
+const kokoroBlendSpecEl = document.getElementById("kokoro-blend-spec");
+const kokoroBlendCancelButtonEl = document.getElementById("kokoro-blend-cancel-button");
+const kokoroBlendCreateButtonEl = document.getElementById("kokoro-blend-create-button");
+const llmEngineSelectEl = document.getElementById("llm-engine-select");
+const editLlmEngineButtonEl = document.getElementById("edit-llm-engine-button");
+const newLlmEngineButtonEl = document.getElementById("new-llm-engine-button");
+const deleteLlmEngineButtonEl = document.getElementById("delete-llm-engine-button");
+const llmEngineModalBackdropEl = document.getElementById("llm-engine-modal-backdrop");
+const llmEngineModalTitleEl = document.getElementById("llm-engine-modal-title");
+const llmEngineNameEl = document.getElementById("llm-engine-name");
+const llmEngineProviderEl = document.getElementById("llm-engine-provider");
+const llmEngineEndpointEl = document.getElementById("llm-engine-endpoint");
+const llmEngineModelEl = document.getElementById("llm-engine-model");
+const llmEngineModelOptionsEl = document.getElementById("llm-engine-model-options");
+const fetchLlmModelsButtonEl = document.getElementById("fetch-llm-models-button");
+const llmEngineApiKeyEl = document.getElementById("llm-engine-api-key");
+const llmEngineThinkRowEl = document.getElementById("llm-engine-think-row");
+const llmEngineThinkHintEl = document.getElementById("llm-engine-think-hint");
+const llmEngineThinkToggleEl = document.getElementById("llm-engine-think-toggle");
+const llmEngineSaveButtonEl = document.getElementById("llm-engine-save-button");
+const llmEngineCancelButtonEl = document.getElementById("llm-engine-cancel-button");
+const harnessToggleInputEl = document.getElementById("harness-toggle");
+const harnessSelectEl = document.getElementById("harness-select");
+const editHarnessButtonEl = document.getElementById("edit-harness-button");
+const newHarnessButtonEl = document.getElementById("new-harness-button");
+const deleteHarnessButtonEl = document.getElementById("delete-harness-button");
+const harnessLockableEl = document.getElementById("harness-lockable");
+const harnessConfirmModalBackdropEl = document.getElementById("harness-confirm-modal-backdrop");
+const harnessConfirmModalTextEl = document.getElementById("harness-confirm-modal-text");
+const harnessConfirmCancelButtonEl = document.getElementById("harness-confirm-cancel-button");
+const harnessConfirmConnectButtonEl = document.getElementById("harness-confirm-connect-button");
+const harnessModalBackdropEl = document.getElementById("harness-modal-backdrop");
+const harnessModalTitleEl = document.getElementById("harness-modal-title");
+const harnessNameEl = document.getElementById("harness-name");
+const harnessEndpointEl = document.getElementById("harness-endpoint");
+const harnessModelEl = document.getElementById("harness-model");
+const harnessApiKeyEl = document.getElementById("harness-api-key");
+const harnessModalCancelButtonEl = document.getElementById("harness-modal-cancel-button");
+const harnessModalSaveButtonEl = document.getElementById("harness-modal-save-button");
+const roleplayConfirmModalBackdropEl = document.getElementById("roleplay-confirm-modal-backdrop");
+const roleplayConfirmThinkToggleEl = document.getElementById("roleplay-confirm-think-toggle");
+const roleplayConfirmCancelButtonEl = document.getElementById("roleplay-confirm-cancel-button");
+const roleplayConfirmEnableButtonEl = document.getElementById("roleplay-confirm-enable-button");
+const harnessSwitchKeyEl = document.getElementById("harness-switch-key");
+const saveHarnessKeyButtonEl = document.getElementById("save-harness-key-button");
+const debugToggleInputEl = document.getElementById("debug-toggle");
+const downloadDebugLogButtonEl = document.getElementById("download-debug-log-button");
+const restartBrainButtonEl = document.getElementById("restart-brain-button");
+const openNotesButtonEl = document.getElementById("open-notes-button");
+const notesModalBackdropEl = document.getElementById("notes-modal-backdrop");
+const notesTextareaEl = document.getElementById("notes-textarea");
+const notesSaveButtonEl = document.getElementById("notes-save-button");
+const notesCancelButtonEl = document.getElementById("notes-cancel-button");
 
 const canvas = document.getElementById("scene");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -99,15 +208,56 @@ let idle = null;
 // below -- there's nothing to retarget yet on that first call.
 let brain = null;
 
-// `source` matches loadAvatar's own contract: a URL string (the shipped
-// default) or an ArrayBuffer (a custom avatar's raw .vrm bytes, from
-// either a WS-delivered avatar_data message or a user-imported File).
+// "vrm" (the 3D scene, driven every frame below) or "png" (a flat
+// reference image -- nothing to animate, orbit, or lipsync/mood-express
+// against). Read by animate() to decide whether this frame does any
+// idle/lipsync/expression work and orbit/render at all, and by the
+// OrbitControls setup below to decide whether panning is even possible.
+let avatarKind = "vrm";
+// The object URL backing avatarImageEl.src for an imported (not
+// server-restored-by-path) .png -- revoked and replaced on every swap so
+// repeated avatar changes don't leak one blob URL per import the way an
+// unrevoked one would.
+let avatarImageObjectUrl = null;
+
+// `source`/`kind` match loadAvatar's own contract for the "vrm" case (a
+// URL string for the shipped default, or an ArrayBuffer of raw .vrm bytes
+// from either a WS-delivered avatar_data message or a user-imported
+// File) -- "png" instead takes the same two source shapes but for raw
+// image bytes/a path, displayed directly rather than parsed as a model.
 // Used for the initial boot load below and again by BrainClient's
 // onAvatarSwap callback whenever the user picks or imports a different
-// one -- a completely different model can arrive mid-session, so this
-// has to fully replace the old scene graph and animation state, not
-// just mutate the existing vrm in place.
-async function setActiveAvatar(source) {
+// avatar -- a completely different one can arrive mid-session, so this
+// has to fully replace whatever's currently showing, not just mutate it
+// in place.
+async function setActiveAvatar(source, kind = "vrm") {
+  avatarKind = kind;
+  // A flat image has nothing to orbit around, and the user shouldn't be
+  // able to pan it either way -- OrbitControls stays fully disabled
+  // rather than just not being useful, so it can't intercept pointer
+  // events meant for anything else layered underneath.
+  controls.enabled = kind === "vrm";
+
+  if (kind === "png") {
+    if (avatarImageObjectUrl) URL.revokeObjectURL(avatarImageObjectUrl);
+    avatarImageObjectUrl = typeof source === "string" ? null : URL.createObjectURL(new Blob([source], { type: "image/png" }));
+    avatarImageEl.src = avatarImageObjectUrl || source;
+    avatarImageEl.hidden = false;
+    canvas.hidden = true;
+    // Deliberately NOT touching vrm/idle/scene here -- whatever 3D avatar
+    // was loaded before stays fully intact underneath, just not rendered
+    // (see animate()'s own avatarKind check), so switching back to a .vrm
+    // later doesn't have to reload anything if it's the same one.
+    return;
+  }
+
+  if (avatarImageObjectUrl) {
+    URL.revokeObjectURL(avatarImageObjectUrl);
+    avatarImageObjectUrl = null;
+  }
+  avatarImageEl.hidden = true;
+  canvas.hidden = false;
+
   statusEl.textContent = "Loading avatar...";
   const newVrm = await loadAvatar(source);
 
@@ -129,20 +279,65 @@ async function setActiveAvatar(source) {
 
 await setActiveAvatar("/Glitch.vrm");
 
+// Defaults to Vite's own dev-server WebSocket proxy (see vite.config.js's
+// "/brain-ws" entry) at whatever host/protocol this page was actually
+// loaded from, rather than a hardcoded LAN IP that needed hand-editing in
+// .env every time the machine's address changed. This also means a wss://
+// page (required for camera/mic access from any device but localhost --
+// see vite.config.js) never has to open a separate, un-clickable-through
+// insecure ws:// connection to Brain directly. VITE_BRAIN_WS_URL still
+// works as an explicit override (e.g. Brain running on a different,
+// unproxied machine).
+const defaultBrainWsUrl = `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/brain-ws`;
+
 brain = new BrainClient({
-  url: import.meta.env.VITE_BRAIN_WS_URL,
+  url: import.meta.env.VITE_BRAIN_WS_URL || defaultBrainWsUrl,
+  authToken: import.meta.env.VITE_BRAIN_AUTH_TOKEN,
   vrm,
   statusEl,
   subtitleEl,
+  bubbleOverlayEl,
+  overlayChatToggleInputEl,
+  memoryToastEl,
   inputEl,
+  chatBarEl,
+  sideActionsEl,
   sendButtonEl,
+  overlayResendButtonEl,
+  fileUploadButtonEl,
+  fileUploadInputEl,
+  cameraVisionButtonEl,
+  desktopVisionButtonEl,
   micButtonEl,
   micLabelEl,
+  voiceToggleInputEl,
+  cameraEnabledToggleInputEl,
+  desktopCaptureEnabledToggleInputEl,
+  micEnabledToggleInputEl,
+  micAlwaysOnToggleInputEl,
+  memoryToggleInputEl,
+  downloadMemoryButtonEl,
+  clearMemoryButtonEl,
+  openSoulUserEditorButtonEl,
+  soulUserEditorModalBackdropEl,
+  soulUserEditorSoulEl,
+  soulUserEditorUserEl,
+  soulUserEditorSaveButtonEl,
+  soulUserEditorCancelButtonEl,
   historyListEl,
+  resendLastButtonEl,
+  clearHistoryButtonEl,
   connectionLightEl,
+  harnessLightEl,
+  ttsLightEl,
+  roleplayToggleInputEl,
+  roleplayBadgeEl,
+  profileOptionsEl,
+  soulSectionEl,
   profileSelectEl,
   editProfileButtonEl,
   newProfileButtonEl,
+  deleteProfileButtonEl,
   profileModalBackdropEl,
   profileModalTitleEl,
   profileNameEl,
@@ -152,6 +347,7 @@ brain = new BrainClient({
   soulSelectEl,
   editSoulButtonEl,
   newSoulButtonEl,
+  deleteSoulButtonEl,
   soulModalBackdropEl,
   soulModalTitleEl,
   soulNameEl,
@@ -162,6 +358,80 @@ brain = new BrainClient({
   avatarSelectEl,
   importAvatarButtonEl,
   avatarFileInputEl,
+  importAvatarPngButtonEl,
+  avatarPngFileInputEl,
+  ttsEngineSelectEl,
+  editTtsEngineButtonEl,
+  newTtsEngineButtonEl,
+  deleteTtsEngineButtonEl,
+  ttsEngineModalBackdropEl,
+  ttsEngineModalTitleEl,
+  ttsEngineNameEl,
+  ttsEngineEndpointEl,
+  ttsEngineApiKeyEl,
+  ttsEngineVoiceEl,
+  ttsEngineModelEl,
+  ttsEngineVoicesDirEl,
+  ttsEngineSaveButtonEl,
+  ttsEngineCancelButtonEl,
+  ttsVoiceSelectEl,
+  createTtsVoiceButtonEl,
+  kokoroBlendModalBackdropEl,
+  kokoroBlendNameEl,
+  kokoroBlendSpecEl,
+  kokoroBlendCancelButtonEl,
+  kokoroBlendCreateButtonEl,
+  llmEngineSelectEl,
+  editLlmEngineButtonEl,
+  newLlmEngineButtonEl,
+  deleteLlmEngineButtonEl,
+  llmEngineModalBackdropEl,
+  llmEngineModalTitleEl,
+  llmEngineNameEl,
+  llmEngineProviderEl,
+  llmEngineEndpointEl,
+  llmEngineModelEl,
+  llmEngineModelOptionsEl,
+  fetchLlmModelsButtonEl,
+  llmEngineApiKeyEl,
+  llmEngineThinkRowEl,
+  llmEngineThinkHintEl,
+  llmEngineThinkToggleEl,
+  llmEngineSaveButtonEl,
+  llmEngineCancelButtonEl,
+  harnessToggleInputEl,
+  harnessSelectEl,
+  editHarnessButtonEl,
+  newHarnessButtonEl,
+  deleteHarnessButtonEl,
+  harnessLockableEl,
+  harnessConfirmModalBackdropEl,
+  harnessConfirmModalTextEl,
+  harnessConfirmCancelButtonEl,
+  harnessConfirmConnectButtonEl,
+  harnessModalBackdropEl,
+  harnessModalTitleEl,
+  harnessNameEl,
+  harnessEndpointEl,
+  harnessModelEl,
+  harnessApiKeyEl,
+  harnessModalCancelButtonEl,
+  harnessModalSaveButtonEl,
+  roleplayConfirmModalBackdropEl,
+  roleplayConfirmThinkToggleEl,
+  roleplayConfirmCancelButtonEl,
+  roleplayConfirmEnableButtonEl,
+  harnessSwitchKeyEl,
+  saveHarnessKeyButtonEl,
+  debugToggleInputEl,
+  downloadDebugLogButtonEl,
+  restartBrainButtonEl,
+  openNotesButtonEl,
+  notesModalBackdropEl,
+  notesTextareaEl,
+  notesSaveButtonEl,
+  notesCancelButtonEl,
+  settingsContentEl,
   onAvatarSwap: setActiveAvatar,
 });
 brain.connect();
@@ -176,6 +446,24 @@ function togglePanel(panelEl, otherPanelEl) {
 }
 historyButtonEl?.addEventListener("click", () => togglePanel(historyPanelEl, settingsPanelEl));
 settingsButtonEl?.addEventListener("click", () => togglePanel(settingsPanelEl, historyPanelEl));
+
+// Tapping her closes whichever slide-panel is open -- there's no
+// swipe-to-dismiss here the way a phone's own sheets work, and tapping
+// the content behind an open panel is the next most natural instinct to
+// reach for instead. A modal's own backdrop already has this same
+// click-outside-to-close behavior; the slide-panels never did, since
+// they have no backdrop element of their own to click on -- whichever of
+// canvas/avatarImageEl is actually visible stands in for one here.
+// Both get the listener (only one is ever shown at a time, see
+// setActiveAvatar's canvas.hidden/avatarImageEl.hidden toggle) rather
+// than just canvas, which is fully hidden -- and so never receives any
+// clicks at all -- for a flat .png avatar.
+function closeOpenPanels() {
+  historyPanelEl?.classList.remove("open");
+  settingsPanelEl?.classList.remove("open");
+}
+canvas.addEventListener("click", closeOpenPanels);
+avatarImageEl?.addEventListener("click", closeOpenPanels);
 
 // Deliberately NOT using THREE.Timer's Page Visibility integration
 // (timer.connect(document)): it zeroes delta to exactly 0 for the entire
@@ -196,10 +484,15 @@ function animate() {
   requestAnimationFrame(animate);
   timer.update();
   const delta = Math.min(timer.getDelta(), MAX_DELTA_SEC);
-  idle.update(delta);
-  brain.update(delta);
-  vrm.update(delta);
-  controls.update();
-  renderer.render(scene, camera);
+  // A .png avatar has no bones/expressions/orbit to animate at all -- skip
+  // idle/lipsync-mood/orbit/render entirely rather than doing that work
+  // against a hidden canvas nobody sees (see setActiveAvatar's "png" case).
+  if (avatarKind === "vrm") {
+    idle.update(delta);
+    brain.update(delta);
+    vrm.update(delta);
+    controls.update();
+    renderer.render(scene, camera);
+  }
 }
 animate();

@@ -15,7 +15,7 @@ import webview
 
 from platform_utils import webview_backend_hint
 
-DEV_SERVER_URL = "http://localhost:5173"
+DEV_SERVER_URL = "https://localhost:5173"
 RENDERER_URL = os.environ.get("GLITCH_RENDERER_URL", DEV_SERVER_URL)
 
 

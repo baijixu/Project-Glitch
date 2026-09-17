@@ -1,4 +1,4 @@
 from .stt import FasterWhisperSTT
-from .tts import KokoroTTS
+from .tts import NoneTTS, RemoteTTS
 
-__all__ = ["FasterWhisperSTT", "KokoroTTS"]
+__all__ = ["FasterWhisperSTT", "NoneTTS", "RemoteTTS"]

@@ -7,16 +7,8 @@ dependencies = [
     "websockets>=13.0",
     "pyyaml>=6.0",
     "openai>=1.0",
-    "kokoro>=0.7",
+    "torch>=2.0",
     "soundfile>=0.12",
     "numpy>=1.26",
     "faster-whisper>=1.0",
-    # py-cord, not discord.py -- same "discord" import namespace, so they
-    # can't coexist. Switched because discord.py has no DAVE (Discord's
-    # mandatory voice E2EE, enforced since 2026-03-02) support at all
-    # (open upstream issue: Rapptz/discord.py#9948), while py-cord has
-    # native DAVE support plus its own built-in voice-receive API --
-    # no separate, unofficial extension needed. [voice] pulls in PyNaCl,
-    # needed for connect()/play(), not just receiving.
-    "py-cord[voice]>=2.6",
 ]

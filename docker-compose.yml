@@ -1,0 +1,34 @@
+# Runs Kokoro TTS as a local HTTP service (OpenAI-compatible /v1/audio/speech
+# endpoint) -- selectable in Glitch's settings panel as a "speech engine"
+# by adding it there with this container's endpoint, the same as any other
+# HTTP TTS service (see brain/tts_engines.py).
+#
+# kokoro_voices/ is bind-mounted over this image's own voice-pack folder
+# (kokoro-fastapi looks up voices by name as plain <name>.pt files there --
+# confirmed against its own source, not documented anywhere). It's
+# pre-seeded with every voice the image ships with, copied out before this
+# mount was added, so nothing was lost by taking the folder over. This is
+# what lets a saved speech engine's "voices folder" setting
+# (brain/tts_engines.py's voices_dir) point here: Brain's Speech settings
+# "custom voice" feature asks this container to blend existing voices by
+# weight (its own /v1/audio/voices/combine, e.g. "af_sky(1)+af_bella(0.8)")
+# and saves the result into this same folder, where kokoro-fastapi picks
+# it up on the very next request for that name (it reads voice files
+# fresh off disk per-request, not just at startup).
+#
+# ALLOW_LOCAL_VOICE_SAVING is off by default in this image -- /v1/audio/
+# voices/combine 403s without it, confirmed live.
+#
+# Start with: docker compose up -d
+# Stop with:  docker compose down
+services:
+  kokoro-tts:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
+    container_name: glitch-kokoro-tts
+    ports:
+      - "8880:8880"
+    volumes:
+      - ./kokoro_voices:/app/api/src/voices/v1_0
+    environment:
+      - ALLOW_LOCAL_VOICE_SAVING=true
+    restart: unless-stopped

@@ -9,10 +9,54 @@ config.local.*
 # (brain/souls.py) -- personal content, not source code.
 brain/profiles/
 brain/user.md
+brain/roleplay_active.txt
+brain/active_profile_name.txt
 brain/souls/
 brain/soul.md
+brain/active_soul_name.txt
 brain/avatars/
 brain/active_avatar.txt
+
+# Whether Glitch's spoken voice is on (brain/voice_settings.py).
+brain/voice_active.txt
+
+# Glitch's own native memory of the user (brain/memory.py) -- personal
+# content, and separate from anything Hermes keeps in its own memory.
+brain/memory.md
+brain/memory_active.txt
+
+# Saved speech (TTS) engine configs (brain/tts_engines.py) -- each file can
+# hold an api_key, a secret same as config.yaml's.
+brain/tts_engines/
+brain/active_tts_engine_name.txt
+
+# Saved LLM engine configs (brain/llm_engines.py) -- same reasoning.
+brain/llm_engines/
+brain/active_llm_engine_name.txt
+
+# Which agent harness (if any) Glitch is currently plugged into (brain/harness.py),
+# and which one the dropdown shows as picked while inactive.
+brain/active_harness.txt
+brain/selected_harness.txt
+# The secret required to turn a harness on -- same sensitivity as config.yaml's
+# other secrets, saved here instead once set via the Harness settings UI.
+brain/harness_switch_key.txt
+# Saved harness configs (brain/harness.py) -- same reasoning as tts_engines/
+# and llm_engines/ above, each file can hold an api_key.
+brain/harnesses/
+
+# The user's own free-form notes (brain/notes.py) -- personal content, same
+# category as user.md/memory.md above, never read by the LLM.
+brain/notes.md
+
+# Scratch dump of Kokoro's own OpenAPI spec from investigating its API --
+# not read by any code, just a reference file, not project source.
+brain/_kokoro_openapi.json
+
+# Downloaded/blended Kokoro voice tensors (a saved TTS engine's own
+# voices_dir, brain/kokoro_voices.py) -- generated binary data specific to
+# this install, not source; can also include a personal blended voice.
+kokoro_voices/
 
 # Python
 __pycache__/

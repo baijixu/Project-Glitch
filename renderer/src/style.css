@@ -14,10 +14,29 @@ html, body {
   height: 100%;
 }
 
+#avatar-image {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  /* contain, not cover -- a portrait reference image getting cropped to
+     fill the screen would cut off the top of her head/bottom of frame on
+     most aspect ratios, which is worse than letterboxing. */
+  object-fit: contain;
+  background: #000;
+}
+
 #status {
   position: fixed;
   left: 20px;
   bottom: 20px;
+  /* #chat-bar sits at z-index:21 and its bounding box overlaps this
+     corner (bottom:8-15px + its own ~40px height reaches up past
+     bottom:20px) -- without this, any status text (e.g. the camera/
+     desktop "access denied" messages) renders genuinely hidden behind
+     the chat bar instead of just visually near it. Same fix already
+     applied to #memory-toast for the identical reason. */
+  z-index: 22;
   color: #eee;
   background: rgba(0, 0, 0, 0.4);
   padding: 4px 12px;
@@ -45,11 +64,43 @@ html, body {
   font-size: 22px;
   font-weight: 700;
   line-height: 1.3;
-  -webkit-text-stroke: 4px #7b4fe0;
+  -webkit-text-stroke: 4px #2f864a;
   paint-order: stroke fill;
+  /* drop-shadow (not text-shadow) so it follows the stroke's actual
+     rendered shape instead of just the fill text -- text-shadow would
+     sit half-hidden under the 4px green stroke instead of outlining it. */
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.85));
   opacity: 0;
   transition: opacity 0.4s ease;
   pointer-events: none;
+}
+
+/* Sits just above #chat-bar (whose own top edge is roughly bottom:50px --
+   clamp(8px,2vh,15px) offset plus its ~36-40px row height) and below
+   #subtitle, so a memory notification never collides with either. */
+#memory-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 62px;
+  transform: translateX(-50%) translateY(6px);
+  z-index: 22;
+  max-width: min(360px, 90vw);
+  text-align: center;
+  background: rgba(20, 20, 30, 0.9);
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 14px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+#memory-toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 #subtitle .word {
@@ -70,6 +121,84 @@ html, body {
   opacity: 1;
 }
 
+/* Alternative to #subtitle's single evolving line -- a short-lived feed of
+   both sides of the conversation, floating in the same spot over the
+   avatar instead of only living in the (much wider, phone-covering)
+   history panel. Toggled by Settings' "Chat Bubbles Over Avatar"; #subtitle
+   is hidden while this is active (body.overlay-chat-active below) so the
+   two don't show her line twice at once. */
+/* max-height is the "bustline" cutoff -- once the stack of bubbles grows
+   taller than this, the oldest one fades out (see _trimOverlayStack in
+   brain_client.js, which measures against OVERLAY_STACK_MAX_HEIGHT_PX,
+   the same number). Everything left-aligned (align-items), not split by
+   role -- role is shown by color only now. */
+#bubble-overlay {
+  position: fixed;
+  left: 50%;
+  bottom: 90px;
+  transform: translateX(-50%);
+  width: min(640px, 92vw);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  /* Below .slide-panel's z-index:15 (history/settings) on purpose -- these
+     bubbles float over the avatar, not over an open panel covering it. */
+  z-index: 10;
+  pointer-events: none;
+}
+
+body.overlay-chat-active #subtitle {
+  display: none;
+}
+
+/* Inverse of #subtitle above -- hidden in normal mode (Resend Last
+   already lives in the History panel, no need to duplicate it in the
+   main view too), shown only while overlay chat is active. An ID
+   selector here beats .vision-button's own base display:flex without
+   needing !important. */
+#overlay-resend-button {
+  display: none;
+}
+
+body.overlay-chat-active #overlay-resend-button {
+  display: flex;
+}
+
+.overlay-bubble {
+  max-width: 80%;
+  padding: 8px 14px;
+  border-radius: 14px;
+  border-bottom-left-radius: 4px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  word-wrap: break-word;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+.overlay-bubble.visible {
+  opacity: 1;
+}
+
+.overlay-bubble.user {
+  background: #4a7bd8;
+}
+
+.overlay-bubble.glitch {
+  background: #3a3f52;
+}
+
+.overlay-bubble.system {
+  background: transparent;
+  border: 1px dashed #4a4f66;
+  color: #9aa0b4;
+  font-size: 12px;
+}
+
 #chat-bar {
   position: fixed;
   left: clamp(8px, 3vw, 20px);
@@ -78,6 +207,62 @@ html, body {
   z-index: 21;
   display: flex;
   gap: 8px;
+  opacity: 1;
+  transition: opacity 0.4s ease, left 0.3s ease, right 0.3s ease;
+}
+
+/* Squeezes the chat bar into whatever's left of the screen while a
+   slide-panel is open, instead of it spanning full width underneath/over
+   the panel (chat-bar's z-index:21 already sits above the panels' 15, so
+   without this it visually overlapped an open panel's own content rather
+   than making room for it). #chat-bar comes after both panels in the DOM
+   (see index.html), so a plain general-sibling selector reacting to the
+   panel's own .open class is enough -- no JS needed. history-panel and
+   settings-panel are mutually exclusive (main.js's togglePanel), but
+   these are written independently anyway so that isn't load-bearing here.
+   min(380px, 90vw) + 12px mirrors #history-panel's own (wider than the
+   base .slide-panel) width exactly -- keep these two in sync if either
+   changes. */
+#history-panel.open ~ #chat-bar {
+  left: calc(min(380px, 90vw) + 12px);
+}
+
+#settings-panel.open ~ #chat-bar,
+#settings-panel.open ~ #side-actions {
+  right: calc(min(300px, 80vw) + 12px);
+}
+
+/* Camera/desktop/mic, moved off the chat bar into their own floating
+   column on the right edge, vertically centered rather than crowding the
+   bottom bar. Same z-index/transition treatment as #chat-bar (including
+   the settings-panel squeeze above) since these are really the same
+   "chat controls" cluster, just relocated -- no history-panel squeeze
+   needed here, unlike #chat-bar, since that one opens from the left and
+   this column lives entirely on the right. */
+#side-actions {
+  position: fixed;
+  right: clamp(8px, 3vw, 20px);
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 21;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  opacity: 1;
+  transition: opacity 0.4s ease, right 0.3s ease;
+}
+
+/* Auto-hidden after CHAT_BAR_IDLE_MS of no activity (brain_client.js's
+   _resetIdleTimer) to keep the view of her uncluttered -- any
+   pointerdown/keydown anywhere on the page brings both back and restarts
+   the countdown. pointer-events: none (not display: none) so they fade
+   back in smoothly rather than popping, and so a tap landing where they
+   used to be reaches the canvas/OrbitControls underneath instead of an
+   invisible-but-still-clickable bar. */
+#chat-bar.idle,
+#side-actions.idle {
+  opacity: 0;
+  pointer-events: none;
 }
 
 #message-input {
@@ -109,11 +294,19 @@ html, body {
   background: #3a67c2;
 }
 
+#send-button:disabled {
+  background: #666;
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 #mic-button {
   flex-shrink: 0;
+  width: 40px;
+  height: 36px;
   display: flex;
   align-items: center;
-  padding: 8px 16px;
+  justify-content: center;
   border-radius: 18px;
   border: none;
   background: #555;
@@ -135,15 +328,56 @@ html, body {
   animation: pulse 1s infinite;
 }
 
+#mic-button:disabled {
+  background: #666;
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Both this and #mic-button set their own `display: flex` below, which
+   (being an author style) overrides the browser's default `[hidden] {
+   display: none }` UA rule -- confirmed live, setting .hidden = true on
+   these left the button fully visible and clickable. This restores the
+   expected behavior explicitly rather than relying on the UA default. */
+.vision-button[hidden],
+#mic-button[hidden] {
+  display: none;
+}
+
+/* mic-button lives only in #side-actions now (moved off the chat bar,
+   alongside camera/desktop), a narrow vertical column at any screen
+   width -- so its label text is always hidden, not just under 480px, for
+   the same fixed 40x36 icon-only look as its two neighbors there. */
+#side-actions .mic-label {
+  display: none;
+}
+
+.vision-button {
+  flex-shrink: 0;
+  width: 40px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18px;
+  border: none;
+  background: #555;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.vision-button:hover {
+  background: #444;
+}
+
+.vision-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
-}
-
-@media (max-width: 480px) {
-  .mic-label {
-    display: none;
-  }
 }
 
 .corner-button {
@@ -210,6 +444,65 @@ html, body {
   box-shadow: 0 0 6px rgba(79, 207, 110, 0.8);
 }
 
+/* #harness-light only, not #connection-light -- Glitch is actively
+   plugged into the harness right now (mirrors harness_state's `active`,
+   not just reachability). */
+.connection-light.blue {
+  background: #3f8fe0;
+  box-shadow: 0 0 6px rgba(63, 143, 224, 0.8);
+}
+
+/* Sits just left of #connection-light, same row -- red: TCP connect to
+   the harness endpoint failed (down/unreachable). blue: reachable, but
+   Glitch isn't currently plugged into it. green: active, same meaning as
+   #connection-light's own green just for the harness specifically. See
+   brain_client.js's _renderHarnessLight for how these three map from
+   harness_health/harness_state. */
+#harness-light {
+  right: 90px;
+}
+
+/* Sits left of the RP badge, same row -- same three-color meaning as
+   #harness-light (green/blue/red/grey), just for the active speech
+   engine instead: green when it's the one actually in use, blue/red from
+   the last reachability check on whichever's selected in the Settings
+   dropdown, grey with nothing selected/checked yet. Never colored for
+   tts_engines.NONE_NAME beyond grey (see brain_client.js's
+   _renderTtsLight) -- there's no engine at all to check reachability for. */
+#tts-light {
+  right: 116px;
+}
+
+/* Sits left of #harness-light, same row -- text pill rather than a plain
+   dot since "RP" needs to actually read as a label, not just a color.
+   green: role-play's on (mirrors profileOptionsEl/soulSectionEl becoming
+   visible -- see _renderRoleplayToggle). grey: off. Painted green before
+   any real data arrives too (_roleplayActive starts true, the same
+   "reasonable guess, corrected on the real roleplay_state" pattern as
+   _connectionState painting red before connect() resolves anything) --
+   only wrong for the instant before that first message lands. */
+.rp-badge {
+  position: fixed;
+  top: 28px;
+  right: 150px;
+  z-index: 21;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #fff;
+  background: #666;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.4);
+  transition: background 0.3s ease, box-shadow 0.3s ease;
+  user-select: none;
+}
+
+.rp-badge.active {
+  background: #4fcf6e;
+  box-shadow: 0 0 6px rgba(79, 207, 110, 0.8);
+}
+
 .slide-panel {
   position: fixed;
   top: 0;
@@ -228,7 +521,16 @@ html, body {
      viewport height, especially on a phone -- without this the overflow
      was just invisible, not scrollable. */
   overflow-y: auto;
-  padding: 68px 16px 16px;
+  /* Bottom padding well past #chat-bar's own height (~40px) plus its
+     bottom offset (clamp(8px, 2vh, 15px)) -- #chat-bar's z-index (21) sits
+     above both slide-panels' (15) so it's always visually on top, and
+     without enough clearance here the panel's last section scrolls to a
+     point still hidden *underneath* it: visible in a screenshot maybe,
+     but not actually clickable (confirmed live -- a click that looked
+     like it landed on the Restart Brain button here actually hit
+     #chat-bar instead, since that element was genuinely on top at that
+     point on screen). */
+  padding: 68px 16px 90px;
   box-sizing: border-box;
 }
 
@@ -236,6 +538,7 @@ html, body {
   left: 0;
   --offscreen: -100%;
   box-shadow: 2px 0 16px rgba(0, 0, 0, 0.4);
+  width: min(380px, 90vw);
 }
 
 #settings-panel {
@@ -259,6 +562,10 @@ html, body {
   color: #8a8fa0;
   font-size: 13px;
   line-height: 1.4;
+}
+
+.settings-section {
+  margin-bottom: 16px;
 }
 
 .settings-section h3 {
@@ -290,25 +597,182 @@ html, body {
   background: #3a67c2;
 }
 
-.settings-action-button.secondary {
-  background: #3a3f52;
-  color: #ddd;
+.settings-action-button.danger {
+  background: #8a3a3a;
 }
 
-.settings-action-button.secondary:hover {
-  background: #4a4f66;
+.settings-action-button.danger:hover {
+  background: #a34747;
+}
+
+/* ~ not + : the avatar section's hidden <input type="file"> sits between
+   Import VRM and Import PNG in the DOM, so an adjacent-sibling (+) selector
+   never actually matched either button -- general sibling (~) doesn't care
+   what's in between. */
+.settings-action-button ~ .settings-action-button {
+  margin-top: 8px;
+}
+
+/* Extra breathing room specifically above Clear Chat, on top of the
+   ordinary 8px sibling spacing above -- it sits directly below Resend
+   Last (a completely harmless, frequently-used action) and is the one
+   truly destructive button in the History panel, so a thumb reaching for
+   one needs a real gap before it can land on the other by accident.
+   Confirmed as a real miss on a phone, not just a hypothetical. */
+#clear-chat-history-button {
+  margin-top: 28px;
+}
+
+/* Scoped as .settings-section > .settings-toggle-row (not just
+   .settings-toggle-row) so this beats .settings-section > label's `display:
+   block` below on specificity -- every toggle row is also a direct-child
+   <label> of a .settings-section, so without this the two rules tied on
+   class-count and the later one (display: block) won. Confirmed live: text
+   and toggle were rendering bunched together on the same line instead of
+   pinned to opposite edges, on every toggle in Settings, not just these. */
+.settings-section > .settings-toggle-row,
+/* Same toggle-row layout reused inside any modal (.modal -- the LLM
+   Engine editor's Think switch, the role-play confirm modal's) -- no
+   competing ".settings-section > label { display: block }" rule exists in
+   a modal to out-specificity, so this doesn't need the parent-scoped
+   trick above for that reason, but writing it unscoped here too keeps
+   both selectors' declarations visibly identical rather than silently
+   relying on lower specificity to happen to work out. */
+.modal .settings-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  color: #eee;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Wraps the actual checkbox + visual track/thumb -- the checkbox itself
+   stays present (for click/keyboard/focus handling) but invisible,
+   layered over the track rather than removed, so this is a real,
+   accessible control and not just a styled <div>. */
+.settings-toggle {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.settings-toggle-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.settings-toggle-track {
+  position: absolute;
+  inset: 0;
+  background: #3a3f52;
+  border-radius: 999px;
+  transition: background 0.2s ease;
+}
+
+.settings-toggle-track::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ddd;
+  transition: transform 0.2s ease;
+}
+
+.settings-toggle-input:checked + .settings-toggle-track {
+  background: #4a7bd8;
+}
+
+.settings-toggle-input:checked + .settings-toggle-track::before {
+  transform: translateX(18px);
+  background: #fff;
+}
+
+.settings-toggle-input:focus-visible + .settings-toggle-track {
+  outline: 2px solid #4a7bd8;
+  outline-offset: 2px;
+}
+
+/* Mic Always-On dims itself this way while the main Microphone toggle is
+   off (see _setMicAlwaysOnAvailable) -- same 0.45 opacity #harness-lockable
+   already uses for "can't touch this right now", scoped to just this row
+   via :has() instead of a wrapper element since it's only ever this one
+   toggle so far. */
+.settings-toggle-row:has(.settings-toggle-input:disabled) {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Every control in here also gets a real .disabled (BrainClient's
+   _renderHarnessState) when the Harness toggle is on -- this is just the
+   visual cue on top of that, not the thing actually blocking interaction. */
+#harness-lockable.harness-locked {
+  opacity: 0.45;
+  transition: opacity 0.2s ease;
+}
+
+/* The whole panel (not just #harness-lockable) while Brain is mid-restart
+   -- pointer-events: none is the actual thing blocking interaction here
+   (unlike harness-locked above), since every control in the settings
+   panel needs to stop responding, not just the ones that already have
+   their own per-control .disabled logic. */
+#settings-content.restarting {
+  opacity: 0.4;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
 }
 
 .settings-button-row {
   display: flex;
+  justify-content: flex-end;
   gap: 8px;
   margin-bottom: 10px;
 }
 
-.settings-button-row .settings-action-button {
-  width: auto;
-  flex: 1 1 0;
-  margin-bottom: 0;
+/* Edit/New/Delete for a saved profile or soul -- small icon buttons
+   rather than full-width text buttons, since three of them side by side
+   at the old button-row width read as oversized for what they do. */
+.icon-button {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 8px;
+  border: none;
+  background: #3a3f52;
+  color: #ddd;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-button:hover {
+  background: #4a4f66;
+}
+
+.icon-button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.icon-button.danger:hover:not(:disabled) {
+  background: #6b2f2f;
 }
 
 .settings-select {
@@ -326,6 +790,35 @@ html, body {
 }
 
 .settings-select:focus {
+  outline: none;
+  border-color: #4a7bd8;
+}
+
+/* A plain label for a settings-section field (the Harness section's
+   switch-key input) -- .settings-toggle-row is a label too, but that one
+   wraps a toggle switch and is styled for that layout specifically. */
+.settings-section > label {
+  display: block;
+  color: #cbd0dc;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.settings-text-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  border: 1px solid #444a5c;
+  background: #14151f;
+  color: #eee;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.settings-text-input:focus {
   outline: none;
   border-color: #4a7bd8;
 }
@@ -374,7 +867,8 @@ html, body {
 }
 
 .modal textarea,
-.modal input[type="text"] {
+.modal input[type="text"],
+.modal input[type="password"] {
   width: 100%;
   box-sizing: border-box;
   resize: vertical;
@@ -389,7 +883,8 @@ html, body {
 }
 
 .modal textarea:focus,
-.modal input[type="text"]:focus {
+.modal input[type="text"]:focus,
+.modal input[type="password"]:focus {
   outline: none;
   border-color: #4a7bd8;
 }
@@ -408,6 +903,13 @@ html, body {
   font-weight: 700;
   font-size: 13px;
   cursor: pointer;
+}
+
+/* Sits inline in the modal's field stack (not in .modal-actions like
+   Cancel/Save), right below the model input it populates -- needs its
+   own bottom margin to match the spacing every field there already has. */
+#fetch-llm-models-button {
+  margin-bottom: 14px;
 }
 
 .modal-button.primary {
@@ -451,34 +953,99 @@ html, body {
   word-wrap: break-word;
 }
 
-.history-time {
+.history-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin-top: 3px;
+}
+
+.history-time {
   font-size: 10px;
   color: #8a8fa0;
 }
 
+/* Resend-this-message control (brain_client.js's _retryUserMessage) --
+   deliberately muted and small rather than a full icon-button, since this
+   is a rarely-needed recovery action sitting right next to the timestamp
+   on every single user bubble; it would be visual noise at the same
+   weight as a primary action. Brightens on hover/focus (not just
+   :hover, so it's reachable via keyboard/tap on touch) as the only cue
+   it's interactive. */
+.history-retry-button {
+  /* The glyph itself stays small/subtle -- padding pads out the actual
+     tap target to a real thumb-sized hit area (~32px) on a phone, and the
+     matching negative margin cancels that padding's effect on layout so
+     the timestamp row doesn't visibly shift or gain extra spacing. A bare
+     12px glyph with no padding was confirmed unusable on a touchscreen. */
+  padding: 10px;
+  margin: -10px;
+  border: none;
+  background: none;
+  color: #8a8fa0;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.history-retry-button:hover,
+.history-retry-button:focus-visible {
+  opacity: 1;
+  color: #cbd0dc;
+}
+
+.history-thumbnail {
+  display: block;
+  max-width: 100%;
+  max-height: 160px;
+  border-radius: 8px;
+  margin-bottom: 4px;
+}
+
 .history-user {
-  align-self: flex-end;
+  align-self: flex-start;
 }
 
 .history-user .history-bubble {
   background: #4a7bd8;
-  border-bottom-right-radius: 4px;
+  border-bottom-left-radius: 4px;
 }
 
-.history-user .history-time {
-  align-self: flex-end;
+.history-user .history-meta {
+  align-self: flex-start;
 }
 
 .history-glitch {
-  align-self: flex-start;
+  align-self: flex-end;
 }
 
 .history-glitch .history-bubble {
   background: #3a3f52;
-  border-bottom-left-radius: 4px;
+  border-bottom-right-radius: 4px;
 }
 
-.history-glitch .history-time {
-  align-self: flex-start;
+.history-glitch .history-meta {
+  align-self: flex-end;
+}
+
+/* A memory_learned notification (see brain_client.js's "memory_learned"
+   case) -- reads as a system note, not something either party "said", so
+   it's centered with no chat-bubble color, unlike .history-user/.history-glitch. */
+.history-system {
+  align-self: center;
+  max-width: 92%;
+}
+
+.history-system .history-bubble {
+  background: transparent;
+  border: 1px dashed #4a4f66;
+  color: #9aa0b4;
+  font-size: 12px;
+  text-align: center;
+}
+
+.history-system .history-meta {
+  align-self: center;
 }

@@ -12,7 +12,7 @@ Glitch is a 3D AI companion: a VRM avatar rendered on-screen, driven by a Python
 
 - Native-feeling desktop app, not "a Python script that also opens a browser tab."
 - High-quality VRM rendering: animations, expressions, and spring-bone physics all working smoothly.
-- All orchestration logic (LLM calls, STT/TTS, Discord, skills) lives in Python.
+- All orchestration logic (LLM calls, STT/TTS, skills) lives in Python.
 - Runs on **Windows, macOS, and Linux** without OS-specific forks of the core logic.
 - Renderer and Brain can run on the **same machine or different machines on the LAN** (e.g. Brain on the Mac Studio, Renderer on box1).
 - No PowerShell, anywhere, for any reason. If a setup step needs a shell script, it's POSIX `sh`/`bash` for macOS/Linux and a `.bat`/`.py` for Windows — never `.ps1`.
@@ -36,9 +36,9 @@ Two independent components, one contract between them.
 │   runs inside pywebview      │                                  │                                │
 │   or plain browser window)   │                                  │  - LLM orchestration           │
 │                               │                                  │  - STT / TTS                   │
-│  - Loads/renders .vrm model  │                                  │  - Discord integration          │
-│  - Plays animations          │                                  │  - Skills (ComfyUI, etc.)       │
-│  - Sets expressions/visemes  │                                  │  - Decides WHAT the model does  │
+│  - Loads/renders .vrm model  │                                  │  - Skills (ComfyUI, etc.)       │
+│  - Plays animations          │                                  │  - Decides WHAT the model does  │
+│  - Sets expressions/visemes  │                                  │                                │
 │  - Reports back state/events │                                  │                                │
 └─────────────────────────────┘                                  └──────────────────────────────┘
      lives on: box1 (or wherever                                       lives on: Mac Studio (or
@@ -60,11 +60,11 @@ Two independent components, one contract between them.
   - Connect out to the Brain's WebSocket **server** as a **client** (browser engines can't bind listening sockets, so the direction is fixed: Brain hosts, Renderer connects).
   - Emit events back over that same connection (model loaded, animation finished, error) so the Brain can react.
   - Reconnect/retry if the connection drops — the Brain may restart independently of the Renderer window.
-- **Explicitly out of scope for this component:** any LLM/API calls, any Discord code. If Claude Code adds any of that here, stop and flag it.
+- **Explicitly out of scope for this component:** any LLM/API calls. If Claude Code adds any of that here, stop and flag it.
 
 ## 5. Brain component (Python)
 
-- **Stack:** Python 3.11+. LLM client/orchestration, STT/TTS, Discord bot, ComfyUI skill calls.
+- **Stack:** Python 3.11+. LLM client/orchestration, STT/TTS, ComfyUI skill calls.
 - **Responsibilities:**
   - Own the conversation loop end-to-end.
   - Decide what expression/animation/viseme stream to send and when.
@@ -125,7 +125,6 @@ glitch/
 │   ├── main.py
 │   ├── llm/
 │   ├── voice/                # STT/TTS
-│   ├── discord_bot/
 │   ├── skills/
 │   ├── protocol.py            # shared message schema
 │   └── platform_utils.py
@@ -143,7 +142,7 @@ glitch/
 1. **Renderer first, standalone.** Get the `.vrm` loading and animating correctly in a plain browser tab before touching pywebview or Python at all. Verify animation quality here — this is the highest-risk part of the project to get wrong.
 2. **Wrap in pywebview.** Confirm the same behavior inside the native window shell.
 3. **Define and implement `protocol.md`.** Get a bare-bones WebSocket ping/pong working between a throwaway Python script and the Renderer.
-4. **Bring in Brain logic incrementally**, one subsystem at a time (LLM → STT/TTS → Discord → skills), verifying the protocol calls at each step rather than building everything at once.
+4. **Bring in Brain logic incrementally**, one subsystem at a time (LLM → STT/TTS → skills), verifying the protocol calls at each step rather than building everything at once.
 5. **Cross-platform pass last** — get it fully working on your primary OS first, then verify/fix on the other two.
 
 ## 10. Guardrails for whoever builds this

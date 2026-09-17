@@ -6,18 +6,73 @@ brain:
   # same-machine only.
   host: localhost
   port: 8765
-  llm:
-    endpoint: http://localhost:1234/v1 # LM Studio / llama-server OpenAI-compatible endpoint
-    model: null # set to whatever the endpoint has loaded
-    api_key: null # only needed if the endpoint requires one
-  # Text-chat only for now -- voice-channel presence (live STT/TTS in a
-  # call) is a separate, deliberately deferred phase. Leave `token` unset
-  # to skip starting the Discord bot entirely.
-  discord:
-    token: null # from https://discord.com/developers/applications -- bot, Message Content intent enabled
-    allowed_user_id: null # your numeric Discord user ID -- DMs only get a reply from this user
-    allowed_channel_ids: [] # bot replies to every message in these channel IDs, from anyone
+  # Required if host above is anything other than localhost/127.0.0.1 --
+  # without it, anyone who can reach this port (any device on the LAN,
+  # or a malicious webpage loaded in a browser on the LAN, since raw
+  # WebSocket connections aren't blocked by same-origin policy) can fully
+  # control Glitch: chat as you, rewrite her active persona, fill your
+  # disk with uploaded "avatars". Set to any random string and put the
+  # same value in renderer/.env's VITE_BRAIN_AUTH_TOKEN. Leave null only
+  # for a strictly localhost-only setup with no other device involved.
+  auth_token: null
+  # Optional -- entirely fine to leave this whole block out. With nothing
+  # here and no saved engine chosen yet in Settings, she runs with a
+  # placeholder ("no LLM engine configured" as her only reply) instead of
+  # crashing; add a real LLM engine from the Settings panel's LLM section
+  # whenever you're ready, no config.yaml edit required. This block exists
+  # only as a one-time seed for anyone who'd rather set the first one up
+  # here before ever opening the app -- uncomment and fill in to do that.
+  #
+  # llm:
+  #   endpoint: http://localhost:1234/v1 # LM Studio / llama-server OpenAI-compatible endpoint
+  #   model: null # set to whatever the endpoint has loaded
+  #   api_key: null # only needed if the endpoint requires one
+  #   # Optional. Set provider: ollama to talk to Ollama's own native
+  #   # /api/chat instead of treating endpoint as an OpenAI-compatible one --
+  #   # endpoint then means Ollama's base URL (e.g. http://localhost:11434,
+  #   # no /v1). Only worth it for `think`, below: Ollama's OpenAI-compatible
+  #   # endpoint silently ignores that parameter (confirmed via a direct
+  #   # side-by-side probe), only its native API actually honors it. Omit
+  #   # provider entirely for a plain OpenAI-compatible endpoint (LM Studio,
+  #   # llama-server, or Ollama without needing think control).
+  #   # provider: ollama
+  #   # think: false # only read when provider: ollama -- suppresses reasoning for models that support it (see llm/client.py's OllamaLLM)
+  # A second, separate secret from auth_token above -- required to turn a
+  # harness ON (not to disconnect from one). Worth setting even on a
+  # strictly-localhost setup: auth_token (or its absence, when
+  # localhost-only) governs who can talk to Glitch at all, but connecting
+  # her to an external agent harness bypasses her profile/soul/LLM engine
+  # entirely, which is a bigger step than anything else in the settings
+  # panel -- e.g. a shared household device might reasonably know
+  # auth_token while only the person who set up the harness integration
+  # knows this one. Leave null to skip this extra gate (the confirm
+  # dialog alone is enough).
+  #
+  # This is only a one-time seed: once a value has been saved via the
+  # Renderer's own Harness settings (which is the normal way to set/change
+  # it day to day -- see protocol.md's save_harness_key), that saved value
+  # (brain/harness_switch_key.txt) takes over permanently and this line is
+  # no longer read. Safe to leave here anyway, or delete it once you've
+  # set one through the app.
+  harness_switch_key: null
+  # Optional, same reasoning as llm above -- harnesses are a fully
+  # open-ended list managed from the Settings panel's Harness section now
+  # (add/edit/delete any harness by name there, no config.yaml entry
+  # needed for it). This block is only a one-time seed: whatever's here
+  # gets copied into that saved-harness system automatically the first
+  # time Brain ever starts with none saved yet, so it's a convenience for
+  # setting one up before first launch, not a requirement.
+  harness:
+    hermes:
+      # Hermes Agent (https://github.com/NousResearch/hermes-agent),
+      # reached via its gateway's api_server platform adapter -- run
+      # `hermes gateway` with that platform enabled first. Default port
+      # per Hermes's own source (gateway/platforms/api_server.py).
+      endpoint: http://localhost:8642/v1
+      model: null # only needed if your Hermes setup requires a specific model/agent id
+      api_key: null
 
 # The Renderer is a browser/WebView app, not a Python process -- it can't
-# read this file directly, so it gets the same host/port via its own
-# renderer/.env (VITE_BRAIN_WS_URL). Keep the two in sync by hand.
+# read this file directly, so it gets the same host/port (and auth_token,
+# as VITE_BRAIN_AUTH_TOKEN) via its own renderer/.env. Keep them in sync
+# by hand.

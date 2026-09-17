@@ -15,14 +15,26 @@ of who Glitch is currently supposed to be.
 
 from pathlib import Path
 
+from names import sanitize_name
+
 SOULS_DIR = Path(__file__).parent / "souls"
 SOUL_MD_PATH = Path(__file__).parent / "soul.md"
+ACTIVE_SOUL_NAME_PATH = Path(__file__).parent / "active_soul_name.txt"
 
 # Stable marker splitting description from examples within a soul file --
 # also doubles as the section header the LLM actually sees, so it reads
 # naturally in the prompt rather than being a delimiter that's only
 # meaningful to this code.
 EXAMPLES_HEADER = "## Example dialogue"
+
+# Reserved name for "no custom soul" -- never a real file in souls/,
+# always offered by the Renderer's dropdown (prepended client-side, same
+# pattern as avatars.py's DEFAULT_AVATAR_NAME), and can't be deleted.
+# Selecting it clears soul.md, which llm/client.py's _system_prompt
+# already treats as "fall back to DEFAULT_PERSONALITY" -- so it's what
+# the active selection falls back to if the soul that *was* active gets
+# deleted, same role DEFAULT_PROFILE_NAME plays in profiles.py.
+DEFAULT_SOUL_NAME = "Default"
 
 
 def list_souls() -> list[str]:
@@ -31,17 +43,27 @@ def list_souls() -> list[str]:
 
 
 def save_soul(name: str, description: str, examples: str) -> None:
+    sanitized = sanitize_name(name, kind="soul")
+    if sanitized == DEFAULT_SOUL_NAME:
+        # Same collision this guards against in profiles.py's save_profile
+        # -- souls/Default.md would show up as a second "Default" entry
+        # indistinguishable from the reserved one.
+        raise ValueError(f"{DEFAULT_SOUL_NAME!r} is reserved and can't be used as a soul name")
     SOULS_DIR.mkdir(exist_ok=True)
-    path = SOULS_DIR / f"{_sanitize_name(name)}.md"
+    path = SOULS_DIR / f"{sanitized}.md"
     path.write_text(_combine(description, examples), encoding="utf-8")
 
 
 def load_soul(name: str) -> str:
     """Copies the named soul's combined content into soul.md (making it
     the active one) and returns that combined content.
+
+    DEFAULT_SOUL_NAME is special-cased to empty content rather than a
+    file read -- it's never a real file (see its own docstring above).
     """
-    content = _read_combined(name)
+    content = "" if name == DEFAULT_SOUL_NAME else _read_combined(name)
     SOUL_MD_PATH.write_text(content, encoding="utf-8")
+    ACTIVE_SOUL_NAME_PATH.write_text(name, encoding="utf-8")
     return content
 
 
@@ -50,6 +72,32 @@ def read_soul(name: str) -> tuple[str, str]:
     the two boxes for the Edit button (get_soul).
     """
     return _split(_read_combined(name))
+
+
+def delete_soul(name: str) -> None:
+    """Deletes a saved soul file. Raises ValueError for DEFAULT_SOUL_NAME
+    -- it isn't a real file, there's nothing to delete, and it must
+    always stay selectable as the fallback. Does NOT touch soul.md or the
+    active-name bookkeeping itself even if the deleted soul happens to be
+    the active one -- main.py's _handle_delete_soul decides whether that
+    requires falling back to DEFAULT_SOUL_NAME.
+    """
+    if name == DEFAULT_SOUL_NAME:
+        raise ValueError("the default soul can't be deleted")
+    path = SOULS_DIR / f"{sanitize_name(name, kind='soul')}.md"
+    path.unlink()
+
+
+def write_active_soul(content: str) -> None:
+    """Directly overwrites soul.md with raw content -- the manual-edit
+    escape hatch (Settings' soul/user editor), independent of the named
+    saved-soul system entirely. Doesn't touch active_soul_name.txt: this
+    isn't switching to a different saved soul, just changing what's
+    currently active in place, so whichever name was last loaded stays
+    shown as selected even though its saved file and the live content may
+    now differ -- that divergence is the whole point of a raw editor.
+    """
+    SOUL_MD_PATH.write_text(content, encoding="utf-8")
 
 
 def read_active_soul() -> str:
@@ -61,8 +109,20 @@ def read_active_soul() -> str:
     return ""
 
 
+def read_active_soul_name() -> str:
+    """The name last passed to load_soul, or DEFAULT_SOUL_NAME if none
+    has ever been explicitly selected -- lets the Renderer's dropdown
+    restore the right selection on reconnect, and lets
+    _handle_delete_soul tell whether the soul being deleted is the one
+    currently in effect.
+    """
+    if ACTIVE_SOUL_NAME_PATH.exists():
+        return ACTIVE_SOUL_NAME_PATH.read_text(encoding="utf-8").strip() or DEFAULT_SOUL_NAME
+    return DEFAULT_SOUL_NAME
+
+
 def _read_combined(name: str) -> str:
-    path = SOULS_DIR / f"{_sanitize_name(name)}.md"
+    path = SOULS_DIR / f"{sanitize_name(name, kind='soul')}.md"
     return path.read_text(encoding="utf-8")
 
 
@@ -80,12 +140,3 @@ def _split(content: str) -> tuple[str, str]:
         description, examples = content.split(marker, 1)
         return description.strip(), examples.strip()
     return content.strip(), ""
-
-
-def _sanitize_name(name: str) -> str:
-    # Same allow-list approach as profiles.py -- soul names arrive over
-    # the WS connection as plain user input.
-    cleaned = "".join(c for c in name if c.isalnum() or c in " -_").strip()
-    if not cleaned:
-        raise ValueError(f"soul name {name!r} has no usable characters")
-    return cleaned
