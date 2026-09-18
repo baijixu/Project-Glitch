@@ -272,6 +272,13 @@ body.overlay-chat-active #overlay-resend-button {
   pointer-events: none;
 }
 
+#message-input-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+}
+
 #message-input {
   flex: 1 1 auto;
   min-width: 0;
@@ -282,6 +289,41 @@ body.overlay-chat-active #overlay-resend-button {
   font-family: inherit;
   font-size: 14px;
   box-sizing: border-box;
+}
+
+/* Only visible while a reply is pending, so the text never runs under it
+   (padding widens only then) and it doesn't take room from normal typing. */
+#message-input-wrap:has(#stop-button:not([hidden])) #message-input {
+  padding-right: 42px;
+}
+
+#stop-button {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: #d8504a;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+#stop-button:hover {
+  background: #c03b35;
+}
+
+/* An author rule like display:flex above beats the UA's [hidden] {display:none}. */
+#stop-button[hidden] {
+  display: none;
 }
 
 #send-button {

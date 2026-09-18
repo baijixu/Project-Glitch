@@ -173,6 +173,7 @@ export class BrainClient {
     chatBarEl,
     sideActionsEl,
     sendButtonEl,
+    stopButtonEl,
     overlayResendButtonEl,
     fileUploadButtonEl,
     fileUploadInputEl,
@@ -333,6 +334,8 @@ export class BrainClient {
     this.chatBarEl = chatBarEl;
     this.sideActionsEl = sideActionsEl;
     this.sendButtonEl = sendButtonEl;
+    this.stopButtonEl = stopButtonEl;
+    this.stopButtonEl?.addEventListener("click", () => this._stopReply());
     this.overlayResendButtonEl = overlayResendButtonEl;
     this.overlayResendButtonEl?.addEventListener("click", () => this._resendLastUserMessage());
     this.fileUploadButtonEl = fileUploadButtonEl;
@@ -1095,6 +1098,21 @@ export class BrainClient {
   _setAwaitingReply(awaiting) {
     this._awaitingReply = awaiting;
     this._updateSendButtonDisabled();
+    if (this.stopButtonEl) this.stopButtonEl.hidden = !awaiting;
+  }
+
+  // The Stop button inside the chat box (only visible while a reply is
+  // pending). Brain cancels the in-flight reply and sends nothing back, so
+  // this un-greys the input right away rather than waiting on a reply
+  // that's no longer coming. Her side of that exchange just never appears;
+  // the prompt stays in history, and Resend Last re-answers it.
+  _stopReply() {
+    if (!this._awaitingReply) return;
+    this._send({ type: "stop_reply" });
+    this._clearSlowReplyTimer();
+    this._pendingReplySentAt = null;
+    this._setAwaitingReply(false);
+    this._logDebug("ws", "stopped reply");
   }
 
   // Send (and the two vision buttons -- same reply pipeline, same reasons

@@ -500,7 +500,11 @@
       <button id="overlay-resend-button" class="vision-button" title="Resend last message">↻</button>
       <button id="file-upload-button" class="vision-button" title="Attach a picture or text file">📎</button>
       <input id="file-upload-input" type="file" accept="image/*,.txt,.md,.csv,.json,.log,.yaml,.yml" hidden />
-      <input id="message-input" type="text" placeholder="Type a message to Glitch..." autocomplete="off" />
+      <div id="message-input-wrap">
+        <input id="message-input" type="text" placeholder="Type a message to Glitch..." autocomplete="off" />
+        <!-- Only shown while a reply is pending (brain_client.js's _setAwaitingReply) -- cancels it. -->
+        <button id="stop-button" title="Stop" aria-label="Stop reply" hidden>■</button>
+      </div>
       <button id="send-button">Send</button>
     </div>
     <script type="module" src="/src/main.js"></script>

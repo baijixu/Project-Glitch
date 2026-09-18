@@ -14,6 +14,7 @@ const inputEl = document.getElementById("message-input");
 const chatBarEl = document.getElementById("chat-bar");
 const sideActionsEl = document.getElementById("side-actions");
 const sendButtonEl = document.getElementById("send-button");
+const stopButtonEl = document.getElementById("stop-button");
 const overlayResendButtonEl = document.getElementById("overlay-resend-button");
 const fileUploadButtonEl = document.getElementById("file-upload-button");
 const fileUploadInputEl = document.getElementById("file-upload-input");
@@ -309,6 +310,7 @@ brain = new BrainClient({
   chatBarEl,
   sideActionsEl,
   sendButtonEl,
+  stopButtonEl,
   overlayResendButtonEl,
   fileUploadButtonEl,
   fileUploadInputEl,

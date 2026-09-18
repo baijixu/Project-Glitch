@@ -287,6 +287,24 @@ class LocalLLM:
         self._persona = ""
         self._soul = ""
         self._memory = ""
+        # Bumped by cancel_reply() -- see reply()'s check against it.
+        self._reply_generation = 0
+
+    def cancel_reply(self) -> None:
+        """Marks whatever reply() call is currently in flight as abandoned
+        (the Renderer's Stop button, main.py's stop_reply). The HTTP request
+        itself can't be aborted from here -- it runs in a worker thread
+        (asyncio.to_thread) that can't be killed -- so it still finishes in
+        the background; this just makes reply() throw away its result
+        instead of appending it to _history, where a reply the user
+        explicitly stopped would otherwise show up as if it had gone out.
+        The user's own turn is deliberately left in _history: it's the same
+        dangling-user-turn shape a failed request leaves, which
+        pop_last_exchange already handles -- so Resend Last after a stop
+        re-answers the right prompt instead of popping an older, complete
+        exchange.
+        """
+        self._reply_generation += 1
 
     def _complete_raw(self, messages: list[dict], max_tokens: int, tools: list[dict] | None) -> dict:
         """Runs exactly one chat completion and returns
@@ -425,7 +443,10 @@ class LocalLLM:
         del self._history[:-MAX_HISTORY_MESSAGES]
         messages = [{"role": "system", "content": self._system_prompt()}, *self._history]
         tools = [WEB_SEARCH_TOOL] if web_search_enabled else None
+        generation = self._reply_generation
         raw_reply = self._complete(messages, MAX_REPLY_TOKENS, tools)
+        if generation != self._reply_generation:
+            return "", "neutral"  # cancelled via cancel_reply() while in flight -- discarded, never reaches _history
         mood, reply_text = _extract_mood(raw_reply)
         # Stored cleaned, not with the tag -- keeps the tag from cluttering
         # future turns' context for no benefit (the system prompt alone is
@@ -569,6 +590,7 @@ class OllamaLLM(LocalLLM):
         self._persona = ""
         self._soul = ""
         self._memory = ""
+        self._reply_generation = 0
 
     def _complete_raw(self, messages: list[dict], max_tokens: int, tools: list[dict] | None) -> dict:
         # See MAX_REPLY_TOKENS_THINKING's own comment -- the caller passes

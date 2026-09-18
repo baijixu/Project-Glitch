@@ -360,12 +360,27 @@ async def handle_renderer(websocket: websockets.ServerConnection, brain: Brain, 
 
     _RENDERER_CONNECTIONS.add(websocket)
     ping_task = asyncio.create_task(_ping_loop(websocket))
+    # Reply-generating messages run as tasks instead of being awaited
+    # inline like everything else -- an inline await would keep this loop
+    # from ever reading a stop_reply until the very reply it's meant to
+    # cancel had already finished. Everything else stays sequential.
+    reply_tasks: set[asyncio.Task] = set()
     try:
         async for raw in websocket:
-            await _handle_message(websocket, raw, brain)
+            msg_type = _peek_message_type(raw)
+            if msg_type == protocol.STOP_REPLY:
+                _stop_replies(reply_tasks, brain)
+            elif msg_type in _REPLY_MESSAGE_TYPES:
+                task = asyncio.create_task(_run_reply_message(websocket, raw, brain))
+                reply_tasks.add(task)
+                task.add_done_callback(reply_tasks.discard)
+            else:
+                await _handle_message(websocket, raw, brain)
     except ConnectionClosed:
         pass
     finally:
+        for task in reply_tasks:
+            task.cancel()
         ping_task.cancel()
         _DEBUG_CONNECTIONS.discard(websocket)
         _RENDERER_CONNECTIONS.discard(websocket)
@@ -387,6 +402,46 @@ def _record_auth_failure(ip: str) -> None:
     _AUTH_FAILURES[ip] = (count, locked_until)
     if count >= AUTH_MAX_FAILURES:
         print(f"[brain] auth lockout: {ip} failed {count} times, locked {AUTH_LOCKOUT_SEC}s")
+
+
+_REPLY_MESSAGE_TYPES = {protocol.USER_TEXT, protocol.USER_AUDIO, protocol.REGENERATE_LAST}
+
+
+def _peek_message_type(raw: str) -> str | None:
+    try:
+        return json.loads(raw).get("type")
+    except (json.JSONDecodeError, AttributeError):
+        return None
+
+
+async def _run_reply_message(websocket: websockets.ServerConnection, raw: str, brain: Brain) -> None:
+    """_handle_message for a reply-generating message, run as its own task
+    (see handle_renderer) -- so an exception here is reported instead of
+    vanishing as an unretrieved task exception the way it otherwise would.
+    """
+    try:
+        await _handle_message(websocket, raw, brain)
+    except ConnectionClosed:
+        pass
+    except Exception as exc:
+        print(f"[brain] reply handler failed: {exc!r}")
+
+
+def _stop_replies(reply_tasks: set[asyncio.Task], brain: Brain) -> None:
+    """The Renderer's Stop button. Cancels every in-flight reply task on
+    this connection, and tells a LocalLLM to discard whatever its worker
+    thread eventually returns (see LocalLLM.cancel_reply -- the thread
+    itself can't be killed). A no-op when nothing's in flight, e.g. Stop
+    raced with a reply that had just finished.
+    """
+    in_flight = [task for task in reply_tasks if not task.done()]
+    if not in_flight:
+        return
+    for task in in_flight:
+        task.cancel()
+    if isinstance(brain.llm, LocalLLM):
+        brain.llm.cancel_reply()
+    print("[brain] reply stopped by renderer")
 
 
 async def _authenticate(websocket: websockets.ServerConnection, auth_token: str | None) -> bool:
