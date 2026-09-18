@@ -129,6 +129,19 @@ const RESTART_TIMEOUT_MS = 30000;
 // left alone.
 const MAX_VISION_DIMENSION = 1024;
 const VISION_JPEG_QUALITY = 0.7;
+// A phone camera often returns black frames for a moment right after it
+// opens (sensor/auto-exposure warm-up), and the first frame a video
+// element presents can be one of them. So the grab keeps sampling frames
+// until one is bright enough to be a real picture (average of 0-255, see
+// _sampleAvgBrightness), for at most VISION_FRAME_WAIT_MS -- then takes the
+// brightest it saw. Under VISION_BLACK_BRIGHTNESS even the best frame is
+// treated as a failed capture, not sent. VISION_FRAME_TIMEOUT_MS bounds the
+// whole grab, so a video that never delivers a frame can't hang forever
+// holding the camera open.
+const VISION_MIN_BRIGHTNESS = 12;
+const VISION_BLACK_BRIGHTNESS = 3;
+const VISION_FRAME_WAIT_MS = 2500;
+const VISION_FRAME_TIMEOUT_MS = 6000;
 
 // A text file attached via the 📎 button gets its content embedded
 // straight into the message text (see _sendTextFile) -- capped so one
@@ -1248,34 +1261,51 @@ export class BrainClient {
       setTimeout(() => this._setStatus(""), 4000);
       return;
     }
-    let stream;
-    try {
-      stream =
-        source === "desktop"
-          ? await navigator.mediaDevices.getDisplayMedia({ video: true })
-          : // "ideal" (not "exact") -- prefers the rear/back camera on a
-            // phone (front-facing "selfie" camera is the default
-            // otherwise) but still degrades gracefully to whatever's
-            // available on a laptop with only one webcam, rather than
-            // getUserMedia failing outright with OverconstrainedError.
-            await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } });
-    } catch (err) {
-      console.warn(`${source} access denied or unavailable:`, err);
-      this._logDebug("vision", `${source} getMedia failed: ${err.message || err}`);
-      this._setStatus(source === "desktop" ? "Screen share denied" : "Camera access denied");
-      setTimeout(() => this._setStatus(""), 4000);
-      return;
+    const openStream = () =>
+      source === "desktop"
+        ? navigator.mediaDevices.getDisplayMedia({ video: true })
+        : // "ideal" (not "exact") -- prefers the rear/back camera on a
+          // phone (front-facing "selfie" camera is the default
+          // otherwise) but still degrades gracefully to whatever's
+          // available on a laptop with only one webcam, rather than
+          // getUserMedia failing outright with OverconstrainedError.
+          navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } });
+
+    // A failed grab (black frames, or no frame at all) gets exactly one
+    // retry on a freshly opened stream -- the camera can be left in a bad
+    // state by whatever used it last, and re-opening is the same thing the
+    // user was otherwise having to do by hand (restarting everything). A
+    // screen share isn't retried: it'd re-prompt the picker, and a black
+    // screen share isn't a warm-up problem.
+    const maxAttempts = source === "desktop" ? 1 : 2;
+    let dataUrl;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      let stream;
+      try {
+        stream = await openStream();
+      } catch (err) {
+        console.warn(`${source} access denied or unavailable:`, err);
+        this._logDebug("vision", `${source} getMedia failed: ${err.message || err}`);
+        this._setStatus(source === "desktop" ? "Screen share denied" : "Camera access denied");
+        setTimeout(() => this._setStatus(""), 4000);
+        return;
+      }
+      try {
+        dataUrl = await this._grabFrameFromStream(stream);
+        break;
+      } catch (err) {
+        console.warn(`${source} frame grab failed (attempt ${attempt}/${maxAttempts}):`, err);
+        this._logDebug("vision", `${source} frame grab failed (attempt ${attempt}/${maxAttempts}): ${err.message || err}`);
+      } finally {
+        stream.getTracks().forEach((track) => track.stop());
+      }
+      if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, 500)); // let the camera fully release before re-opening
     }
 
-    let dataUrl;
-    try {
-      dataUrl = await this._grabFrameFromStream(stream);
-    } catch (err) {
-      console.warn(`${source} frame grab failed:`, err);
-      this._logDebug("vision", `${source} frame grab failed: ${err.message || err}`);
+    if (!dataUrl) {
+      this._setStatus(source === "desktop" ? "Couldn't capture the screen" : "Camera gave no picture -- try again");
+      setTimeout(() => this._setStatus(""), 4000);
       return;
-    } finally {
-      stream.getTracks().forEach((track) => track.stop());
     }
 
     this._sendVision(dataUrl, source);
@@ -1299,35 +1329,85 @@ export class BrainClient {
       video.playsInline = true;
       video.style.cssText = "position:fixed; left:-9999px; top:-9999px; pointer-events:none;";
       document.body.appendChild(video);
-      const cleanup = () => video.remove();
 
-      const capture = () => {
+      const startedAt = performance.now();
+      let settled = false;
+      let best = null; // {canvas, brightness} -- the brightest frame seen so far
+      let frames = 0;
+
+      // Every exit goes through here, so the video element is always
+      // removed and the timeout always cleared -- and the caller's
+      // `finally` (which stops the stream's tracks) always runs, because
+      // this always settles the promise, including via the timeout below.
+      const finish = (settle, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        video.remove();
+        settle(value);
+      };
+      const timeoutId = setTimeout(
+        () =>
+          finish(
+            reject,
+            new Error(`no camera frame within ${VISION_FRAME_TIMEOUT_MS}ms (readyState=${video.readyState}, frames=${frames})`),
+          ),
+        VISION_FRAME_TIMEOUT_MS,
+      );
+
+      const track = stream.getVideoTracks()[0];
+      const trackInfo = () =>
+        track
+          ? `track=${track.readyState}${track.muted ? "/muted" : ""} "${track.label}" ${JSON.stringify(track.getSettings?.() || {})}`
+          : "no video track";
+
+      const sampleFrame = () => {
+        if (settled) return;
         try {
+          frames++;
           const scale = Math.min(1, MAX_VISION_DIMENSION / Math.max(video.videoWidth, video.videoHeight));
           const canvas = document.createElement("canvas");
           canvas.width = Math.round(video.videoWidth * scale);
           canvas.height = Math.round(video.videoHeight * scale);
           const ctx = canvas.getContext("2d");
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          // Diagnostic only (Debugging log, "vision" category) -- every
-          // fix attempted for a real black-capture report so far has been
-          // a guess about *why* the frame might be black without actually
-          // checking whether it is. This settles that directly: readyState
-          // should be >= 2 (HAVE_CURRENT_DATA) by the time this runs, and
-          // avgBrightness near 0 means the canvas itself is genuinely
-          // black (a capture-side bug) rather than the frame being fine
-          // and something downstream (the model, the thumbnail render)
-          // being the actual problem.
+          const brightness = _sampleAvgBrightness(ctx, canvas.width, canvas.height);
+          if (!best || brightness > best.brightness) best = { canvas, brightness };
+
+          // -1 means the brightness couldn't be measured at all (see
+          // _sampleAvgBrightness) -- treated as fine rather than as black,
+          // since that's no evidence the frame is actually bad.
+          const bright = brightness < 0 || brightness >= VISION_MIN_BRIGHTNESS;
+          const waited = performance.now() - startedAt;
+          if (!bright && waited < VISION_FRAME_WAIT_MS) {
+            nextFrame();
+            return;
+          }
           this._logDebug(
             "vision",
-            `captured ${canvas.width}x${canvas.height} from ${video.videoWidth}x${video.videoHeight} video, ` +
-              `readyState=${video.readyState}, avgBrightness=${_sampleAvgBrightness(ctx, canvas.width, canvas.height)}`,
+            `captured ${best.canvas.width}x${best.canvas.height} from ${video.videoWidth}x${video.videoHeight} video ` +
+              `after ${frames} frame(s)/${Math.round(waited)}ms, readyState=${video.readyState}, ` +
+              `avgBrightness=${best.brightness}, ${trackInfo()}`,
           );
-          cleanup();
-          resolve(canvas.toDataURL("image/jpeg", VISION_JPEG_QUALITY));
+          if (best.brightness >= 0 && best.brightness < VISION_BLACK_BRIGHTNESS) {
+            finish(reject, new Error(`camera returned only black frames (best avgBrightness=${best.brightness}, ${frames} frames)`));
+            return;
+          }
+          finish(resolve, best.canvas.toDataURL("image/jpeg", VISION_JPEG_QUALITY));
         } catch (err) {
-          cleanup();
-          reject(err);
+          finish(reject, err);
+        }
+      };
+
+      // requestVideoFrameCallback fires exactly when a real decoded frame
+      // has been presented for compositing -- the one guarantee
+      // loadeddata/play() resolving don't give. Falls back to a short
+      // timer for a browser without it (older Safari).
+      const nextFrame = () => {
+        if (typeof video.requestVideoFrameCallback === "function") {
+          video.requestVideoFrameCallback(() => sampleFrame());
+        } else {
+          setTimeout(sampleFrame, 100);
         }
       };
 
@@ -1340,36 +1420,12 @@ export class BrainClient {
         () => {
           video
             .play()
-            .then(() => {
-              // requestVideoFrameCallback fires exactly when a real
-              // decoded frame has actually been presented for
-              // compositing -- the one guarantee loadeddata/play()
-              // resolving still don't give (both fired right on schedule
-              // while the capture kept coming back solid black on a
-              // phone). Falls back to capturing right away for a browser
-              // that doesn't support it (older Safari) -- no worse than
-              // what this already did before.
-              if (typeof video.requestVideoFrameCallback === "function") {
-                video.requestVideoFrameCallback(() => capture());
-              } else {
-                capture();
-              }
-            })
-            .catch((err) => {
-              cleanup();
-              reject(err);
-            });
+            .then(() => nextFrame())
+            .catch((err) => finish(reject, err));
         },
         { once: true },
       );
-      video.addEventListener(
-        "error",
-        () => {
-          cleanup();
-          reject(video.error);
-        },
-        { once: true },
-      );
+      video.addEventListener("error", () => finish(reject, video.error), { once: true });
     });
   }
 
@@ -2508,7 +2564,10 @@ export class BrainClient {
   // DEFAULT_SOUL_NAME pattern used everywhere else _activeSoulName is read.
   _displayNameFor(role) {
     if (role === "user") return "You";
-    if (role === "glitch") return this._activeSoulName !== DEFAULT_SOUL_NAME ? this._activeSoulName : "Glitch";
+    // Soul only applies while role-play is on (main.py's _handle_set_roleplay_active),
+    // so the label follows suit -- otherwise it kept showing the RP character's name
+    // after switching back to plain Glitch.
+    if (role === "glitch") return this._roleplayActive && this._activeSoulName !== DEFAULT_SOUL_NAME ? this._activeSoulName : "Glitch";
     return "";
   }
 
