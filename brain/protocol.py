@@ -40,11 +40,11 @@ DELETE_LLM_ENGINE = "delete_llm_engine"
 SET_HARNESS_ACTIVE = "set_harness_active"
 SELECT_HARNESS = "select_harness"
 GET_LLM_MODELS = "get_llm_models"
-SAVE_HARNESS_KEY = "save_harness_key"
 SAVE_HARNESS = "save_harness"
 GET_HARNESS = "get_harness"
 DELETE_HARNESS = "delete_harness"
 SET_VOICE_ACTIVE = "set_voice_active"
+SET_WEB_SEARCH_ACTIVE = "set_web_search_active"
 SET_MEMORY_ACTIVE = "set_memory_active"
 CLEAR_MEMORY = "clear_memory"
 GET_MEMORY_CONTENT = "get_memory_content"
@@ -74,6 +74,7 @@ AVATARS = "avatars"
 AVATAR_DATA = "avatar_data"
 ROLEPLAY_STATE = "roleplay_state"
 VOICE_STATE = "voice_state"
+WEB_SEARCH_STATE = "web_search_state"
 MEMORY_STATE = "memory_state"
 MEMORY_CONTENT = "memory_content"
 MEMORY_PROVIDER_STATE = "memory_provider_state"
@@ -180,6 +181,16 @@ def voice_state(active: bool) -> dict:
     persisted value, same as roleplay_state.
     """
     return {"type": VOICE_STATE, "active": active}
+
+
+def web_search_state(active: bool) -> dict:
+    """Whether Glitch's own LLM path can search the web (brain/web_search.py)
+    -- separate from anything a Hermes harness already does with its own
+    web/session search when active. Sent on `ready`, same pattern as
+    voice_state; always False if no SearXNG instance was ever configured
+    (config.yaml's brain.web_search block), regardless of what was saved.
+    """
+    return {"type": WEB_SEARCH_STATE, "active": active}
 
 
 def memory_state(active: bool) -> dict:
@@ -290,7 +301,7 @@ def llm_engine_content(name: str, endpoint: str, model: str, api_key: str, provi
     }
 
 
-def harness_state(active: bool, name: str, selected: str, available: list[str], switch_key: str) -> dict:
+def harness_state(active: bool, name: str, selected: str, available: list[str]) -> dict:
     """`name` is the actually-connected harness ("" if not active) --
     `active`/`name` together are what gate _build_harness_llm-derived
     behavior. `selected` is what the dropdown should show regardless of
@@ -299,13 +310,6 @@ def harness_state(active: bool, name: str, selected: str, available: list[str], 
     read_selected_harness_name) -- distinct from `name` specifically so
     turning a harness off doesn't also make the Renderer forget which one
     was picked (see harness.py's set_selected_harness_name docstring).
-    `switch_key` is the actual saved brain.harness_switch_key value
-    ("" if none set) -- sent back down the same way tts_engine_content/
-    llm_engine_content send back a saved api_key, so the Renderer can (a)
-    pre-fill the Harness settings' key field for editing, and (b)
-    automatically include the current key on every subsequent
-    set_harness_active request, instead of making the user retype it on
-    every single connection attempt.
     """
     return {
         "type": HARNESS_STATE,
@@ -313,7 +317,6 @@ def harness_state(active: bool, name: str, selected: str, available: list[str], 
         "name": name,
         "selected": selected,
         "available": available,
-        "switch_key": switch_key,
     }
 
 

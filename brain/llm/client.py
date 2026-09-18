@@ -15,10 +15,13 @@ hold a conversation at all), not the persistent cross-session memory/recall
 system SPEC.md section 2 explicitly excludes.
 """
 
+import json
 import re
 
 import httpx
 from openai import OpenAI
+
+import web_search
 
 # Mirrors this VRM's actual expression presets (confirmed via
 # vrm.expressionManager.expressionMap in the live Renderer -- not guessed):
@@ -181,6 +184,53 @@ _MEMORY_EXTRACT_SYSTEM_PROMPT = (
     "facts not actually stated or clearly implied."
 )
 
+# The one tool offered when web search is on (main.py's _reply_to passes
+# web_search_enabled through from web_search.read_active()) -- standard
+# OpenAI function-calling shape, which Ollama's native /api/chat also
+# accepts verbatim (confirmed live), so this single definition covers
+# both LocalLLM and OllamaLLM with no per-backend variant needed.
+WEB_SEARCH_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "web_search",
+        "description": (
+            "Search the web for current information. Use this for anything that could have "
+            "changed since training, recent events, or a specific fact worth checking rather "
+            "than guessing at."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {"query": {"type": "string", "description": "The search query"}},
+            "required": ["query"],
+        },
+    },
+}
+
+# A hard cap on search-then-continue round trips within one reply, not on
+# searches in general -- stops a model that keeps calling the tool without
+# ever actually answering from looping forever. 3 is generous for "search,
+# maybe refine once, then answer" without letting one reply balloon into
+# many sequential completion calls.
+MAX_TOOL_ITERATIONS = 3
+
+
+def _run_web_search_tool(arguments: dict) -> str:
+    query = (arguments or {}).get("query", "").strip()
+    if not query:
+        return "No query given."
+    results = web_search.search(query)
+    if not results:
+        return "No results found."
+    listing = "\n\n".join(f"{r['title']}\n{r['url']}\n{r['snippet']}" for r in results)
+    return (
+        f"{listing}\n\n"
+        "Note: these are raw search results, not verified facts -- YouTube in particular surfaces "
+        "AI-generated fan covers and unofficial uploads alongside real releases, with nothing in the "
+        "title/snippet reliably telling them apart. Don't present something as an artist's real, "
+        "official work unless the source clearly is official -- hedge instead (e.g. \"this might be "
+        "a fan-made AI cover, not a real release\") when it isn't."
+    )
+
 
 def _reply_content(message) -> str:
     """Returns the model's actual reply text -- `content` only, deliberately
@@ -238,17 +288,58 @@ class LocalLLM:
         self._soul = ""
         self._memory = ""
 
-    def _complete(self, messages: list[dict], max_tokens: int) -> str:
-        """Runs one chat completion and returns just the reply text (see
-        _reply_content -- content only, never reasoning_content). Split out
-        from reply()/maybe_extract_memory() specifically so OllamaLLM can
-        override this one method (different wire protocol -- Ollama's
-        native /api/chat, not an OpenAI-compatible endpoint) while
-        inheriting everything else (history, system prompt, mood tag
-        handling) unchanged.
+    def _complete_raw(self, messages: list[dict], max_tokens: int, tools: list[dict] | None) -> dict:
+        """Runs exactly one chat completion and returns
+        {"content": str, "tool_calls": [{"id", "name", "arguments": dict}],
+        "raw_message": dict} -- raw_message is this backend's own native
+        message shape, safe to feed straight back into a follow-up call to
+        THIS SAME backend as the next messages[] entry (see _complete's own
+        tool-calling loop, which never has to know or care what shape that
+        is). Split out from _complete()/maybe_extract_memory() specifically
+        so OllamaLLM can override this one method (different wire protocol
+        -- Ollama's native /api/chat, not an OpenAI-compatible endpoint)
+        while inheriting everything else (the loop, history, system
+        prompt, mood tag handling) unchanged.
         """
-        response = self._client.chat.completions.create(model=self._model, messages=messages, max_tokens=max_tokens)
-        return _reply_content(response.choices[0].message)
+        kwargs = {"model": self._model, "messages": messages, "max_tokens": max_tokens}
+        if tools:
+            kwargs["tools"] = tools
+        response = self._client.chat.completions.create(**kwargs)
+        message = response.choices[0].message
+        tool_calls = []
+        for call in message.tool_calls or []:
+            try:
+                arguments = json.loads(call.function.arguments or "{}")
+            except ValueError:
+                arguments = {}
+            tool_calls.append({"id": call.id, "name": call.function.name, "arguments": arguments})
+        return {
+            "content": _reply_content(message),
+            "tool_calls": tool_calls,
+            "raw_message": message.model_dump(exclude_none=True),
+        }
+
+    def _complete(self, messages: list[dict], max_tokens: int, tools: list[dict] | None = None) -> str:
+        """Runs _complete_raw once, or -- while `tools` is given and the
+        model actually asks to use one -- repeatedly: appends the
+        assistant's own tool-call turn plus each tool's result, then calls
+        again, until a plain text answer comes back or
+        MAX_TOOL_ITERATIONS is hit (treated the same as any other empty
+        reply -- main.py's _reply_to already sends no_reply for that).
+        `messages` itself is never mutated -- the loop works on its own
+        copy, so a tool-calling detour never pollutes what reply() ends up
+        appending to self._history (only the clean final text does).
+        """
+        working = list(messages)
+        for _ in range(MAX_TOOL_ITERATIONS):
+            result = self._complete_raw(working, max_tokens, tools)
+            if not result["tool_calls"]:
+                return result["content"]
+            working.append(result["raw_message"])
+            for call in result["tool_calls"]:
+                output = _run_web_search_tool(call["arguments"]) if call["name"] == "web_search" else "Unknown tool."
+                working.append({"role": "tool", "tool_call_id": call["id"], "content": output})
+        return ""
 
     def set_persona(self, persona_md: str) -> None:
         """Sets the active role-play profile (freeform markdown -- character
@@ -297,7 +388,13 @@ class LocalLLM:
             )
         return "\n\n".join(parts)
 
-    def reply(self, user_text: str, image_b64: str | None = None, image_mime: str = "image/jpeg") -> tuple[str, str]:
+    def reply(
+        self,
+        user_text: str,
+        image_b64: str | None = None,
+        image_mime: str = "image/jpeg",
+        web_search_enabled: bool = False,
+    ) -> tuple[str, str]:
         """Returns (reply_text, mood) -- reply_text has the mood tag
         already stripped out (never shown/spoken), mood is one of
         VALID_MOODS.
@@ -311,6 +408,12 @@ class LocalLLM:
         (caught by _reply_to's broad except, surfaced as a speak_text
         stand-in), rather than adding a second way to configure the same
         failure mode.
+
+        web_search_enabled offers WEB_SEARCH_TOOL for this call only (see
+        main.py's _reply_to, which reads web_search.read_active() fresh
+        every turn) -- whether the model actually uses it is its own
+        call, same as vision above: no "does this model support tools"
+        flag, an endpoint that can't just never calls it.
         """
         content: str | list[dict] = user_text
         if image_b64:
@@ -321,7 +424,8 @@ class LocalLLM:
         self._history.append({"role": "user", "content": content})
         del self._history[:-MAX_HISTORY_MESSAGES]
         messages = [{"role": "system", "content": self._system_prompt()}, *self._history]
-        raw_reply = self._complete(messages, MAX_REPLY_TOKENS)
+        tools = [WEB_SEARCH_TOOL] if web_search_enabled else None
+        raw_reply = self._complete(messages, MAX_REPLY_TOKENS, tools)
         mood, reply_text = _extract_mood(raw_reply)
         # Stored cleaned, not with the tag -- keeps the tag from cluttering
         # future turns' context for no benefit (the system prompt alone is
@@ -440,8 +544,8 @@ def _to_ollama_message(message: dict) -> dict:
 class OllamaLLM(LocalLLM):
     """Same persona/soul/memory/history system as LocalLLM (all inherited
     unchanged -- reply(), maybe_extract_memory(), set_persona() etc. don't
-    need to know or care which backend _complete() actually talks to).
-    Only __init__ and _complete differ: this talks to Ollama's *native*
+    need to know or care which backend _complete_raw() actually talks to).
+    Only __init__ and _complete_raw differ: this talks to Ollama's *native*
     /api/chat instead of an OpenAI-compatible endpoint.
 
     That distinction is load-bearing, not stylistic -- confirmed via a
@@ -466,30 +570,47 @@ class OllamaLLM(LocalLLM):
         self._soul = ""
         self._memory = ""
 
-    def _complete(self, messages: list[dict], max_tokens: int) -> str:
+    def _complete_raw(self, messages: list[dict], max_tokens: int, tools: list[dict] | None) -> dict:
         # See MAX_REPLY_TOKENS_THINKING's own comment -- the caller passes
         # MAX_REPLY_TOKENS same as every other engine, but that's not
         # enough room once thinking is actually turned on, so this widens
         # it right here rather than needing every caller to know that.
         if self._think:
             max_tokens = max(max_tokens, MAX_REPLY_TOKENS_THINKING)
-        response = self._http.post(
-            "/api/chat",
-            json={
-                "model": self._model,
-                "messages": [_to_ollama_message(m) for m in messages],
-                "think": self._think,
-                "stream": False,
-                "keep_alive": OLLAMA_KEEP_ALIVE,
-                # Ollama's own generation-parameter shape -- num_predict is
-                # its equivalent of max_tokens, nested under `options`
-                # rather than top-level like the OpenAI-compatible API.
-                "options": {"num_predict": max_tokens},
-            },
-        )
+        payload = {
+            "model": self._model,
+            "messages": [_to_ollama_message(m) for m in messages],
+            "think": self._think,
+            "stream": False,
+            "keep_alive": OLLAMA_KEEP_ALIVE,
+            # Ollama's own generation-parameter shape -- num_predict is
+            # its equivalent of max_tokens, nested under `options`
+            # rather than top-level like the OpenAI-compatible API.
+            "options": {"num_predict": max_tokens},
+        }
+        if tools:
+            # Same OpenAI-shaped tool definitions as the LocalLLM path --
+            # Ollama's native /api/chat accepts them verbatim, confirmed
+            # live, no translation needed the way image content needed
+            # _to_ollama_message.
+            payload["tools"] = tools
+        response = self._http.post("/api/chat", json=payload)
         response.raise_for_status()
         message = response.json().get("message") or {}
-        return (message.get("content") or "").strip()
+        tool_calls = []
+        for i, call in enumerate(message.get("tool_calls") or []):
+            function = call.get("function") or {}
+            # Unlike OpenAI, Ollama's native tool_calls carry `arguments`
+            # already as a dict, not a JSON-encoded string -- and no call
+            # id at all, so one is synthesized here (only needs to be
+            # unique within this one response, to pair each tool result
+            # message back up with the call that asked for it).
+            tool_calls.append({"id": f"call_{i}", "name": function.get("name", ""), "arguments": function.get("arguments") or {}})
+        return {
+            "content": (message.get("content") or "").strip(),
+            "tool_calls": tool_calls,
+            "raw_message": message,
+        }
 
 
 class HarnessLLM:
@@ -516,7 +637,18 @@ class HarnessLLM:
         self._client = OpenAI(base_url=endpoint, api_key=api_key or "not-needed", timeout=REQUEST_TIMEOUT_SEC)
         self._model = model or ""  # see LocalLLM.__init__'s comment -- None serializes to a literal JSON null
 
-    def reply(self, user_text: str, image_b64: str | None = None, image_mime: str = "image/jpeg") -> tuple[str, str]:
+    def reply(
+        self,
+        user_text: str,
+        image_b64: str | None = None,
+        image_mime: str = "image/jpeg",
+        web_search_enabled: bool = False,
+    ) -> tuple[str, str]:
+        # web_search_enabled accepted (not **kwargs) so this keeps duck-
+        # typing LocalLLM.reply()'s exact signature, but deliberately
+        # unused -- a harness has its own tools (e.g. Hermes's own web/
+        # session search, config.yaml's web.backend) when it's active,
+        # Glitch's own web-search toggle has nothing to offer here.
         # Same MAX_REPLY_TOKENS cap as LocalLLM.reply, same reasoning -- a
         # runaway generation is exactly as much of a hang either way. If a
         # given harness turns out to legitimately need more tokens for its
@@ -577,5 +709,11 @@ class NoneLLM:
     def set_memory(self, memory_block: str) -> None:
         pass
 
-    def reply(self, user_text: str, image_b64: str | None = None, image_mime: str = "image/jpeg") -> tuple[str, str]:
+    def reply(
+        self,
+        user_text: str,
+        image_b64: str | None = None,
+        image_mime: str = "image/jpeg",
+        web_search_enabled: bool = False,
+    ) -> tuple[str, str]:
         return "(No LLM engine is configured yet -- add one in Settings, under LLM.)", "neutral"

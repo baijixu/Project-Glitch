@@ -20,6 +20,9 @@ brain/active_avatar.txt
 # Whether Glitch's spoken voice is on (brain/voice_settings.py).
 brain/voice_active.txt
 
+# Whether Glitch's own LLM path can search the web (brain/web_search.py).
+brain/web_search_active.txt
+
 # Glitch's own native memory of the user (brain/memory.py) -- personal
 # content, and separate from anything Hermes keeps in its own memory.
 brain/memory.md
@@ -41,9 +44,6 @@ brain/active_llm_engine_name.txt
 # and which one the dropdown shows as picked while inactive.
 brain/active_harness.txt
 brain/selected_harness.txt
-# The secret required to turn a harness on -- same sensitivity as config.yaml's
-# other secrets, saved here instead once set via the Harness settings UI.
-brain/harness_switch_key.txt
 # Saved harness configs (brain/harness.py) -- same reasoning as tts_engines/
 # and llm_engines/ above, each file can hold an api_key.
 brain/harnesses/

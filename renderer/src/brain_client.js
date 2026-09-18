@@ -159,6 +159,7 @@ export class BrainClient {
     micButtonEl,
     micLabelEl,
     voiceToggleInputEl,
+    webSearchToggleInputEl,
     cameraEnabledToggleInputEl,
     desktopCaptureEnabledToggleInputEl,
     micEnabledToggleInputEl,
@@ -275,8 +276,6 @@ export class BrainClient {
     roleplayConfirmThinkToggleEl,
     roleplayConfirmCancelButtonEl,
     roleplayConfirmEnableButtonEl,
-    harnessSwitchKeyEl,
-    saveHarnessKeyButtonEl,
     debugToggleInputEl,
     downloadDebugLogButtonEl,
     restartBrainButtonEl,
@@ -319,6 +318,7 @@ export class BrainClient {
     this.desktopVisionButtonEl = desktopVisionButtonEl;
     this.micButtonEl = micButtonEl;
     this.voiceToggleInputEl = voiceToggleInputEl;
+    this.webSearchToggleInputEl = webSearchToggleInputEl;
     this.cameraEnabledToggleInputEl = cameraEnabledToggleInputEl;
     this.desktopCaptureEnabledToggleInputEl = desktopCaptureEnabledToggleInputEl;
     this.micEnabledToggleInputEl = micEnabledToggleInputEl;
@@ -387,8 +387,6 @@ export class BrainClient {
     this.roleplayConfirmThinkToggleEl = roleplayConfirmThinkToggleEl;
     this.roleplayConfirmCancelButtonEl = roleplayConfirmCancelButtonEl;
     this.roleplayConfirmEnableButtonEl = roleplayConfirmEnableButtonEl;
-    this.harnessSwitchKeyEl = harnessSwitchKeyEl;
-    this.saveHarnessKeyButtonEl = saveHarnessKeyButtonEl;
     this._harnessActive = false;
     this._activeHarnessName = "";
     // What the dropdown shows as picked while inactive (learned from
@@ -410,15 +408,6 @@ export class BrainClient {
     // not "could be". Undefined until the first harness_health for that
     // name arrives; see _renderHarnessLight.
     this._harnessReachableByName = {};
-    // The current harness-switch secret, learned from harness_state (same
-    // "reasonable guess, corrected on confirm" pattern as _connectionState
-    // painting red before connect() resolves anything -- "" until then).
-    // Sent automatically with every set_harness_active(active: true), so
-    // the user only ever types it once into the settings field
-    // (_saveHarnessKey) rather than on every connection attempt -- Brain
-    // still validates it fresh on every single request regardless (see
-    // main.py's _handle_set_harness_active).
-    this._harnessSwitchKey = "";
     // Which harness the confirm-and-connect modal is currently open for,
     // so its Connect button knows what to actually send -- null while
     // the modal is closed.
@@ -626,6 +615,9 @@ export class BrainClient {
     // to know or care about, so those three just live in localStorage and
     // toggle the button's `hidden` -- no round trip needed.
     this.voiceToggleInputEl?.addEventListener("change", () => this._send({ type: "set_voice_active", active: this.voiceToggleInputEl.checked }));
+    this.webSearchToggleInputEl?.addEventListener("change", () =>
+      this._send({ type: "set_web_search_active", active: this.webSearchToggleInputEl.checked }),
+    );
     this.cameraEnabledToggleInputEl?.addEventListener("change", () => this._setDeviceButtonEnabled("camera", this.cameraEnabledToggleInputEl.checked));
     this.desktopCaptureEnabledToggleInputEl?.addEventListener("change", () =>
       this._setDeviceButtonEnabled("desktop", this.desktopCaptureEnabledToggleInputEl.checked),
@@ -852,7 +844,6 @@ export class BrainClient {
       this._closeHarnessConfirmModal();
       if (name) this._setHarnessActive(true, name);
     });
-    this.saveHarnessKeyButtonEl?.addEventListener("click", () => this._saveHarnessKey());
 
     this.debugToggleInputEl?.addEventListener("change", () => this._setDebugActive(this.debugToggleInputEl.checked));
     this.downloadDebugLogButtonEl?.addEventListener("click", () => this._downloadDebugLog());
@@ -1778,19 +1769,15 @@ export class BrainClient {
   // modal (_openHarnessConfirmModal, from the toggle's own change
   // listener) since it's a bigger behavioral switch than any other
   // settings-panel control -- and, unlike every other setting here, Brain
-  // can outright refuse it (wrong/missing switch key, unknown or
-  // unconfigured harness). So this deliberately does NOT optimistically
-  // flip _harnessActive/re-render the way the rest of this class's
-  // setters do -- it just sends the request and waits for Brain's own
-  // harness_state reply (see _handleMessage) to say what actually
-  // happened. The toggle itself was already reverted synchronously by
-  // the change listener, so there's nothing stale left showing in the
-  // meantime. `key` is only meaningful (and only sent) when turning on --
-  // it's this._harnessSwitchKey, learned from a prior harness_state, not
-  // anything the user typed just now (see _saveHarnessKey for the one
-  // place they actually type it).
+  // can outright refuse it (unknown or unconfigured harness). So this
+  // deliberately does NOT optimistically flip _harnessActive/re-render
+  // the way the rest of this class's setters do -- it just sends the
+  // request and waits for Brain's own harness_state reply (see
+  // _handleMessage) to say what actually happened. The toggle itself was
+  // already reverted synchronously by the change listener, so there's
+  // nothing stale left showing in the meantime.
   _setHarnessActive(active, name) {
-    this._send({ type: "set_harness_active", active, name, key: active ? this._harnessSwitchKey : "" });
+    this._send({ type: "set_harness_active", active, name });
   }
 
   _openHarnessConfirmModal(name) {
@@ -1844,16 +1831,6 @@ export class BrainClient {
     if (!name || name === NONE_HARNESS_NAME) return;
     if (!window.confirm(`Delete the saved harness "${name}"? This can't be undone.`)) return;
     this._send({ type: "delete_harness", name });
-  }
-
-  // The Harness settings' own "Switch key" field/button -- typed once
-  // here, not on every connection attempt (see _setHarnessActive's own
-  // comment). An empty field clears the key entirely (config.yaml's
-  // brain.harness_switch_key/harness.py's set_switch_key both treat ""
-  // the same way: no extra gate beyond the confirm dialog).
-  _saveHarnessKey() {
-    const key = this.harnessSwitchKeyEl?.value.trim() || "";
-    this._send({ type: "save_harness_key", key });
   }
 
   // Everything in the Memory section that depends on which backend is
@@ -2836,6 +2813,9 @@ export class BrainClient {
       case "voice_state":
         if (this.voiceToggleInputEl) this.voiceToggleInputEl.checked = !!data.active;
         break;
+      case "web_search_state":
+        if (this.webSearchToggleInputEl) this.webSearchToggleInputEl.checked = !!data.active;
+        break;
       case "memory_state":
         if (this.memoryToggleInputEl) this.memoryToggleInputEl.checked = !!data.active;
         break;
@@ -2942,14 +2922,6 @@ export class BrainClient {
         this._activeHarnessName = data.name || "";
         this._selectedHarnessName = data.selected || "";
         this._harnessAvailable = data.available || [];
-        this._harnessSwitchKey = data.switch_key || "";
-        // Pre-fill the settings field with the current value -- but not
-        // while the user has it focused (mid-edit, about to Save their
-        // own change), so a harness_state arriving from some other cause
-        // (e.g. toggling on/off) can't yank out what they're typing.
-        if (this.harnessSwitchKeyEl && document.activeElement !== this.harnessSwitchKeyEl) {
-          this.harnessSwitchKeyEl.value = this._harnessSwitchKey;
-        }
         this._renderHarnessState(); // also re-renders the dropdown itself, see its own comment
         break;
       case "harness_content":

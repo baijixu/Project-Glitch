@@ -44,6 +44,7 @@ import protocol
 import souls
 import tts_engines
 import voice_settings
+import web_search
 from config import load_config
 from llm import REQUEST_TIMEOUT_SEC, HarnessLLM, LocalLLM, NoneLLM, OllamaLLM, list_models, list_ollama_models
 from voice import FasterWhisperSTT, NoneTTS, RemoteTTS
@@ -77,36 +78,6 @@ ROLEPLAY_LLM_ENGINE_NAME = "Ollama"
 # on, the same as llm_engines.py already is for LLM engines.
 _HARNESS_CONFIGS: dict = {}
 
-# A second, separate secret gating only the escalation into harness mode,
-# not the whole connection the way brain.auth_token does. Deliberately
-# distinct from auth_token: an authenticated Renderer is already trusted
-# to chat as the user, rewrite her persona, install avatars, etc, but
-# connecting her to an external agent harness (bypassing her profile/
-# soul/LLM engine entirely) is a bigger step than any other
-# settings-panel action, so it gets a gate of its own -- e.g. a shared
-# household device might reasonably carry the main auth_token while only
-# the person who actually manages the harness integration knows this one.
-#
-# Set via the Renderer's Harness settings (save_harness_key, persisted by
-# harness.py's set_switch_key so it survives a Brain restart) rather than
-# by hand-editing config.yaml every time -- config.yaml's own
-# brain.harness_switch_key is consulted only as a one-time seed at
-# startup, when nothing has ever been saved that way yet (see main()).
-# Once a Renderer has learned the current value (every harness_state
-# message includes it, the same way tts_engine_content/llm_engine_content
-# echo back a saved api_key), it resends it automatically on every
-# set_harness_active request -- so the *user* never retypes it, but Brain
-# still validates a real match on every single attempt, not just once at
-# setup time.
-#
-# None means no extra gate at all -- the confirmation dialog alone is
-# enough, matching this feature's original behavior before this key
-# existed. Only checked when *turning on* a harness; disconnecting always
-# works with no extra prompt, since returning to her normal, safer LLM
-# shouldn't be harder than it needs to be -- only the escalation is
-# gated, not the retreat from it.
-_HARNESS_SWITCH_KEY: str | None = None
-
 PING_INTERVAL_SEC = 15
 
 # How long to wait for the first message (must be `ready` carrying the
@@ -114,6 +85,16 @@ PING_INTERVAL_SEC = 15
 # opened the socket but never sent anything -- bounds how long a handler
 # task can sit open for a client that's just probing the port.
 AUTH_TIMEOUT_SEC = 10
+
+# Failed-auth throttling -- auth_token itself has no retry limit (a plain
+# string compare in _authenticate), so without this, anything able to open
+# a connection to this port (a compromised/malicious device on the LAN or
+# Tailscale tailnet, not just a stranger off the internet) could brute-force
+# it with unlimited attempts. AUTH_MAX_FAILURES wrong tokens from the same
+# IP locks that IP out for AUTH_LOCKOUT_SEC; a lockout doesn't even consume
+# a message once triggered, it fails immediately in _authenticate.
+AUTH_MAX_FAILURES = 5
+AUTH_LOCKOUT_SEC = 60
 
 # Defense-in-depth cap on the free-text fields saved to disk (profile
 # content, soul description/examples, engine name/endpoint/model/api_key --
@@ -156,6 +137,12 @@ _DEBUG_CONNECTIONS: set[websockets.ServerConnection] = set()
 # one happened to ask. Added/removed in handle_renderer, same lifecycle
 # as _DEBUG_CONNECTIONS.
 _RENDERER_CONNECTIONS: set[websockets.ServerConnection] = set()
+
+# Failed-auth counter per source IP, see AUTH_MAX_FAILURES/AUTH_LOCKOUT_SEC
+# above. Maps ip -> (failure_count, locked_until monotonic timestamp).
+# Never explicitly pruned -- realistic client counts on a home LAN/tailnet
+# are tiny, not worth the complexity of an eviction policy.
+_AUTH_FAILURES: dict[str, tuple[int, float]] = {}
 
 ENDPOINT_HEALTH_CHECK_INTERVAL_SEC = 20
 # Short and TCP-only on purpose -- this only needs to tell "something's
@@ -321,10 +308,10 @@ async def _send_harness_state(websocket: websockets.ServerConnection) -> None:
     active-harness file and saved-harness list fresh each call (not a
     cached value) so it's always accurate regardless of what just changed
     it. Shared by every handler that can change whether/which harness is
-    active, what the switch key is, or the saved list itself
-    (_handle_ready, _handle_set_harness_active, _handle_save_harness_key,
-    _handle_save_harness, _handle_delete_harness), so all of them stay in
-    sync by construction instead of by copy-pasted agreement.
+    active or the saved list itself (_handle_ready,
+    _handle_set_harness_active, _handle_save_harness,
+    _handle_delete_harness), so all of them stay in sync by construction
+    instead of by copy-pasted agreement.
     """
     active_harness_name = harness.read_active_harness()
     # While active, the selected one is by definition the active one --
@@ -338,7 +325,6 @@ async def _send_harness_state(websocket: websockets.ServerConnection) -> None:
                 active_harness_name,
                 selected_harness_name,
                 harness.list_harnesses(),
-                _HARNESS_SWITCH_KEY or "",
             )
         )
     )
@@ -386,29 +372,54 @@ async def handle_renderer(websocket: websockets.ServerConnection, brain: Brain, 
         print("[brain] renderer disconnected")
 
 
+def _auth_ip(websocket: websockets.ServerConnection) -> str:
+    return websocket.remote_address[0] if websocket.remote_address else "unknown"
+
+
+def _is_locked_out(ip: str) -> bool:
+    count, locked_until = _AUTH_FAILURES.get(ip, (0, 0.0))
+    return count >= AUTH_MAX_FAILURES and time.monotonic() < locked_until
+
+
+def _record_auth_failure(ip: str) -> None:
+    count = _AUTH_FAILURES.get(ip, (0, 0.0))[0] + 1
+    locked_until = time.monotonic() + AUTH_LOCKOUT_SEC if count >= AUTH_MAX_FAILURES else 0.0
+    _AUTH_FAILURES[ip] = (count, locked_until)
+    if count >= AUTH_MAX_FAILURES:
+        print(f"[brain] auth lockout: {ip} failed {count} times, locked {AUTH_LOCKOUT_SEC}s")
+
+
 async def _authenticate(websocket: websockets.ServerConnection, auth_token: str | None) -> bool:
     """Gates every message type on this connection, not just the ones that
     happen to check a credential themselves -- the whole protocol is only
     reachable after this passes. Requires the connection's very first
     message to be `ready` carrying a matching `token` field; anything else
     (wrong token, wrong message type, malformed JSON, nothing sent within
-    AUTH_TIMEOUT_SEC) fails closed. Skipped entirely when no auth_token is
-    configured (returns True immediately without consuming a message) --
-    a strictly localhost-only setup with nothing else able to reach this
-    port has nothing to check a token against.
+    AUTH_TIMEOUT_SEC) fails closed and counts as a failure toward that IP's
+    lockout (see AUTH_MAX_FAILURES/AUTH_LOCKOUT_SEC). Skipped entirely when
+    no auth_token is configured (returns True immediately without consuming
+    a message) -- a strictly localhost-only setup with nothing else able to
+    reach this port has nothing to check a token against.
     """
     if not auth_token:
         return True
+    ip = _auth_ip(websocket)
+    if _is_locked_out(ip):
+        return False
     try:
         raw = await asyncio.wait_for(websocket.recv(), timeout=AUTH_TIMEOUT_SEC)
     except (ConnectionClosed, TimeoutError):
+        _record_auth_failure(ip)
         return False
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
+        _record_auth_failure(ip)
         return False
     if data.get("type") != protocol.READY or data.get("token") != auth_token:
+        _record_auth_failure(ip)
         return False
+    _AUTH_FAILURES.pop(ip, None)
     # This first message doubles as the normal `ready` handshake -- handle
     # it now rather than dropping it, so an authenticated Renderer still
     # gets its profiles/souls/avatars lists exactly as before.
@@ -475,6 +486,8 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
         _handle_set_roleplay_active(data, brain)
     elif msg_type == protocol.SET_VOICE_ACTIVE:
         voice_settings.set_voice_active(bool(data.get("active")))
+    elif msg_type == protocol.SET_WEB_SEARCH_ACTIVE:
+        web_search.set_active(bool(data.get("active")))
     elif msg_type == protocol.SET_MEMORY_ACTIVE:
         memory.set_memory_active(bool(data.get("active")))
     elif msg_type == protocol.CLEAR_MEMORY:
@@ -526,8 +539,6 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
         await _handle_set_harness_active(websocket, data, brain)
     elif msg_type == protocol.SELECT_HARNESS:
         await _handle_select_harness(websocket, data)
-    elif msg_type == protocol.SAVE_HARNESS_KEY:
-        await _handle_save_harness_key(websocket, data)
     elif msg_type == protocol.SAVE_HARNESS:
         await _handle_save_harness(websocket, data)
     elif msg_type == protocol.GET_HARNESS:
@@ -551,6 +562,7 @@ async def _handle_ready(websocket: websockets.ServerConnection, data: dict) -> N
     await websocket.send(json.dumps(protocol.avatars(avatars.list_avatars())))
     await websocket.send(json.dumps(protocol.roleplay_state(profiles.read_roleplay_active())))
     await websocket.send(json.dumps(protocol.voice_state(voice_settings.read_voice_active())))
+    await websocket.send(json.dumps(protocol.web_search_state(web_search.read_active())))
     await websocket.send(json.dumps(protocol.memory_state(memory.read_memory_active())))
     await websocket.send(json.dumps(protocol.memory_provider_state(memory.read_provider())))
     hindsight_cfg = memory.read_hindsight_config()
@@ -1175,41 +1187,21 @@ async def _handle_set_harness_active(websocket: websockets.ServerConnection, dat
     """Always replies with the true post-attempt harness_state, success or
     failure -- this used to be silent (no reply at all), which meant the
     Renderer's own optimistic toggle just stayed wrong forever if
-    _build_harness_llm returned None (unknown/unconfigured harness). Now
-    that turning a harness on can also fail on a wrong/missing switch key,
-    that gap would otherwise show the toggle as "on" for a connection
-    attempt Brain actually refused -- a reply the Renderer can resync from
-    closes both cases the same way.
+    _build_harness_llm returned None (unknown/unconfigured harness). A
+    reply the Renderer can resync from closes that gap.
     """
     active = bool(data.get("active"))
     name = data.get("name", "")
     if active:
-        # A second, separate secret from the connection's own auth_token --
-        # see _HARNESS_SWITCH_KEY's module-level comment for why. The
-        # Renderer sends this automatically (it learned the current value
-        # from a prior harness_state, see save_harness_key/harness_state in
-        # protocol.md) rather than making the user retype it on every
-        # connection attempt, but Brain still validates it fresh on every
-        # single request -- a Renderer that never learned the current key
-        # (or learned a since-changed one) still gets refused here exactly
-        # as if a human had typed the wrong thing. Only checked when
-        # turning a harness ON; the else branch below (turning one off)
-        # never asks for it.
-        if _HARNESS_SWITCH_KEY and data.get("key") != _HARNESS_SWITCH_KEY:
-            await _debug_log(websocket, "harness", f"refused to activate harness {name!r}: wrong or missing switch key")
-            print(f"[brain] refused to activate harness {name!r}: wrong or missing harness switch key")
+        harness_llm = _build_harness_llm(name)
+        if harness_llm is not None:
+            brain.llm = harness_llm
+            harness.set_active_harness(name)
+            harness.set_selected_harness_name(name)
+            await _debug_log(websocket, "harness", f"connected to harness {name!r}")
+            print(f"[brain] plugged into harness {name!r} -- her profile/soul/LLM engine are bypassed while this is active")
         else:
-            harness_llm = _build_harness_llm(name)
-            if harness_llm is not None:
-                brain.llm = harness_llm
-                harness.set_active_harness(name)
-                harness.set_selected_harness_name(name)
-                await _debug_log(websocket, "harness", f"connected to harness {name!r}")
-                print(
-                    f"[brain] plugged into harness {name!r} -- her profile/soul/LLM engine are bypassed while this is active"
-                )
-            else:
-                await _debug_log(websocket, "harness", f"couldn't activate harness {name!r} (unknown or unconfigured)")
+            await _debug_log(websocket, "harness", f"couldn't activate harness {name!r} (unknown or unconfigured)")
     else:
         await _debug_log(websocket, "harness", "disconnected from harness")
         harness.set_active_harness("")
@@ -1290,25 +1282,6 @@ async def _handle_delete_harness(websocket: websockets.ServerConnection, data: d
         harness.set_selected_harness_name("")
     await _send_harness_state(websocket)
 
-
-async def _handle_save_harness_key(websocket: websockets.ServerConnection, data: dict) -> None:
-    """Sets or clears (empty key) _HARNESS_SWITCH_KEY, persists it so it
-    survives a restart, and replies with harness_state so every connected
-    Renderer -- not just the one that saved it -- learns the new value to
-    send automatically on its next set_harness_active. Anyone who can
-    reach this (i.e. any already-authenticated connection) can set/change
-    it, same trust level as every other settings-panel action; see
-    main()'s own WARNING about what an authenticated connection can
-    already do.
-    """
-    global _HARNESS_SWITCH_KEY
-    key = data.get("key", "")
-    if _fields_too_long(key):
-        return
-    harness.set_switch_key(key)
-    _HARNESS_SWITCH_KEY = key or None
-    print(f"[brain] harness switch key {'updated' if key else 'cleared'}")
-    await _send_harness_state(websocket)
 
 
 async def _handle_save_hindsight_config(data: dict) -> None:
@@ -1635,7 +1608,9 @@ async def _reply_to(
 
     llm_start = time.monotonic()
     try:
-        reply_text, mood = await asyncio.to_thread(brain.llm.reply, text, image_b64, image_mime)
+        reply_text, mood = await asyncio.to_thread(
+            brain.llm.reply, text, image_b64, image_mime, web_search.read_active()
+        )
     except Exception as exc:
         # No Brain -> Renderer error message type exists yet (protocol.md's
         # `error` is Renderer -> Brain only) -- surfacing this as speak_text
@@ -1767,7 +1742,6 @@ async def _maybe_retain_memory(websocket: websockets.ServerConnection, user_text
 
 
 async def main() -> None:
-    global _HARNESS_SWITCH_KEY
     config = load_config()
     brain_cfg = config["brain"]
     host = brain_cfg.get("host", "localhost")
@@ -1797,11 +1771,11 @@ async def main() -> None:
     # set up) is what's actually used regardless. The saved-via-the-app
     # config always wins once it exists; config.yaml's own block is only a
     # one-time seed for a machine that's never had one saved yet -- same
-    # pattern as harness_switch_key just below. Seeding also writes the
-    # seed straight into the saved file (not just into the live client),
-    # so the Settings panel's Memory Server fields show real values on
-    # first connect instead of looking unconfigured when it's actually
-    # working.
+    # pattern as harness's own saved-list migration just below. Seeding
+    # also writes the seed straight into the saved file (not just into
+    # the live client), so the Settings panel's Memory Server fields show
+    # real values on first connect instead of looking unconfigured when
+    # it's actually working.
     had_saved_provider = memory.has_saved_provider()
     hindsight_cfg = memory.read_hindsight_config() or brain_cfg.get("hindsight") or {}
     if hindsight_cfg.get("api_url"):
@@ -1817,6 +1791,15 @@ async def main() -> None:
         # choice always wins, same as harness's own saved-list migration.
         if not had_saved_provider:
             memory.set_provider(memory.HINDSIGHT_PROVIDER)
+
+    # Optional, same graceful-degradation reasoning as hindsight above --
+    # config.yaml-only (not Settings-managed the way memory's Hindsight
+    # connection is), since this is just a SearXNG base URL, not a
+    # multi-field connection with its own secret worth a saved-file
+    # round trip. The Settings panel only gets the on/off toggle.
+    web_search_cfg = brain_cfg.get("web_search") or {}
+    if web_search_cfg.get("searxng_url"):
+        web_search.configure(web_search_cfg["searxng_url"])
 
     _HARNESS_CONFIGS.update(brain_cfg.get("harness") or {})
     # One-time migration: config.yaml's brain.harness block used to be the
@@ -1837,10 +1820,6 @@ async def main() -> None:
                 migrated_name, harness_cfg["endpoint"], harness_cfg.get("model") or "", harness_cfg.get("api_key") or ""
             )
             print(f"[brain] migrated config.yaml's brain.harness.{key} to a saved harness named {migrated_name!r}")
-    # The saved-via-the-app value (harness.py's harness_switch_key.txt)
-    # always wins once it exists; config.yaml's own harness_switch_key is
-    # only a one-time seed for a machine that's never had one saved yet.
-    _HARNESS_SWITCH_KEY = harness.read_switch_key() or brain_cfg.get("harness_switch_key") or None
 
     # A harness connection (brain/harness.py) persists across restarts the
     # same as a saved profile/soul/engine -- but its config.yaml block

@@ -88,7 +88,8 @@ def configure(api_url: str, bank_id: str, api_key: str | None = None) -> None:
 def read_hindsight_config() -> dict:
     """The saved {api_url, api_key, bank_id}, or {} if never saved --
     config.yaml's own brain.hindsight block is only a one-time seed for
-    this, read directly by main.py, same pattern as harness_switch_key.
+    this, read directly by main.py, same pattern as a saved harness
+    overriding its own config.yaml seed once one exists.
     """
     if HINDSIGHT_CONFIG_PATH.exists():
         return json.loads(HINDSIGHT_CONFIG_PATH.read_text(encoding="utf-8"))

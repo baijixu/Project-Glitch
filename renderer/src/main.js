@@ -21,6 +21,7 @@ const cameraVisionButtonEl = document.getElementById("camera-vision-button");
 const desktopVisionButtonEl = document.getElementById("desktop-vision-button");
 const micButtonEl = document.getElementById("mic-button");
 const voiceToggleInputEl = document.getElementById("voice-toggle");
+const webSearchToggleInputEl = document.getElementById("web-search-toggle");
 const cameraEnabledToggleInputEl = document.getElementById("camera-enabled-toggle");
 const desktopCaptureEnabledToggleInputEl = document.getElementById("desktop-capture-enabled-toggle");
 const micEnabledToggleInputEl = document.getElementById("mic-enabled-toggle");
@@ -144,8 +145,6 @@ const roleplayConfirmModalBackdropEl = document.getElementById("roleplay-confirm
 const roleplayConfirmThinkToggleEl = document.getElementById("roleplay-confirm-think-toggle");
 const roleplayConfirmCancelButtonEl = document.getElementById("roleplay-confirm-cancel-button");
 const roleplayConfirmEnableButtonEl = document.getElementById("roleplay-confirm-enable-button");
-const harnessSwitchKeyEl = document.getElementById("harness-switch-key");
-const saveHarnessKeyButtonEl = document.getElementById("save-harness-key-button");
 const debugToggleInputEl = document.getElementById("debug-toggle");
 const downloadDebugLogButtonEl = document.getElementById("download-debug-log-button");
 const restartBrainButtonEl = document.getElementById("restart-brain-button");
@@ -317,6 +316,7 @@ brain = new BrainClient({
   micButtonEl,
   micLabelEl,
   voiceToggleInputEl,
+  webSearchToggleInputEl,
   cameraEnabledToggleInputEl,
   desktopCaptureEnabledToggleInputEl,
   micEnabledToggleInputEl,
@@ -433,8 +433,6 @@ brain = new BrainClient({
   roleplayConfirmThinkToggleEl,
   roleplayConfirmCancelButtonEl,
   roleplayConfirmEnableButtonEl,
-  harnessSwitchKeyEl,
-  saveHarnessKeyButtonEl,
   debugToggleInputEl,
   downloadDebugLogButtonEl,
   restartBrainButtonEl,

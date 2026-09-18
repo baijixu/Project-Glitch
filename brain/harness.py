@@ -30,7 +30,6 @@ from names import sanitize_name
 
 ACTIVE_HARNESS_PATH = Path(__file__).parent / "active_harness.txt"
 SELECTED_HARNESS_PATH = Path(__file__).parent / "selected_harness.txt"
-SWITCH_KEY_PATH = Path(__file__).parent / "harness_switch_key.txt"
 HARNESSES_DIR = Path(__file__).parent / "harnesses"
 
 # Reserved -- means "not plugged into any harness, using her own profile/
@@ -107,23 +106,5 @@ def read_selected_harness_name() -> str:
     return ""
 
 
-def set_switch_key(key: str) -> None:
-    """The secret required to turn a harness ON (see main.py's
-    _HARNESS_SWITCH_KEY) -- persisted here, set via the Renderer's Harness
-    settings, so it survives a Brain restart and the Renderer only ever
-    has to send it automatically on every set_harness_active request
-    instead of the user retyping it each time (protocol.md's
-    save_harness_key/harness_state). key="" clears it, meaning "no extra
-    gate beyond the confirm dialog", same as config.yaml's own null.
-    """
-    SWITCH_KEY_PATH.write_text(key, encoding="utf-8")
 
 
-def read_switch_key() -> str:
-    """"" if no switch key has ever been saved via the app -- callers
-    should fall back to config.yaml's own brain.harness_switch_key in
-    that case (a one-time seed for the very first run, see main()).
-    """
-    if SWITCH_KEY_PATH.exists():
-        return SWITCH_KEY_PATH.read_text(encoding="utf-8").strip()
-    return ""

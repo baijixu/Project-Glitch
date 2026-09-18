@@ -52,24 +52,21 @@ brain:
   # hindsight:
   #   api_url: http://localhost:8899
   #   bank_id: glitch-native
-  # A second, separate secret from auth_token above -- required to turn a
-  # harness ON (not to disconnect from one). Worth setting even on a
-  # strictly-localhost setup: auth_token (or its absence, when
-  # localhost-only) governs who can talk to Glitch at all, but connecting
-  # her to an external agent harness bypasses her profile/soul/LLM engine
-  # entirely, which is a bigger step than anything else in the settings
-  # panel -- e.g. a shared household device might reasonably know
-  # auth_token while only the person who set up the harness integration
-  # knows this one. Leave null to skip this extra gate (the confirm
-  # dialog alone is enough).
   #
-  # This is only a one-time seed: once a value has been saved via the
-  # Renderer's own Harness settings (which is the normal way to set/change
-  # it day to day -- see protocol.md's save_harness_key), that saved value
-  # (brain/harness_switch_key.txt) takes over permanently and this line is
-  # no longer read. Safe to leave here anyway, or delete it once you've
-  # set one through the app.
-  harness_switch_key: null
+  # Optional -- lets Glitch's own LLM path (not just a Hermes harness,
+  # which already has its own web/session search when active) search the
+  # web via tool-calling (brain/web_search.py). Needs a SearXNG instance
+  # (https://docs.searxng.org/) with JSON output enabled -- disabled by
+  # default in a stock SearXNG deployment (search.formats only lists
+  # html), needs an explicit `search: formats: [html, json]` in that
+  # instance's own settings.yml. Leave this whole block out and
+  # web_search.search() always returns [] -- no crash, the Settings
+  # panel's toggle just has nothing to actually turn on. Only a
+  # config.yaml setting, not Settings-managed the way Hindsight's
+  # connection is -- Settings only gets the on/off toggle.
+  #
+  # web_search:
+  #   searxng_url: http://localhost:8080
   # Optional, same reasoning as llm above -- harnesses are a fully
   # open-ended list managed from the Settings panel's Harness section now
   # (add/edit/delete any harness by name there, no config.yaml entry

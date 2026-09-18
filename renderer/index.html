@@ -156,6 +156,19 @@
             <button id="download-memory-button" class="settings-action-button">Download Memory</button>
             <button id="clear-memory-button" class="settings-action-button danger">Clear Memory</button>
           </section>
+          <section id="web-search-section" class="settings-section">
+            <label class="settings-toggle-row">
+              <span>Web Access</span>
+              <span class="settings-toggle">
+                <input type="checkbox" id="web-search-toggle" class="settings-toggle-input" />
+                <span class="settings-toggle-track"></span>
+              </span>
+            </label>
+            <p class="settings-hint">
+              Lets Glitch search the web when she needs current information, instead of guessing.
+              Requires a SearXNG instance configured in config.yaml.
+            </p>
+          </section>
           <section class="settings-section">
             <h3>Avatar</h3>
             <p class="settings-hint">
@@ -209,9 +222,6 @@
             <button id="new-harness-button" class="icon-button" title="New harness">➕</button>
             <button id="delete-harness-button" class="icon-button danger" title="Delete harness">🗑️</button>
           </div>
-          <label for="harness-switch-key">Switch key (required to connect -- set once)</label>
-          <input id="harness-switch-key" type="password" autocomplete="off" class="settings-text-input" />
-          <button id="save-harness-key-button" class="settings-action-button">Save Switch Key</button>
         </section>
         <section id="soul-user-editor-section" class="settings-section">
           <h3>Soul &amp; User Files</h3>
@@ -220,6 +230,13 @@
             your user.md -- without going through the named saved souls/profiles above.
           </p>
           <button id="open-soul-user-editor-button" class="settings-action-button">Edit Soul &amp; User Files</button>
+        </section>
+        <section id="notes-section" class="settings-section">
+          <p class="settings-hint">
+            A free-form scratchpad for your own ideas and todos -- never read by Glitch or sent
+            anywhere. Saved to a plain text file (brain/notes.md).
+          </p>
+          <button id="open-notes-button" class="settings-action-button">Notes</button>
         </section>
         <section id="debug-section" class="settings-section">
           <label class="settings-toggle-row">
@@ -242,13 +259,6 @@
             from disk, and reconnects automatically. Ends her current conversation history.
           </p>
           <button id="restart-brain-button" class="settings-action-button danger">Restart Brain</button>
-        </section>
-        <section id="notes-section" class="settings-section">
-          <p class="settings-hint">
-            A free-form scratchpad for your own ideas and todos -- never read by Glitch or sent
-            anywhere. Saved to a plain text file (brain/notes.md).
-          </p>
-          <button id="open-notes-button" class="settings-action-button">Notes</button>
         </section>
       </div>
     </aside>
