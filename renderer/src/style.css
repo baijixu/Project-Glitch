@@ -236,7 +236,7 @@ body.overlay-chat-active #overlay-resend-button {
 
 #settings-panel.open ~ #chat-bar,
 #settings-panel.open ~ #side-actions {
-  right: calc(min(300px, 80vw) + 12px);
+  right: calc(min(380px, 90vw) + 12px);
 }
 
 /* Camera/desktop/mic, moved off the chat bar into their own floating
@@ -594,6 +594,7 @@ body.overlay-chat-active #overlay-resend-button {
   right: 0;
   --offscreen: 100%;
   box-shadow: -2px 0 16px rgba(0, 0, 0, 0.4);
+  width: min(380px, 90vw);
 }
 
 .slide-panel.open {
