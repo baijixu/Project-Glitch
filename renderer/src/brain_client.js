@@ -55,6 +55,28 @@ const EXPRESSION_FADE_SEC = 0.3;
 // deleted or edited.
 const DEFAULT_PROFILE_NAME = "Default";
 const DEFAULT_SOUL_NAME = "Default";
+
+// brain/profiles.py stores one freeform markdown blob per profile, not
+// separate fields (see its own docstring) -- it's meant to be loaded
+// straight into an LLM prompt, not parsed. The modal still edits it as two
+// fields (identity/scenario) for a friendlier editing experience, so this
+// marker joins/splits between that single stored blob and the two textareas.
+// Chosen to look nothing like prose a user would actually type in either
+// field, so splitting back out doesn't false-trigger on their own text.
+const PROFILE_SCENARIO_MARKER = "\n\n=== SCENARIO ===\n";
+
+function _combineProfileContent(identity, scenario) {
+  return scenario ? `${identity}${PROFILE_SCENARIO_MARKER}${scenario}` : identity;
+}
+
+// Profiles saved before this split existed have no marker at all -- their
+// whole blob lands in `identity` with an empty `scenario`, rather than
+// losing anything.
+function _splitProfileContent(content) {
+  const idx = content.indexOf(PROFILE_SCENARIO_MARKER);
+  if (idx === -1) return { identity: content, scenario: "" };
+  return { identity: content.slice(0, idx), scenario: content.slice(idx + PROFILE_SCENARIO_MARKER.length) };
+}
 // Same reserved-name pattern, for speech engines (brain/tts_engines.py's
 // NONE_NAME) -- means nothing configured/selected yet (no audio at all),
 // not a saved engine with its own endpoint/api_key; always prepended to
@@ -196,7 +218,8 @@ export class BrainClient {
     profileModalBackdropEl,
     profileModalTitleEl,
     profileNameEl,
-    profileContentEl,
+    profileIdentityEl,
+    profileScenarioEl,
     profileSaveButtonEl,
     profileCancelButtonEl,
     soulSelectEl,
@@ -464,7 +487,8 @@ export class BrainClient {
     this.profileModalBackdropEl = profileModalBackdropEl;
     this.profileModalTitleEl = profileModalTitleEl;
     this.profileNameEl = profileNameEl;
-    this.profileContentEl = profileContentEl;
+    this.profileIdentityEl = profileIdentityEl;
+    this.profileScenarioEl = profileScenarioEl;
     this.profileSaveButtonEl = profileSaveButtonEl;
     this.profileCancelButtonEl = profileCancelButtonEl;
     this._profileNames = [];
@@ -2028,7 +2052,9 @@ export class BrainClient {
     if (!this.profileModalBackdropEl) return;
     if (this.profileModalTitleEl) this.profileModalTitleEl.textContent = name ? "Edit Profile" : "New Profile";
     if (this.profileNameEl) this.profileNameEl.value = name;
-    if (this.profileContentEl) this.profileContentEl.value = content;
+    const { identity, scenario } = _splitProfileContent(content);
+    if (this.profileIdentityEl) this.profileIdentityEl.value = identity;
+    if (this.profileScenarioEl) this.profileScenarioEl.value = scenario;
     this.profileModalBackdropEl.hidden = false;
   }
 
@@ -2038,8 +2064,10 @@ export class BrainClient {
 
   _saveProfile() {
     const name = this.profileNameEl?.value.trim() || "";
-    const content = this.profileContentEl?.value.trim() || "";
-    if (!name || !content) return;
+    const identity = this.profileIdentityEl?.value.trim() || "";
+    const scenario = this.profileScenarioEl?.value.trim() || "";
+    if (!name || (!identity && !scenario)) return;
+    const content = _combineProfileContent(identity, scenario);
     // Saving under the same name Edit opened with overwrites that
     // profile; changing the name instead saves as a new one alongside
     // it -- both are just save_profile, no separate "update" message.
@@ -2453,6 +2481,19 @@ export class BrainClient {
   // it's known asynchronously (see _sendRecording/user_transcript) --
   // right now only a voice message's placeholder needs this, since every
   // other entry already has its final text at the moment it's added.
+  // Label shown above a bubble in both the History panel and Chat Bubbles
+  // Over Avatar -- "" for "system" (memory_learned notices, see
+  // .history-system/.overlay-bubble.system) since those read as a note
+  // from neither party, not something either "said". Glitch's own label
+  // follows whatever soul is actually active so a custom soul's own name
+  // shows up here too, not a hardcoded "Glitch" -- same fallback-to-
+  // DEFAULT_SOUL_NAME pattern used everywhere else _activeSoulName is read.
+  _displayNameFor(role) {
+    if (role === "user") return "You";
+    if (role === "glitch") return this._activeSoulName !== DEFAULT_SOUL_NAME ? this._activeSoulName : "Glitch";
+    return "";
+  }
+
   _addHistoryEntry(role, text, thumbnailUrl) {
     const timeText = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     // Built before rendering (not after, the way this used to work) so the
@@ -2517,7 +2558,14 @@ export class BrainClient {
     if (!this.bubbleOverlayEl || !text) return null;
     const bubble = document.createElement("div");
     bubble.className = `overlay-bubble ${role}`;
-    bubble.textContent = text;
+    const displayName = this._displayNameFor(role);
+    if (displayName) {
+      const nameEl = document.createElement("div");
+      nameEl.className = "overlay-bubble-name";
+      nameEl.textContent = displayName;
+      bubble.appendChild(nameEl);
+    }
+    bubble.appendChild(document.createTextNode(text));
     this.bubbleOverlayEl.appendChild(bubble);
     requestAnimationFrame(() => bubble.classList.add("visible")); // next frame, so the opacity transition actually plays instead of snapping straight to visible
     this._trimOverlayStack();
@@ -2556,6 +2604,14 @@ export class BrainClient {
     const { role, text, timeText } = entry;
     const group = document.createElement("div");
     group.className = `history-group history-${role}`;
+
+    const displayName = this._displayNameFor(role);
+    if (displayName) {
+      const nameEl = document.createElement("div");
+      nameEl.className = "history-name";
+      nameEl.textContent = displayName;
+      group.appendChild(nameEl);
+    }
 
     const bubble = document.createElement("div");
     bubble.className = "history-bubble";

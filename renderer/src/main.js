@@ -64,7 +64,8 @@ const deleteProfileButtonEl = document.getElementById("delete-profile-button");
 const profileModalBackdropEl = document.getElementById("profile-modal-backdrop");
 const profileModalTitleEl = document.getElementById("profile-modal-title");
 const profileNameEl = document.getElementById("profile-name");
-const profileContentEl = document.getElementById("profile-content");
+const profileIdentityEl = document.getElementById("profile-identity");
+const profileScenarioEl = document.getElementById("profile-scenario");
 const profileSaveButtonEl = document.getElementById("profile-save-button");
 const profileCancelButtonEl = document.getElementById("profile-cancel-button");
 const soulSelectEl = document.getElementById("soul-select");
@@ -353,7 +354,8 @@ brain = new BrainClient({
   profileModalBackdropEl,
   profileModalTitleEl,
   profileNameEl,
-  profileContentEl,
+  profileIdentityEl,
+  profileScenarioEl,
   profileSaveButtonEl,
   profileCancelButtonEl,
   soulSelectEl,

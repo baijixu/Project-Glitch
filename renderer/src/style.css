@@ -199,6 +199,13 @@ body.overlay-chat-active #overlay-resend-button {
   font-size: 12px;
 }
 
+.overlay-bubble-name {
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.7;
+  margin-bottom: 2px;
+}
+
 #chat-bar {
   position: fixed;
   left: clamp(8px, 3vw, 20px);
@@ -956,6 +963,14 @@ body.overlay-chat-active #overlay-resend-button {
   display: flex;
   flex-direction: column;
   max-width: 88%;
+}
+
+.history-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: #8a8fa0;
+  margin-bottom: 3px;
+  padding: 0 2px;
 }
 
 .history-bubble {

@@ -268,11 +268,17 @@
         <h2 id="profile-modal-title">New Profile</h2>
         <label for="profile-name">Profile name</label>
         <input id="profile-name" type="text" placeholder="e.g. Brave Knight" autocomplete="off" />
-        <label for="profile-content">Character &amp; scenario</label>
+        <label for="profile-identity">Who you're playing as</label>
         <textarea
-          id="profile-content"
-          rows="8"
-          placeholder="Describe who you're playing as and the scenario you want to play out..."
+          id="profile-identity"
+          rows="5"
+          placeholder="Describe the character you'll be -- name, background, personality..."
+        ></textarea>
+        <label for="profile-scenario">Scenario</label>
+        <textarea
+          id="profile-scenario"
+          rows="5"
+          placeholder="Describe the setting and situation you want to play out..."
         ></textarea>
         <div class="modal-actions">
           <button id="profile-cancel-button" class="modal-button secondary">Cancel</button>
