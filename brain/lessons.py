@@ -256,12 +256,23 @@ def log_rating(user_text: str, reply_text: str, rating: str, note: str, roleplay
 # -- Distillation -------------------------------------------------------------
 
 
-def parse_distillation(raw: str, lessons: list[dict], candidates: list[dict]) -> dict | None:
+# Without the user's own words there's no telling WHAT about a reply was good
+# or bad, so a bare rating may only nudge a lesson that already exists --
+# it can't create, confirm, revise or retire one. (A bare thumbs-up on a
+# reply full of headlines once produced an approved "give multi-topic news
+# and sports updates" lesson for someone who doesn't care about sports.)
+NOTE_REQUIRED_ACTIONS = ("create", "confirm", "revise", "retire")
+
+
+def parse_distillation(raw: str, lessons: list[dict], candidates: list[dict], has_note: bool = True) -> dict | None:
     """Validates the model's answer to LocalLLM.propose_lesson into one
     normalized action dict, or None for "nothing to learn" / anything
     unusable -- models return messy JSON (code fences, prose around it,
     out-of-range indexes), and a bad answer must never turn into a bad
     lesson, so anything doubtful is dropped rather than repaired.
+
+    `has_note` False (a bare rating, no reason given) drops any action that
+    would add or rewrite a lesson -- see NOTE_REQUIRED_ACTIONS.
 
     `target` in the model's answer is a 1-based index into the numbered list
     it was shown (lessons for strengthen/weaken/revise/retire, candidates for
@@ -281,6 +292,8 @@ def parse_distillation(raw: str, lessons: list[dict], candidates: list[dict]) ->
         return None
     action = str(data.get("action", "")).strip().lower()
     if action not in ACTIONS or action == "none":
+        return None
+    if not has_note and action in NOTE_REQUIRED_ACTIONS:
         return None
 
     def pick(pool: list[dict]) -> dict | None:

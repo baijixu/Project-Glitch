@@ -56,9 +56,9 @@ RECALL_MAX_TOKENS = 800
 # everything -- a live bank filled up with descriptions of camera frames,
 # news headlines from searches, and endless restatements of what Glitch
 # herself is, none of which is a memory of the *user*. Applied by
-# ensure_bank() only when the bank has no mission of its own, so it never
-# overwrites one someone set by hand.
-RETAIN_MISSION = (
+# ensure_bank() when the bank has no mission or still has an earlier default
+# of ours, so it never overwrites one someone set by hand.
+_MISSION_V1 = (
     "Keep only durable, useful facts about the user: who they are, what they are building or "
     "working on, their preferences and interests, people in their life, decisions they have made, "
     "and corrections they have given the assistant. Do not keep: descriptions of images, screens "
@@ -66,6 +66,23 @@ RETAIN_MISSION = (
     "interest in them); anything about the assistant itself, such as what it is or what it can do; "
     "small talk; or temporary states and debugging chatter."
 )
+
+RETAIN_MISSION = (
+    "Keep only durable, useful facts about the user: who they are, what they are building or "
+    "working on, their preferences and interests, people in their life, decisions they have made, "
+    "and corrections they have given the assistant. When the user engages with a topic (news, "
+    "sports, music, anything), record THAT they discussed it, asked about it, or how they feel about "
+    "it -- never the facts of the topic itself, such as what was announced or who won. A topic the "
+    "assistant brings up that the user never engages with is not worth keeping. Do not keep: "
+    "descriptions of images, screens or camera frames; news headlines or search results; anything "
+    "about the assistant itself, such as what it is or what it can do; small talk; or temporary "
+    "states and debugging chatter."
+)
+
+# Earlier versions of the default above. A bank still carrying one of these
+# was never customized, so ensure_bank() upgrades it to the current default --
+# anything else there was written by hand and is left alone.
+_PREVIOUS_DEFAULT_MISSIONS = (_MISSION_V1,)
 
 _client: Hindsight | None = None
 _bank_id = ""
@@ -146,15 +163,19 @@ async def ensure_bank() -> None:
 
 async def _apply_default_retain_mission() -> None:
     """Sets RETAIN_MISSION on the bank unless it already has a retain_mission
-    of its own. Best-effort: a server that has bank-config writes disabled
+    of someone's own -- one that is neither empty, nor the current default,
+    nor an earlier default of ours (those get upgraded). Best-effort: a
+    server that has bank-config writes disabled
     (HINDSIGHT_API_ENABLE_BANK_CONFIG_API=false) just keeps its own extraction
     behavior -- that must never stop the bank from being usable.
     """
     try:
         config = await _client.aget_bank_config(_bank_id)
-        if (config.get("overrides") or {}).get("retain_mission"):
-            return
-        await _client.aupdate_bank_config(_bank_id, retain_mission=RETAIN_MISSION)
+        current = (config.get("overrides") or {}).get("retain_mission")
+        if current and current != RETAIN_MISSION and current not in _PREVIOUS_DEFAULT_MISSIONS:
+            return  # written by hand -- not ours to change
+        if current != RETAIN_MISSION:
+            await _client.aupdate_bank_config(_bank_id, retain_mission=RETAIN_MISSION)
     except Exception as exc:
         print(f"[memory] couldn't set the default retain mission on bank {_bank_id!r}: {exc!r}")
 

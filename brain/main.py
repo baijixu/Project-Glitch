@@ -1512,7 +1512,7 @@ async def _learn_from_rating(
             [l["content"] for l in active],
             [c["content"] for c in candidates],
         )
-        action = lessons.parse_distillation(raw, active, candidates)
+        action = lessons.parse_distillation(raw, active, candidates, has_note=bool(note))
         if action is None:
             await _debug_log(websocket, "lessons", "nothing to learn from that rating", (time.monotonic() - start) * 1000)
             return

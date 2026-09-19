@@ -2763,9 +2763,12 @@ export class BrainClient {
   // try/catch same as the device-button prefs: losing this is harmless
   // (panel just starts empty next reload), not worth erroring the actual
   // send/reply flow over.
-  // 👍/👎 on one of her replies (history panel). A 👎 first opens a small
-  // note box -- a bare thumbs-down is vague ("too long? wrong? too formal?"),
-  // and the note is what lets Brain write a useful lesson from it. One
+  // 👍/👎 on one of her replies (history panel). Either one first opens a
+  // small note box -- a bare rating is vague (was it too long? wrong? or was
+  // the good part the topic, the tone, the length?), and the note is what
+  // lets Brain write a useful lesson from it (without one it can only nudge
+  // an existing lesson, see brain/lessons.py's NOTE_REQUIRED_ACTIONS). Send
+  // with the box left empty still records a plain rating. One
   // rating per reply: once rated, both buttons lock and show which was
   // picked (saved on the entry, so it survives a reload). Brain always logs
   // the rating; whether it also *learns* from it depends on the Settings
@@ -2789,8 +2792,8 @@ export class BrainClient {
     const noteInput = document.createElement("input");
     noteInput.type = "text";
     noteInput.maxLength = 300;
-    noteInput.placeholder = "What should she do differently? (optional)";
     noteInput.autocomplete = "off";
+    let pendingRating = null; // which button opened the box
     const sendButton = document.createElement("button");
     sendButton.textContent = "Send";
     noteForm.append(noteInput, sendButton);
@@ -2802,12 +2805,21 @@ export class BrainClient {
       down.classList.toggle("picked", entry.rating === "down");
       if (rated) noteForm.hidden = true;
     };
-    up.addEventListener("click", () => this._rateReply(entry, "up", ""));
-    down.addEventListener("click", () => {
-      noteForm.hidden = !noteForm.hidden;
-      if (!noteForm.hidden) noteInput.focus();
-    });
-    const submit = () => this._rateReply(entry, "down", noteInput.value.trim());
+    // Clicking the same button again closes the box; the other one switches it.
+    const openNote = (rating) => {
+      if (!noteForm.hidden && pendingRating === rating) {
+        noteForm.hidden = true;
+        return;
+      }
+      pendingRating = rating;
+      noteInput.placeholder =
+        rating === "up" ? "What did you like? A reason helps her learn (optional)" : "What should she do differently? (optional)";
+      noteForm.hidden = false;
+      noteInput.focus();
+    };
+    up.addEventListener("click", () => openNote("up"));
+    down.addEventListener("click", () => openNote("down"));
+    const submit = () => this._rateReply(entry, pendingRating, noteInput.value.trim());
     sendButton.addEventListener("click", submit);
     noteInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") submit();
@@ -2842,17 +2854,16 @@ export class BrainClient {
 
   // The over-avatar chat mode's 👍/👎 buttons -- rate her most recent reply.
   // There's no per-bubble button there (those bubbles ignore pointer events),
-  // and no inline note box, so a 👎 asks with a plain prompt instead.
+  // and no inline note box, so either rating asks for its reason with a plain
+  // prompt instead (cancelling the prompt cancels the rating).
   _rateLastReply(rating) {
     const entry = [...this._historyEntries].reverse().find((e) => e.role === "glitch" && e.text);
     if (!entry || entry.rating) return;
-    let note = "";
-    if (rating === "down") {
-      const answer = window.prompt("What should she do differently? (optional)");
-      if (answer === null) return;
-      note = answer.trim();
-    }
-    this._rateReply(entry, rating, note);
+    const answer = window.prompt(
+      rating === "up" ? "What did you like? A reason helps her learn (optional)" : "What should she do differently? (optional)",
+    );
+    if (answer === null) return;
+    this._rateReply(entry, rating, answer.trim());
   }
 
   _persistHistoryEntry(entry) {

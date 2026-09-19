@@ -209,7 +209,15 @@ _LESSON_SYSTEM_PROMPT = (
     "- \"retire\": an existing lesson is contradicted by this feedback and should be dropped (\"target\" = its number).\n"
     "- \"none\": nothing general can be learned (a one-off preference, an unclear rating, a factual mistake).\n"
     "Prefer \"none\" over inventing a weak lesson. Prefer strengthen/weaken/revise over creating a near-duplicate. "
-    "\"reason\" is one short sentence."
+    "\"reason\" is one short sentence.\n\n"
+    "Only use strengthen/weaken/revise/retire when that numbered lesson is DIRECTLY what the rating or note "
+    "is about -- never attach feedback to a loosely related lesson just because one exists. If the note "
+    "describes a different behavior than any existing lesson covers, that is a \"create\" (or \"none\" if it "
+    "isn't a general behavior rule).\n\n"
+    "IMPORTANT: if the user's note is \"(none)\", you do NOT know what they liked or disliked -- a bare rating "
+    "says nothing about WHICH part of the reply mattered. In that case only \"strengthen\", \"weaken\" or "
+    "\"none\" are allowed, and only when an existing lesson clearly explains the reply; otherwise answer \"none\". "
+    "Never guess a new lesson from a bare rating."
 )
 
 # The one tool offered when web search is on (main.py's _reply_to passes
