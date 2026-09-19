@@ -2077,7 +2077,7 @@ async def main() -> None:
     # round trip. The Settings panel only gets the on/off toggle.
     web_search_cfg = brain_cfg.get("web_search") or {}
     if web_search_cfg.get("searxng_url"):
-        web_search.configure(web_search_cfg["searxng_url"])
+        web_search.configure(web_search_cfg["searxng_url"], web_search_cfg.get("trusted_domains") or [])
 
     _HARNESS_CONFIGS.update(brain_cfg.get("harness") or {})
     # One-time migration: config.yaml's brain.harness block used to be the

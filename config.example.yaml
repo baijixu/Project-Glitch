@@ -67,6 +67,11 @@ brain:
   #
   # web_search:
   #   searxng_url: http://localhost:8080
+  #   # Optional: sites you consider official/reliable. Their results are
+  #   # labeled "trusted" and listed first. Results from platforms anyone can
+  #   # post to (YouTube, Reddit, TikTok...) are always labeled as such and
+  #   # listed last, whether or not you set this.
+  #   trusted_domains: [wikipedia.org, reuters.com]
   # Optional, same reasoning as llm above -- harnesses are a fully
   # open-ended list managed from the Settings panel's Harness section now
   # (add/edit/delete any harness by name there, no config.yaml entry
