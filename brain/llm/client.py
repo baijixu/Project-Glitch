@@ -316,6 +316,11 @@ class LocalLLM:
         self._soul = ""
         self._memory = ""
         self._lessons = ""
+        self._user_info = ""
+        # Whether the most recent reply() ran a web search -- read by main.py's
+        # _reply_to right after reply() returns, so what a search returned
+        # isn't saved as a memory of the user (see _maybe_retain_memory).
+        self.last_reply_used_web_search = False
         # Bumped by cancel_reply() -- see reply()'s check against it.
         self._reply_generation = 0
 
@@ -384,7 +389,11 @@ class LocalLLM:
                 return result["content"]
             working.append(result["raw_message"])
             for call in result["tool_calls"]:
-                output = _run_web_search_tool(call["arguments"]) if call["name"] == "web_search" else "Unknown tool."
+                if call["name"] == "web_search":
+                    self.last_reply_used_web_search = True
+                    output = _run_web_search_tool(call["arguments"])
+                else:
+                    output = "Unknown tool."
                 working.append({"role": "tool", "tool_call_id": call["id"], "content": output})
         return ""
 
@@ -419,6 +428,15 @@ class LocalLLM:
         fact gets extracted would defeat the point of extracting it live.
         """
         self._memory = memory_block.strip()
+
+    def set_user_info(self, user_info: str) -> None:
+        """Sets what the user wrote about themselves (brain/profiles.py's main
+        user.md -- their own file, not a role-play profile). Like set_lessons,
+        deliberately does NOT clear _history: it's additive context, not an
+        identity change. Set fresh every turn by main.py's _reply_to, and ""
+        during role-play.
+        """
+        self._user_info = user_info.strip()
 
     def set_lessons(self, lessons_block: str) -> None:
         """Sets what she's learned about how the user wants her to behave
@@ -462,6 +480,11 @@ class LocalLLM:
     def _system_prompt(self) -> str:
         personality = self._soul or DEFAULT_PERSONALITY
         parts = [personality, MOOD_TAG_INSTRUCTION, HONESTY_INSTRUCTION]
+        if self._user_info:
+            parts.append(
+                "About the user, in their own words (treat as true, and respect the preferences it "
+                f"states -- e.g. topics they do or don't care about):\n{self._user_info}"
+            )
         if self._lessons:
             # After the soul on purpose: these are the user's own stated
             # preferences, and should win over her default habits.
@@ -519,6 +542,7 @@ class LocalLLM:
         messages = [{"role": "system", "content": self._system_prompt()}, *self._history]
         tools = [WEB_SEARCH_TOOL] if web_search_enabled else None
         generation = self._reply_generation
+        self.last_reply_used_web_search = False
         raw_reply = self._complete(messages, MAX_REPLY_TOKENS, tools)
         if generation != self._reply_generation:
             return "", "neutral"  # cancelled via cancel_reply() while in flight -- discarded, never reaches _history
@@ -666,6 +690,8 @@ class OllamaLLM(LocalLLM):
         self._soul = ""
         self._memory = ""
         self._lessons = ""
+        self._user_info = ""
+        self.last_reply_used_web_search = False
         self._reply_generation = 0
 
     def _complete_raw(self, messages: list[dict], max_tokens: int, tools: list[dict] | None) -> dict:

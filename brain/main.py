@@ -737,6 +737,23 @@ def _effective_soul() -> str:
     return souls.read_main_soul()
 
 
+# Cap on how much of the user's own user.md goes into one prompt -- it's
+# their own writing, but an enormous file would eat context on every turn.
+MAX_USER_INFO_CHARS = 4000
+
+
+def _effective_user_info() -> str:
+    """What the user wrote about themselves (their main user.md), or "" during
+    role-play -- the selected role-play profile (rp_user.md) stands in for
+    "who the user is" then, and their real details pause the same way memory
+    and lessons do. Read from disk fresh each turn, so an edit made in a text
+    editor applies to her very next reply with no restart.
+    """
+    if profiles.read_roleplay_active():
+        return ""
+    return profiles.read_main_user().strip()[:MAX_USER_INFO_CHARS]
+
+
 def _handle_load_soul(data: dict, brain: Brain) -> None:
     name = data.get("name", "")
     try:
@@ -1836,6 +1853,9 @@ async def _reply_to(
             # sitting in the system prompt from right before).
             brain.llm.set_memory("")
 
+    if isinstance(brain.llm, LocalLLM):
+        brain.llm.set_user_info(_effective_user_info())
+
     # Learned behavior rules (brain/lessons.py) -- like memory, off during
     # role-play and cleared rather than skipped so a stale block can't linger
     # into an in-character turn. Never lets a lookup failure break the reply.
@@ -1895,7 +1915,15 @@ async def _reply_to(
     # Fire-and-forget: must never slow down or affect the reply the user
     # already has. Runs regardless of whether voice/TTS succeeds below --
     # it only needs the text of what was actually said.
-    asyncio.create_task(_maybe_retain_memory(websocket, text, reply_text, brain))
+    # A turn where she searched the web has the results woven into her
+    # reply, and a turn with a camera/screen image has her describing that
+    # frame -- neither is a fact about the user, just world facts or a
+    # moment. Only the user's own side is remembered for those, so memory
+    # doesn't fill with headlines and "the keyboard has blue keys" (and she
+    # can't repeat a bad search result back later as if it were a memory).
+    used_web_search = bool(getattr(brain.llm, "last_reply_used_web_search", False))
+    omit_reply = used_web_search or bool(image_b64)
+    asyncio.create_task(_maybe_retain_memory(websocket, text, "" if omit_reply else reply_text, brain))
 
     if not voice_settings.read_voice_active():
         await _debug_log(websocket, "tts", "voice is off -- skipping synthesis")
@@ -1945,10 +1973,12 @@ async def _maybe_retain_memory(websocket: websockets.ServerConnection, user_text
     """
     if not isinstance(brain.llm, LocalLLM) or not memory.read_memory_active() or profiles.read_roleplay_active():
         return
+    if not user_text.strip() and not reply_text.strip():
+        return  # an image-only turn with nothing the user said -- nothing left worth keeping
     start = time.monotonic()
     if memory.read_provider() == memory.HINDSIGHT_PROVIDER:
         try:
-            await memory.retain_exchange(user_text, reply_text)
+            await memory.retain_exchange(user_text, reply_text)  # reply_text is "" for a web-search turn, see _reply_to
         except Exception as exc:
             await _debug_log(websocket, "memory", f"retain failed: {exc!r}", (time.monotonic() - start) * 1000)
             return
@@ -1956,7 +1986,12 @@ async def _maybe_retain_memory(websocket: websockets.ServerConnection, user_text
         return
 
     try:
-        fact = await asyncio.to_thread(brain.llm.maybe_extract_memory, user_text, reply_text, memory.read_local_entries())
+        fact = await asyncio.to_thread(
+            brain.llm.maybe_extract_memory,
+            user_text,
+            reply_text or "(reply omitted -- it described search results or an image)",
+            memory.read_local_entries(),
+        )
     except Exception as exc:
         await _debug_log(websocket, "memory", f"extraction failed: {exc!r}", (time.monotonic() - start) * 1000)
         return

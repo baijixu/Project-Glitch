@@ -7,9 +7,11 @@ straight into an LLM prompt rather than parsed.
 Two separate files, never mixed up (the same split souls.py makes for
 soul.md/rp_soul.md):
 
-- user.md is the user's MAIN file -- who they actually are. Only ever
-  written by hand (the Settings manual editor, or the file itself); nothing
-  in this module can write it.
+- user.md is the user's MAIN file -- who they actually are, in their own
+  words (interests, what they do and don't care about). Only ever written by
+  hand (the Settings manual editor, or the file itself); nothing in this
+  module can write it. main.py adds it to her prompt every turn while
+  role-play is off (LocalLLM.set_user_info).
 - rp_user.md is the currently-selected ROLE-PLAY profile. Loading a saved
   profile copies it here, and this is the only file that copying, saving,
   editing or deleting a saved profile ever touches. It's what LocalLLM's

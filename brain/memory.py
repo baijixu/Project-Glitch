@@ -51,6 +51,22 @@ MAX_MEMORY_CHARS = 2000
 # relevant to one message, not a dump of the whole bank.
 RECALL_MAX_TOKENS = 800
 
+# Steers what Hindsight's server-side extraction keeps from each retained
+# exchange (its per-bank `retain_mission` setting). Without one it keeps
+# everything -- a live bank filled up with descriptions of camera frames,
+# news headlines from searches, and endless restatements of what Glitch
+# herself is, none of which is a memory of the *user*. Applied by
+# ensure_bank() only when the bank has no mission of its own, so it never
+# overwrites one someone set by hand.
+RETAIN_MISSION = (
+    "Keep only durable, useful facts about the user: who they are, what they are building or "
+    "working on, their preferences and interests, people in their life, decisions they have made, "
+    "and corrections they have given the assistant. Do not keep: descriptions of images, screens "
+    "or camera frames; news headlines or search results (unless the user expressed an opinion or "
+    "interest in them); anything about the assistant itself, such as what it is or what it can do; "
+    "small talk; or temporary states and debugging chatter."
+)
+
 _client: Hindsight | None = None
 _bank_id = ""
 
@@ -125,6 +141,22 @@ async def ensure_bank() -> None:
     if _client is None:
         return
     await _client.acreate_bank(_bank_id)
+    await _apply_default_retain_mission()
+
+
+async def _apply_default_retain_mission() -> None:
+    """Sets RETAIN_MISSION on the bank unless it already has a retain_mission
+    of its own. Best-effort: a server that has bank-config writes disabled
+    (HINDSIGHT_API_ENABLE_BANK_CONFIG_API=false) just keeps its own extraction
+    behavior -- that must never stop the bank from being usable.
+    """
+    try:
+        config = await _client.aget_bank_config(_bank_id)
+        if (config.get("overrides") or {}).get("retain_mission"):
+            return
+        await _client.aupdate_bank_config(_bank_id, retain_mission=RETAIN_MISSION)
+    except Exception as exc:
+        print(f"[memory] couldn't set the default retain mission on bank {_bank_id!r}: {exc!r}")
 
 
 # -- Hindsight provider's own storage ----------------------------------------
@@ -132,11 +164,15 @@ async def ensure_bank() -> None:
 
 async def retain_exchange(user_text: str, reply_text: str) -> None:
     """Fire-and-forget: hands one exchange to Hindsight to decide what, if
-    anything, is worth remembering long-term.
+    anything, is worth remembering long-term. An empty reply_text retains
+    only what the user said -- main.py passes that for a turn where she
+    searched the web, so the search results in her reply never get saved as
+    if they were something about the user.
     """
     if _client is None:
         return
-    await _client.aretain(_bank_id, content=f"User: {user_text}\nGlitch: {reply_text}")
+    content = f"User: {user_text}\nGlitch: {reply_text}" if reply_text else f"User: {user_text}"
+    await _client.aretain(_bank_id, content=content)
 
 
 async def recall_relevant(query: str) -> str:
