@@ -354,7 +354,17 @@ class Brain:
 
 async def handle_renderer(websocket: websockets.ServerConnection, brain: Brain, auth_token: str | None) -> None:
     print("[brain] renderer connected")
-    if not await _authenticate(websocket, auth_token):
+    # The handshake (_authenticate -> _handle_ready) sends a couple dozen
+    # messages, possibly including a whole avatar file, so a phone reloading or
+    # dropping off Wi-Fi mid-way is ordinary -- treat it like the disconnect
+    # the chat loop below already handles quietly, not a "connection handler
+    # failed" traceback.
+    try:
+        authenticated = await _authenticate(websocket, auth_token)
+    except ConnectionClosed:
+        print("[brain] renderer disconnected during the startup handshake")
+        return
+    if not authenticated:
         print("[brain] renderer failed auth, closing connection")
         await websocket.close(code=4001, reason="unauthorized")
         return
