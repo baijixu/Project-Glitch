@@ -542,6 +542,15 @@
       </div>
     </div>
     <div id="side-actions">
+      <!-- Only shown while "Chat Bubbles Over Avatar" is active -- that mode has no
+           other easy way to resend the last prompt or rate a reply without opening the
+           (much wider, phone-covering) History panel; the normal mode already has
+           Resend Last and per-bubble 👍/👎 right there in that panel. They live in
+           this column, not the bottom chat bar: on a phone, three more buttons beside
+           the text box squeezed it down to a few characters wide. See style.css. -->
+      <button id="overlay-resend-button" class="vision-button" title="Resend last message">↻</button>
+      <button id="overlay-thumbs-up" class="vision-button overlay-rate-button" title="Good reply">👍</button>
+      <button id="overlay-thumbs-down" class="vision-button overlay-rate-button" title="Bad reply">👎</button>
       <button id="camera-vision-button" class="vision-button" title="Show her your camera">📷</button>
       <button id="desktop-vision-button" class="vision-button" title="Show her your screen">🖥️</button>
       <button id="mic-button" title="Hold to talk">
@@ -549,13 +558,6 @@
       </button>
     </div>
     <div id="chat-bar">
-      <!-- Only shown while "Chat Bubbles Over Avatar" is active -- that mode
-           has no other easy way to resend the last prompt without opening
-           the (much wider, phone-covering) History panel; the normal mode
-           already has Resend Last right there in that panel. See style.css. -->
-      <button id="overlay-resend-button" class="vision-button" title="Resend last message">↻</button>
-      <button id="overlay-thumbs-up" class="vision-button overlay-rate-button" title="Good reply">👍</button>
-      <button id="overlay-thumbs-down" class="vision-button overlay-rate-button" title="Bad reply">👎</button>
       <button id="file-upload-button" class="vision-button" title="Attach a picture or text file">📎</button>
       <input id="file-upload-input" type="file" accept="image/*,.txt,.md,.csv,.json,.log,.yaml,.yml" hidden />
       <div id="message-input-wrap">

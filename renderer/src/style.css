@@ -1252,11 +1252,12 @@ body.overlay-chat-active #overlay-resend-button {
   cursor: pointer;
 }
 
-/* Over-avatar chat mode's 👍/👎 -- only shown there, same as its resend button. */
-#chat-bar .overlay-rate-button {
+/* Over-avatar chat mode's 👍/👎 -- only shown there, same as its resend button
+   (both live in #side-actions, see index.html). */
+#side-actions .overlay-rate-button {
   display: none;
 }
 
-body.overlay-chat-active #chat-bar .overlay-rate-button {
+body.overlay-chat-active #side-actions .overlay-rate-button {
   display: flex;
 }
