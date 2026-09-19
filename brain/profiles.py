@@ -93,7 +93,7 @@ def delete_profile(name: str) -> None:
 
 def write_active_profile(content: str) -> None:
     """Directly overwrites user.md with raw content -- same manual-edit
-    escape hatch and reasoning as souls.write_active_soul.
+    escape hatch and reasoning as souls.write_main_soul.
     """
     USER_MD_PATH.write_text(content, encoding="utf-8")
 

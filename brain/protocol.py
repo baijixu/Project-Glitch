@@ -267,9 +267,10 @@ def no_reply() -> dict:
 
 
 def soul_and_user_content(soul: str, user: str) -> dict:
-    """Reply to get_soul_and_user -- the raw, currently-active soul.md/
-    user.md content for the manual-edit Settings modal (separate from
-    soul_content/profile_content, which are keyed by a saved name)."""
+    """Reply to get_soul_and_user -- the raw content of her permanent main soul.md
+    (NOT the selected role-play soul, which lives in rp_soul.md) and user.md, for
+    the manual-edit Settings modal (separate from soul_content/profile_content,
+    which are keyed by a saved name)."""
     return {"type": SOUL_AND_USER_CONTENT, "soul": soul, "user": user}
 
 

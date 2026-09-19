@@ -258,7 +258,9 @@
           <h3>Soul &amp; User Files</h3>
           <p class="settings-hint">
             Directly edit the raw files Glitch actually reads from -- her permanent soul.md and
-            your user.md -- without going through the named saved souls/profiles above.
+            your user.md -- without going through the named saved souls/profiles above. Her
+            permanent soul.md is only ever changed here (or by editing the file): loading, saving,
+            editing or deleting a saved role-play soul never touches it.
           </p>
           <button id="open-soul-user-editor-button" class="settings-action-button">Edit Soul &amp; User Files</button>
         </section>
@@ -513,10 +515,11 @@
       <div id="soul-user-editor-modal" class="modal" role="dialog" aria-labelledby="soul-user-editor-modal-title">
         <h2 id="soul-user-editor-modal-title">Edit Soul &amp; User Files</h2>
         <p class="settings-hint">
-          These are the raw, currently-active files Glitch reads from directly -- editing them here
-          bypasses the named saved souls/profiles entirely.
+          These are the raw files Glitch reads from directly -- editing them here bypasses the named
+          saved souls/profiles entirely. soul.md is her permanent everyday personality, used whenever
+          role-play is off; role-play souls are kept separately and can't change it.
         </p>
-        <label for="soul-user-editor-soul">soul.md -- who Glitch permanently is</label>
+        <label for="soul-user-editor-soul">soul.md -- who Glitch permanently is (empty = her built-in default)</label>
         <textarea id="soul-user-editor-soul" rows="8"></textarea>
         <label for="soul-user-editor-user">user.md -- who you are</label>
         <textarea id="soul-user-editor-user" rows="8"></textarea>

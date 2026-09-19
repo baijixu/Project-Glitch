@@ -6,11 +6,22 @@ turns), kept as two separate fields end to end -- unlike profiles.py's
 single combined blob -- so the editor can show them as two distinct
 boxes and re-populate both correctly when editing a saved soul.
 
-Loading a soul copies its content into soul.md, the file LocalLLM reads
-to replace its *default* personality (llm/client.py's DEFAULT_PERSONALITY)
--- the mood-tag instruction stays fixed underneath whichever soul is
-active, since the Renderer's expression system depends on it regardless
-of who Glitch is currently supposed to be.
+Two separate files, never mixed up:
+
+- soul.md is her MAIN soul -- her permanent everyday personality. Only ever
+  written by hand (the Settings manual editor, or the file itself); nothing
+  in this module can write it. LocalLLM uses it whenever role-play is off.
+- rp_soul.md is the currently-selected ROLE-PLAY soul. Loading a saved soul
+  copies it here, and this is the only file that copying, saving, editing
+  or deleting a saved soul ever touches. It's only used while role-play is
+  on, replacing soul.md for the duration.
+
+They used to be one file (soul.md), so loading a role-play soul silently
+overwrote her permanent personality -- keeping them apart is the point.
+Either way, the personality replaces llm/client.py's DEFAULT_PERSONALITY,
+and the mood-tag instruction stays fixed underneath whichever is active,
+since the Renderer's expression system depends on it regardless of who
+Glitch is currently supposed to be.
 """
 
 from pathlib import Path
@@ -18,7 +29,8 @@ from pathlib import Path
 from names import sanitize_name
 
 SOULS_DIR = Path(__file__).parent / "souls"
-SOUL_MD_PATH = Path(__file__).parent / "soul.md"
+SOUL_MD_PATH = Path(__file__).parent / "soul.md"  # her main soul -- see the module docstring; written only by write_main_soul
+RP_SOUL_PATH = Path(__file__).parent / "rp_soul.md"  # the selected role-play soul -- everything here that "loads" a soul writes this
 ACTIVE_SOUL_NAME_PATH = Path(__file__).parent / "active_soul_name.txt"
 
 # Stable marker splitting description from examples within a soul file --
@@ -30,8 +42,8 @@ EXAMPLES_HEADER = "## Example dialogue"
 # Reserved name for "no custom soul" -- never a real file in souls/,
 # always offered by the Renderer's dropdown (prepended client-side, same
 # pattern as avatars.py's DEFAULT_AVATAR_NAME), and can't be deleted.
-# Selecting it clears soul.md, which llm/client.py's _system_prompt
-# already treats as "fall back to DEFAULT_PERSONALITY" -- so it's what
+# Selecting it clears rp_soul.md (never soul.md), which main.py's
+# _effective_soul treats as "no role-play soul, use her main soul" -- so it's what
 # the active selection falls back to if the soul that *was* active gets
 # deleted, same role DEFAULT_PROFILE_NAME plays in profiles.py.
 DEFAULT_SOUL_NAME = "Default"
@@ -55,14 +67,15 @@ def save_soul(name: str, description: str, examples: str) -> None:
 
 
 def load_soul(name: str) -> str:
-    """Copies the named soul's combined content into soul.md (making it
-    the active one) and returns that combined content.
+    """Copies the named soul's combined content into rp_soul.md (making it
+    the selected role-play soul) and returns that combined content. Never
+    touches soul.md -- her main soul.
 
     DEFAULT_SOUL_NAME is special-cased to empty content rather than a
     file read -- it's never a real file (see its own docstring above).
     """
     content = "" if name == DEFAULT_SOUL_NAME else _read_combined(name)
-    SOUL_MD_PATH.write_text(content, encoding="utf-8")
+    RP_SOUL_PATH.write_text(content, encoding="utf-8")
     ACTIVE_SOUL_NAME_PATH.write_text(name, encoding="utf-8")
     return content
 
@@ -77,7 +90,7 @@ def read_soul(name: str) -> tuple[str, str]:
 def delete_soul(name: str) -> None:
     """Deletes a saved soul file. Raises ValueError for DEFAULT_SOUL_NAME
     -- it isn't a real file, there's nothing to delete, and it must
-    always stay selectable as the fallback. Does NOT touch soul.md or the
+    always stay selectable as the fallback. Does NOT touch soul.md, rp_soul.md or the
     active-name bookkeeping itself even if the deleted soul happens to be
     the active one -- main.py's _handle_delete_soul decides whether that
     requires falling back to DEFAULT_SOUL_NAME.
@@ -88,24 +101,30 @@ def delete_soul(name: str) -> None:
     path.unlink()
 
 
-def write_active_soul(content: str) -> None:
-    """Directly overwrites soul.md with raw content -- the manual-edit
-    escape hatch (Settings' soul/user editor), independent of the named
-    saved-soul system entirely. Doesn't touch active_soul_name.txt: this
-    isn't switching to a different saved soul, just changing what's
-    currently active in place, so whichever name was last loaded stays
-    shown as selected even though its saved file and the live content may
-    now differ -- that divergence is the whole point of a raw editor.
+def write_main_soul(content: str) -> None:
+    """Overwrites soul.md -- her main soul -- with raw content. The ONLY
+    function that writes that file, and only the Settings manual editor
+    calls it: nothing about creating, editing, saving, loading or deleting a
+    saved role-play soul can reach it.
     """
     SOUL_MD_PATH.write_text(content, encoding="utf-8")
 
 
-def read_active_soul() -> str:
-    """The combined content of soul.md, or "" if no soul has ever been
-    loaded (Brain falls back to DEFAULT_PERSONALITY in that case).
+def read_main_soul() -> str:
+    """The content of soul.md, or "" if she has none yet (LocalLLM falls
+    back to its built-in DEFAULT_PERSONALITY in that case).
     """
     if SOUL_MD_PATH.exists():
         return SOUL_MD_PATH.read_text(encoding="utf-8")
+    return ""
+
+
+def read_active_soul() -> str:
+    """The selected ROLE-PLAY soul's content (rp_soul.md), or "" if none is
+    selected. Not her main soul -- see read_main_soul.
+    """
+    if RP_SOUL_PATH.exists():
+        return RP_SOUL_PATH.read_text(encoding="utf-8")
     return ""
 
 

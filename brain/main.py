@@ -564,7 +564,7 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
         await _handle_save_hindsight_config(data)
     elif msg_type == protocol.GET_SOUL_AND_USER:
         await websocket.send(
-            json.dumps(protocol.soul_and_user_content(souls.read_active_soul(), profiles.read_active_profile()))
+            json.dumps(protocol.soul_and_user_content(souls.read_main_soul(), profiles.read_active_profile()))
         )
     elif msg_type == protocol.SAVE_SOUL_AND_USER:
         _handle_save_soul_and_user(data, brain)
@@ -722,6 +722,21 @@ async def _handle_save_soul(websocket: websockets.ServerConnection, data: dict) 
     await websocket.send(json.dumps(protocol.souls(souls.list_souls(), souls.read_active_soul_name())))
 
 
+def _effective_soul() -> str:
+    """Which soul she should be running right now. During role-play it's the
+    selected role-play soul (rp_soul.md), if one is selected; otherwise --
+    role-play off, or on with no RP soul picked -- it's her main soul
+    (soul.md), and "" from that means LocalLLM's built-in default. The two
+    files are never merged or copied into each other (see souls.py), so a
+    role-play soul can't leak into or overwrite her permanent personality.
+    """
+    if profiles.read_roleplay_active():
+        rp_soul = souls.read_active_soul()
+        if rp_soul.strip():
+            return rp_soul
+    return souls.read_main_soul()
+
+
 def _handle_load_soul(data: dict, brain: Brain) -> None:
     name = data.get("name", "")
     try:
@@ -735,11 +750,13 @@ def _handle_load_soul(data: dict, brain: Brain) -> None:
     # with this one arriving.
     if profiles.read_roleplay_active():
         if isinstance(brain.llm, LocalLLM):
-            brain.llm.set_soul(content)
+            # Not `content` directly: loading "Default" clears the RP soul,
+            # which means "no RP soul -- use her main soul", not "no soul".
+            brain.llm.set_soul(_effective_soul())
         print(f"[brain] loaded soul {name!r}")
     else:
-        # Still recorded above -- just not applied to the LLM while role-play
-        # is off, same as _handle_load_profile (see _handle_set_roleplay_active).
+        # Still recorded above (in rp_soul.md, never her main soul.md) -- just
+        # not applied while role-play is off, same as _handle_load_profile.
         print(f"[brain] selected soul {name!r} (role-play is off, not applied)")
 
 
@@ -761,24 +778,26 @@ def _handle_save_notes(data: dict) -> None:
 
 
 def _handle_save_soul_and_user(data: dict, brain: Brain) -> None:
-    """Manual-edit escape hatch (Settings' soul/user editor) -- writes
-    soul.md/user.md directly, bypassing the named saved-soul/profile
-    system entirely, then re-primes the live LLM exactly the way loading a
-    saved soul/profile already does: both only apply live while role-play
-    is on (_handle_load_soul, _handle_load_profile). Guarded on LocalLLM
-    since HarnessLLM has neither method -- if the harness is active the
-    files are still saved for whenever it's turned back off, just not
-    applied to anything now.
+    """Manual-edit escape hatch (Settings' soul/user editor) -- writes her
+    MAIN soul (soul.md) and user.md directly, bypassing the named saved
+    soul/profile system entirely. This is the only thing that ever writes
+    soul.md (see souls.py); the saved role-play souls can't. The live LLM is
+    re-primed to match: her main soul applies whenever role-play is off (or
+    on with no RP soul selected), while user.md is the role-play profile and
+    only applies during role-play. Guarded on LocalLLM since HarnessLLM has
+    neither method -- if the harness is active the files are still saved for
+    whenever it's turned back off, just not applied to anything now.
     """
     soul_content = data.get("soul", "")
     user_content = data.get("user", "")
     if _fields_too_long(soul_content, user_content):
         return
-    souls.write_active_soul(soul_content)
+    souls.write_main_soul(soul_content)
     profiles.write_active_profile(user_content)
-    if isinstance(brain.llm, LocalLLM) and profiles.read_roleplay_active():
-        brain.llm.set_soul(soul_content)
-        brain.llm.set_persona(user_content)
+    if isinstance(brain.llm, LocalLLM):
+        brain.llm.set_soul(_effective_soul())
+        if profiles.read_roleplay_active():
+            brain.llm.set_persona(user_content)
     print("[brain] soul.md/user.md updated via manual editor")
 
 
@@ -790,13 +809,13 @@ async def _handle_delete_soul(websocket: websockets.ServerConnection, data: dict
         print(f"[brain] couldn't delete soul {name!r}: {exc!r}")
         return
     print(f"[brain] deleted soul {name!r}")
-    # Same reasoning as _handle_delete_profile: don't leave soul.md/the
+    # Same reasoning as _handle_delete_profile: don't leave rp_soul.md/the
     # LLM pointing at a soul that no longer exists.
     if souls.read_active_soul_name() == name:
-        content = souls.load_soul(souls.DEFAULT_SOUL_NAME)
+        souls.load_soul(souls.DEFAULT_SOUL_NAME)
         # isinstance guard: see _handle_delete_profile's own comment.
         if profiles.read_roleplay_active() and isinstance(brain.llm, LocalLLM):
-            brain.llm.set_soul(content)
+            brain.llm.set_soul(_effective_soul())
         print(f"[brain] active soul was deleted -- reset to {souls.DEFAULT_SOUL_NAME!r}")
     await websocket.send(json.dumps(protocol.souls(souls.list_souls(), souls.read_active_soul_name())))
 
@@ -1220,12 +1239,10 @@ def _build_llm(name: str) -> LocalLLM | NoneLLM:
         else:
             llm = LocalLLM(endpoint=config["endpoint"], model=config.get("model"), api_key=config.get("api_key"))
 
-    # Soul and profile both only apply while role-play is on -- turning it
-    # off puts her back to her plain default personality (see
-    # _handle_set_roleplay_active).
-    active_soul = souls.read_active_soul()
-    if active_soul and profiles.read_roleplay_active():
-        llm.set_soul(active_soul)
+    # Her main soul always applies unless role-play is on with an RP soul
+    # selected (see _effective_soul); the RP profile only applies during
+    # role-play (below).
+    llm.set_soul(_effective_soul())
     # No memory priming here -- unlike the old flat-file version, there's
     # no fixed block to prime with at build time, only whatever's relevant
     # to each turn's own message (see _reply_to, which calls set_memory
@@ -1648,7 +1665,7 @@ def _handle_set_roleplay_active(data: dict, brain: Brain) -> None:
         # untouched (possibly still a HarnessLLM) if it couldn't find a
         # configured ROLEPLAY_LLM_ENGINE_NAME to switch to.
         if isinstance(brain.llm, LocalLLM):
-            brain.llm.set_soul(souls.read_active_soul())
+            brain.llm.set_soul(_effective_soul())
             brain.llm.set_persona(content)
         print(f"[brain] role-play activated{' with the selected profile' if content else ' (no profile selected yet)'}")
     else:
@@ -1666,9 +1683,9 @@ def _handle_set_roleplay_active(data: dict, brain: Brain) -> None:
         _switch_to_roleplay_engine(True, brain)
         # isinstance guard: same reasoning as the "on" branch above.
         if isinstance(brain.llm, LocalLLM):
-            brain.llm.set_soul("")
+            brain.llm.set_soul(_effective_soul())  # role-play flag is already off above, so this is her main soul
             brain.llm.set_persona("")
-        print("[brain] role-play deactivated -- back to her default personality, thinking re-enabled")
+        print("[brain] role-play deactivated -- back to her main soul, thinking re-enabled")
 
 
 def _switch_to_roleplay_engine(think: bool, brain: Brain) -> None:
