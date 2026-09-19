@@ -75,3 +75,13 @@ renderer/dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# Behavior learning (brain/lessons.py) -- her saved lesson settings, the local
+# record of retired/pending/candidate lessons, and the raw thumbs up/down log
+# (contains real conversation text, so it stays local).
+brain/lessons_active.txt
+brain/lessons_autonomy.txt
+brain/lessons_retired.json
+brain/lessons_pending.json
+brain/lessons_candidates.json
+brain/ratings_log.jsonl

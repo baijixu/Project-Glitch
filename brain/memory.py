@@ -104,6 +104,18 @@ def save_hindsight_config(api_url: str, api_key: str, bank_id: str) -> None:
         configure(api_url, bank_id or "glitch-native", api_key)
 
 
+def hindsight_client() -> Hindsight | None:
+    """The configured Hindsight client, or None if configure() was never
+    called -- for lessons.py, which talks to the same server (though in its
+    own bank, see lessons._bank) rather than opening a second connection.
+    """
+    return _client
+
+
+def hindsight_bank_id() -> str:
+    return _bank_id
+
+
 async def ensure_bank() -> None:
     """Creates the configured bank, or just updates it if it already
     exists (create_bank is documented as create-or-update, confirmed live

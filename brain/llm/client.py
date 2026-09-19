@@ -184,6 +184,34 @@ _MEMORY_EXTRACT_SYSTEM_PROMPT = (
     "facts not actually stated or clearly implied."
 )
 
+# Same budget as a normal reply, not the small one maybe_extract_memory gets: a reasoning
+# model spends tokens thinking before it writes the JSON, and at 400 three of four test
+# ratings came back completely empty (see MAX_REPLY_TOKENS's comment). Runs in the
+# background, so the extra latency costs nothing.
+MAX_LESSON_TOKENS = 2000
+
+_LESSON_SYSTEM_PROMPT = (
+    "You help an AI companion learn how its user wants it to behave. You are shown one exchange "
+    "the user just rated with a thumbs up or thumbs down (sometimes with a note saying why), the "
+    "lessons it has learned so far, and possibly some tentative lessons seen once before.\n\n"
+    "A lesson is a short, general RULE about the companion's BEHAVIOR -- tone, length, style, "
+    "habits, what to do or avoid in a kind of situation (e.g. \"Keep answers to 1-3 lines for quick "
+    "practical questions\"). Never a fact about the user (that is a different system's job), and "
+    "never specific to this one exchange.\n\n"
+    "Decide the single best action and reply with ONLY one JSON object, no other text:\n"
+    "{\"action\": ..., \"target\": ..., \"name\": ..., \"content\": ..., \"reason\": ...}\n\n"
+    "action is one of:\n"
+    "- \"create\": a new lesson (give \"name\" as a 2-5 word label and \"content\" as the rule).\n"
+    "- \"confirm\": this exchange shows the same thing as a TENTATIVE lesson (\"target\" = its number).\n"
+    "- \"strengthen\": a thumbs up that matches an existing lesson the companion followed (\"target\" = its number).\n"
+    "- \"weaken\": a thumbs down where following an existing lesson caused the problem (\"target\" = its number).\n"
+    "- \"revise\": an existing lesson is close but needs adjusting given this feedback (\"target\" = its number, \"content\" = the improved rule).\n"
+    "- \"retire\": an existing lesson is contradicted by this feedback and should be dropped (\"target\" = its number).\n"
+    "- \"none\": nothing general can be learned (a one-off preference, an unclear rating, a factual mistake).\n"
+    "Prefer \"none\" over inventing a weak lesson. Prefer strengthen/weaken/revise over creating a near-duplicate. "
+    "\"reason\" is one short sentence."
+)
+
 # The one tool offered when web search is on (main.py's _reply_to passes
 # web_search_enabled through from web_search.read_active()) -- standard
 # OpenAI function-calling shape, which Ollama's native /api/chat also
@@ -287,6 +315,7 @@ class LocalLLM:
         self._persona = ""
         self._soul = ""
         self._memory = ""
+        self._lessons = ""
         # Bumped by cancel_reply() -- see reply()'s check against it.
         self._reply_generation = 0
 
@@ -391,9 +420,55 @@ class LocalLLM:
         """
         self._memory = memory_block.strip()
 
+    def set_lessons(self, lessons_block: str) -> None:
+        """Sets what she's learned about how the user wants her to behave
+        (brain/lessons.py). Like set_memory, deliberately does NOT clear
+        _history -- a lesson is additive context, not an identity change.
+        """
+        self._lessons = lessons_block.strip()
+
+    def propose_lesson(
+        self,
+        user_text: str,
+        reply_text: str,
+        rating: str,
+        note: str,
+        lessons: list[str],
+        candidates: list[str],
+    ) -> str:
+        """Asks the model what, if anything, one rated exchange teaches --
+        returns its raw answer (a JSON object, see _LESSON_SYSTEM_PROMPT),
+        for lessons.parse_distillation to validate. Separate from
+        _history/_system_prompt, same as maybe_extract_memory.
+        """
+        lesson_block = "\n".join(f"[{i}] {text}" for i, text in enumerate(lessons, 1)) or "(none yet)"
+        candidate_block = "\n".join(f"[{i}] {text}" for i, text in enumerate(candidates, 1)) or "(none)"
+        verdict = "THUMBS UP (the user liked this reply)" if rating == "up" else "THUMBS DOWN (the user disliked this reply)"
+        messages = [
+            {"role": "system", "content": _LESSON_SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": (
+                    f"Existing lessons:\n{lesson_block}\n\n"
+                    f"Tentative lessons (seen once):\n{candidate_block}\n\n"
+                    f"Rated exchange:\nUser: {user_text}\nAssistant: {reply_text}\n\n"
+                    f"Rating: {verdict}\n"
+                    f"User's note: {note or '(none)'}"
+                ),
+            },
+        ]
+        return self._complete(messages, MAX_LESSON_TOKENS)
+
     def _system_prompt(self) -> str:
         personality = self._soul or DEFAULT_PERSONALITY
         parts = [personality, MOOD_TAG_INSTRUCTION, HONESTY_INSTRUCTION]
+        if self._lessons:
+            # After the soul on purpose: these are the user's own stated
+            # preferences, and should win over her default habits.
+            parts.append(
+                "How this user wants you to behave (learned from their feedback -- follow these "
+                f"over your default habits):\n{self._lessons}"
+            )
         if self._memory:
             # Placed before the persona block -- this describes the real
             # user underneath whatever pretend scenario is currently
@@ -590,6 +665,7 @@ class OllamaLLM(LocalLLM):
         self._persona = ""
         self._soul = ""
         self._memory = ""
+        self._lessons = ""
         self._reply_generation = 0
 
     def _complete_raw(self, messages: list[dict], max_tokens: int, tools: list[dict] | None) -> dict:

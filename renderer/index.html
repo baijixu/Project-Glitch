@@ -169,6 +169,37 @@
               Requires a SearXNG instance configured in config.yaml.
             </p>
           </section>
+          <section id="lessons-section" class="settings-section">
+            <h3>Behavior learning</h3>
+            <p class="settings-hint">
+              Rate her replies with 👍/👎 in the chat history and she learns how you want her to act --
+              short rules added to her prompt on top of her soul (which is never changed). Paused during role-play.
+            </p>
+            <p id="lessons-unavailable" class="settings-hint" hidden>
+              Needs the Hindsight memory backend -- pick it and fill in the server above first.
+            </p>
+            <label class="settings-toggle-row lessons-when-available" hidden>
+              <span>Learn from feedback</span>
+              <span class="settings-toggle">
+                <input type="checkbox" id="lessons-toggle" class="settings-toggle-input" />
+                <span class="settings-toggle-track"></span>
+              </span>
+            </label>
+            <label for="lessons-autonomy" class="lessons-when-available" hidden>How much she does on her own</label>
+            <select id="lessons-autonomy" class="settings-select lessons-when-available" hidden>
+              <option value="ask">Ask first -- I approve every change</option>
+              <option value="small">Small tweaks on her own</option>
+              <option value="all">Everything on her own</option>
+            </select>
+            <p id="lessons-error" class="settings-hint" hidden></p>
+            <div id="lessons-pending-wrap" hidden>
+              <h4 class="lessons-subhead">Waiting for your approval</h4>
+              <div id="lessons-pending-list"></div>
+            </div>
+            <h4 class="lessons-subhead lessons-when-available" hidden>What she's learned</h4>
+            <div id="lessons-list" class="lessons-when-available" hidden></div>
+            <button id="lessons-add-button" class="settings-action-button lessons-when-available" hidden>Add a lesson</button>
+          </section>
           <section class="settings-section">
             <h3>Avatar</h3>
             <p class="settings-hint">
@@ -287,6 +318,26 @@
       </div>
     </div>
 
+    <div id="lesson-modal-backdrop" class="modal-backdrop" hidden>
+      <div id="lesson-modal" class="modal" role="dialog" aria-labelledby="lesson-modal-title">
+        <h2 id="lesson-modal-title">New Lesson</h2>
+        <label for="lesson-content">What should she do?</label>
+        <textarea
+          id="lesson-content"
+          rows="4"
+          maxlength="300"
+          placeholder="e.g. Keep answers to 1-3 lines for quick practical questions."
+        ></textarea>
+        <label for="lesson-name">Short label (optional)</label>
+        <input id="lesson-name" type="text" maxlength="60" placeholder="e.g. Short answers" autocomplete="off" />
+        <label for="lesson-priority">Strength (0-10, higher wins)</label>
+        <input id="lesson-priority" type="number" min="0" max="10" value="5" />
+        <div class="modal-actions">
+          <button id="lesson-cancel-button" class="modal-button secondary">Cancel</button>
+          <button id="lesson-save-button" class="modal-button primary">Save</button>
+        </div>
+      </div>
+    </div>
     <div id="soul-modal-backdrop" class="modal-backdrop" hidden>
       <div id="soul-modal" class="modal" role="dialog" aria-labelledby="soul-modal-title">
         <h2 id="soul-modal-title">New Soul</h2>
@@ -498,6 +549,8 @@
            the (much wider, phone-covering) History panel; the normal mode
            already has Resend Last right there in that panel. See style.css. -->
       <button id="overlay-resend-button" class="vision-button" title="Resend last message">↻</button>
+      <button id="overlay-thumbs-up" class="vision-button overlay-rate-button" title="Good reply">👍</button>
+      <button id="overlay-thumbs-down" class="vision-button overlay-rate-button" title="Bad reply">👎</button>
       <button id="file-upload-button" class="vision-button" title="Attach a picture or text file">📎</button>
       <input id="file-upload-input" type="file" accept="image/*,.txt,.md,.csv,.json,.log,.yaml,.yml" hidden />
       <div id="message-input-wrap">

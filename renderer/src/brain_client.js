@@ -4,6 +4,8 @@
 // (play_animation) are logged, not silently dropped, so a gap is visible
 // rather than looking like a working no-op.
 
+import { LessonsUI } from "./lessons_ui.js";
+
 const RECONNECT_DELAY_MS = 3000;
 // Fades out 10s after the text finishes streaming in, not 10s from when it
 // starts -- otherwise a long reply would only stay fully visible for a few
@@ -351,6 +353,13 @@ export class BrainClient {
     this.stopButtonEl?.addEventListener("click", () => this._stopReply());
     this.overlayResendButtonEl = overlayResendButtonEl;
     this.overlayResendButtonEl?.addEventListener("click", () => this._resendLastUserMessage());
+    // Behavior learning (brain/lessons.py): the Settings section lives in its
+    // own module, and these two rate the latest reply in Chat Bubbles Over
+    // Avatar mode (the History panel rates per-bubble instead).
+    this._lessonsUI = new LessonsUI({ send: (message) => this._send(message) });
+    this._rateControls = new WeakMap(); // history entry -> {paint} for its 👍/👎 controls
+    document.getElementById("overlay-thumbs-up")?.addEventListener("click", () => this._rateLastReply("up"));
+    document.getElementById("overlay-thumbs-down")?.addEventListener("click", () => this._rateLastReply("down"));
     this.fileUploadButtonEl = fileUploadButtonEl;
     this.fileUploadInputEl = fileUploadInputEl;
     this.cameraVisionButtonEl = cameraVisionButtonEl;
@@ -1774,9 +1783,9 @@ export class BrainClient {
   // from the permanent chat-history entry _handleMessage also adds for the
   // same event (see its "memory_learned" case); this one is just a
   // transient heads-up, not part of the conversation record.
-  _showMemoryToast(fact) {
+  _showMemoryToast(fact, prefix = "🧠 Learned: ") {
     if (!this.memoryToastEl) return;
-    this.memoryToastEl.textContent = `🧠 Learned: ${fact}`;
+    this.memoryToastEl.textContent = `${prefix}${fact}`;
     this.memoryToastEl.classList.add("visible");
     clearTimeout(this._memoryToastTimer);
     this._memoryToastTimer = setTimeout(() => this.memoryToastEl.classList.remove("visible"), MEMORY_TOAST_DURATION_MS);
@@ -2731,7 +2740,15 @@ export class BrainClient {
       meta.appendChild(retryButton);
     }
 
-    group.appendChild(meta);
+    // Rating only makes sense on something she actually said.
+    if (role === "glitch" && text) {
+      const { controls, noteForm } = this._buildRateControls(entry);
+      meta.appendChild(controls);
+      group.appendChild(meta);
+      group.appendChild(noteForm);
+    } else {
+      group.appendChild(meta);
+    }
 
     this.historyListEl.appendChild(group);
     this.historyListEl.scrollTop = this.historyListEl.scrollHeight;
@@ -2746,6 +2763,98 @@ export class BrainClient {
   // try/catch same as the device-button prefs: losing this is harmless
   // (panel just starts empty next reload), not worth erroring the actual
   // send/reply flow over.
+  // 👍/👎 on one of her replies (history panel). A 👎 first opens a small
+  // note box -- a bare thumbs-down is vague ("too long? wrong? too formal?"),
+  // and the note is what lets Brain write a useful lesson from it. One
+  // rating per reply: once rated, both buttons lock and show which was
+  // picked (saved on the entry, so it survives a reload). Brain always logs
+  // the rating; whether it also *learns* from it depends on the Settings
+  // toggle and role-play (see main.py's _handle_rate_reply).
+  _buildRateControls(entry) {
+    const controls = document.createElement("span");
+    controls.className = "rate-controls";
+    const up = document.createElement("button");
+    up.className = "rate-button";
+    up.textContent = "👍";
+    up.title = "Good reply";
+    const down = document.createElement("button");
+    down.className = "rate-button";
+    down.textContent = "👎";
+    down.title = "Bad reply";
+    controls.append(up, down);
+
+    const noteForm = document.createElement("div");
+    noteForm.className = "rate-note";
+    noteForm.hidden = true;
+    const noteInput = document.createElement("input");
+    noteInput.type = "text";
+    noteInput.maxLength = 300;
+    noteInput.placeholder = "What should she do differently? (optional)";
+    noteInput.autocomplete = "off";
+    const sendButton = document.createElement("button");
+    sendButton.textContent = "Send";
+    noteForm.append(noteInput, sendButton);
+
+    const paint = () => {
+      const rated = !!entry.rating;
+      up.disabled = down.disabled = rated;
+      up.classList.toggle("picked", entry.rating === "up");
+      down.classList.toggle("picked", entry.rating === "down");
+      if (rated) noteForm.hidden = true;
+    };
+    up.addEventListener("click", () => this._rateReply(entry, "up", ""));
+    down.addEventListener("click", () => {
+      noteForm.hidden = !noteForm.hidden;
+      if (!noteForm.hidden) noteInput.focus();
+    });
+    const submit = () => this._rateReply(entry, "down", noteInput.value.trim());
+    sendButton.addEventListener("click", submit);
+    noteInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") submit();
+    });
+
+    paint();
+    this._rateControls.set(entry, { paint });
+    return { controls, noteForm };
+  }
+
+  _rateReply(entry, rating, note) {
+    if (entry.rating || !entry.text) return;
+    // The prompt she was answering: the closest user entry before this reply.
+    let userText = "";
+    for (let i = this._historyEntries.indexOf(entry) - 1; i >= 0; i--) {
+      if (this._historyEntries[i].role === "user") {
+        userText = this._historyEntries[i].text || "";
+        break;
+      }
+    }
+    this._send({ type: "rate_reply", rating, note, user_text: userText, reply_text: entry.text });
+    entry.rating = rating;
+    try {
+      localStorage.setItem(CHAT_HISTORY_STORAGE_KEY, JSON.stringify(this._historyEntries));
+    } catch {
+      // The rating still went to Brain -- it just won't show as picked after a reload.
+    }
+    this._rateControls.get(entry)?.paint();
+    this._setStatus(rating === "up" ? "👍 Thanks -- noted" : "👎 Thanks -- noted");
+    setTimeout(() => this._setStatus(""), 2500);
+  }
+
+  // The over-avatar chat mode's 👍/👎 buttons -- rate her most recent reply.
+  // There's no per-bubble button there (those bubbles ignore pointer events),
+  // and no inline note box, so a 👎 asks with a plain prompt instead.
+  _rateLastReply(rating) {
+    const entry = [...this._historyEntries].reverse().find((e) => e.role === "glitch" && e.text);
+    if (!entry || entry.rating) return;
+    let note = "";
+    if (rating === "down") {
+      const answer = window.prompt("What should she do differently? (optional)");
+      if (answer === null) return;
+      note = answer.trim();
+    }
+    this._rateReply(entry, rating, note);
+  }
+
   _persistHistoryEntry(entry) {
     try {
       this._historyEntries.push(entry);
@@ -2983,6 +3092,16 @@ export class BrainClient {
           this._openNotesModal(data.content || "");
         }
         break;
+      case "lessons_state":
+        this._lessonsUI.handleState(data);
+        break;
+      case "lesson_event": {
+        const labels = { applied: "📘 Lesson learned", proposed: "📝 Proposed lesson (approve in Settings)", noted: "👀 Noticed", error: "⚠️ Lessons" };
+        const label = labels[data.kind] || "📘 Lesson";
+        this._showMemoryToast(data.text, `${label}: `);
+        if (data.kind !== "error") this._addHistoryEntry("system", `${label}: ${data.text}`);
+        break;
+      }
       case "memory_learned":
         this._showMemoryToast(data.fact);
         this._addHistoryEntry("system", `🧠 Learned: ${data.fact}`);

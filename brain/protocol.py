@@ -45,6 +45,13 @@ GET_HARNESS = "get_harness"
 DELETE_HARNESS = "delete_harness"
 SET_VOICE_ACTIVE = "set_voice_active"
 SET_WEB_SEARCH_ACTIVE = "set_web_search_active"
+RATE_REPLY = "rate_reply"
+SET_LESSONS_ACTIVE = "set_lessons_active"
+SET_LESSONS_AUTONOMY = "set_lessons_autonomy"
+SAVE_LESSON = "save_lesson"
+RETIRE_LESSON = "retire_lesson"
+DELETE_LESSON = "delete_lesson"
+RESOLVE_LESSON_PROPOSAL = "resolve_lesson_proposal"
 SET_MEMORY_ACTIVE = "set_memory_active"
 CLEAR_MEMORY = "clear_memory"
 GET_MEMORY_CONTENT = "get_memory_content"
@@ -76,6 +83,8 @@ AVATAR_DATA = "avatar_data"
 ROLEPLAY_STATE = "roleplay_state"
 VOICE_STATE = "voice_state"
 WEB_SEARCH_STATE = "web_search_state"
+LESSONS_STATE = "lessons_state"
+LESSON_EVENT = "lesson_event"
 MEMORY_STATE = "memory_state"
 MEMORY_CONTENT = "memory_content"
 MEMORY_PROVIDER_STATE = "memory_provider_state"
@@ -409,3 +418,35 @@ def tts_voices(name: str, voices: list[str], active_voice: str, can_create_voice
         "can_create_voice": can_create_voice,
         "error": error,
     }
+
+
+def lessons_state(available: bool, active: bool, autonomy: str, lessons: list, pending: list, error: str) -> dict:
+    """Everything the Settings panel's Behavior learning section shows
+    (brain/lessons.py) -- sent on `ready`, and again to every connected device
+    after any change to lessons, proposals or the two settings.
+
+    `available` is False while the memory provider isn't a configured
+    Hindsight server (lessons are stored there), in which case the section
+    just explains that. `lessons` are the active ones, strongest first, each
+    {id, name, content, priority}; `pending` are proposed changes waiting for
+    approval, each {id, action, target_id, target_name, name, content, reason};
+    `error` is "" unless the lessons store couldn't be reached.
+    """
+    return {
+        "type": LESSONS_STATE,
+        "available": available,
+        "active": active,
+        "autonomy": autonomy,
+        "lessons": lessons,
+        "pending": pending,
+        "error": error,
+    }
+
+
+def lesson_event(kind: str, text: str) -> dict:
+    """A one-line notice that something happened to her lessons because of a
+    rating -- kind is "applied", "proposed" (waiting for approval in Settings)
+    or "noted" (a possible lesson seen once). The Renderer shows it as a
+    system entry in the chat history, same as memory_learned.
+    """
+    return {"type": LESSON_EVENT, "kind": kind, "text": text}

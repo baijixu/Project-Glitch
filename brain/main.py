@@ -37,6 +37,7 @@ import avatars
 import harness
 import kokoro_voices
 import llm_engines
+import lessons
 import memory
 import notes
 import profiles
@@ -551,9 +552,14 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
             brain.llm.set_memory("")
     elif msg_type == protocol.GET_MEMORY_CONTENT:
         await websocket.send(json.dumps(protocol.memory_content(await memory.read_entries())))
+    elif msg_type == protocol.RATE_REPLY:
+        await _handle_rate_reply(websocket, data, brain)
+    elif msg_type in _LESSON_SETTINGS_TYPES:
+        await _handle_lessons_message(msg_type, data)
     elif msg_type == protocol.SET_MEMORY_PROVIDER:
         memory.set_provider(data.get("provider") or memory.LOCAL_PROVIDER)
         await _broadcast(protocol.memory_provider_state(memory.read_provider()))
+        await _broadcast_lessons_state()  # lessons need the hindsight provider, so switching it changes their availability
     elif msg_type == protocol.SAVE_HINDSIGHT_CONFIG:
         await _handle_save_hindsight_config(data)
     elif msg_type == protocol.GET_SOUL_AND_USER:
@@ -620,6 +626,10 @@ async def _handle_ready(websocket: websockets.ServerConnection, data: dict) -> N
     await websocket.send(json.dumps(protocol.web_search_state(web_search.read_active())))
     await websocket.send(json.dumps(protocol.memory_state(memory.read_memory_active())))
     await websocket.send(json.dumps(protocol.memory_provider_state(memory.read_provider())))
+    # Its own task -- fetching lessons is a network call to Hindsight, and an
+    # unreachable server shouldn't hold up the rest of the ready handshake
+    # (including the avatar_data that signals it's finished).
+    asyncio.create_task(_send_lessons_state(websocket))
     hindsight_cfg = memory.read_hindsight_config()
     await websocket.send(
         json.dumps(
@@ -1346,6 +1356,144 @@ async def _handle_delete_harness(websocket: websockets.ServerConnection, data: d
 
 
 
+_LESSON_SETTINGS_TYPES = {
+    protocol.SET_LESSONS_ACTIVE,
+    protocol.SET_LESSONS_AUTONOMY,
+    protocol.SAVE_LESSON,
+    protocol.RETIRE_LESSON,
+    protocol.DELETE_LESSON,
+    protocol.RESOLVE_LESSON_PROPOSAL,
+}
+
+LESSONS_STATE_TIMEOUT_SEC = 8
+LESSON_PROMPT_TIMEOUT_SEC = 5
+
+# Strong references to in-flight background learn tasks -- asyncio only
+# holds weak ones, so an unreferenced task can be garbage-collected mid-run.
+_LESSON_TASKS: set[asyncio.Task] = set()
+
+
+async def _lessons_state_message() -> dict:
+    try:
+        state = await asyncio.wait_for(lessons.state(), timeout=LESSONS_STATE_TIMEOUT_SEC)
+    except Exception as exc:
+        state = {
+            "available": lessons.available(),
+            "active": lessons.read_active(),
+            "autonomy": lessons.read_autonomy(),
+            "lessons": [],
+            "pending": lessons.read_pending(),
+            "error": f"couldn't reach the lessons store: {exc!r}",
+        }
+    return protocol.lessons_state(**state)
+
+
+async def _send_lessons_state(websocket: websockets.ServerConnection) -> None:
+    try:
+        await websocket.send(json.dumps(await _lessons_state_message()))
+    except Exception:
+        pass  # connection closed before it finished -- nothing to tell
+
+
+async def _broadcast_lessons_state() -> None:
+    await _broadcast(await _lessons_state_message())
+
+
+async def _handle_lessons_message(msg_type: str, data: dict) -> None:
+    """The Settings panel's Behavior learning controls (toggle, autonomy,
+    add/edit/retire/delete a lesson, approve/reject a proposal). Every one
+    ends by broadcasting the fresh lessons_state to every connected device.
+    A refused change (over the lesson limit, a lesson that no longer exists)
+    is reported as an "error" lesson_event so the click doesn't just
+    silently do nothing.
+    """
+    try:
+        if msg_type == protocol.SET_LESSONS_ACTIVE:
+            lessons.set_active(bool(data.get("active")))
+        elif msg_type == protocol.SET_LESSONS_AUTONOMY:
+            lessons.set_autonomy(str(data.get("level", "")))
+        elif msg_type == protocol.SAVE_LESSON:
+            name, content = str(data.get("name", "")), str(data.get("content", ""))
+            if _fields_too_long(name, content):
+                return
+            priority = data.get("priority")
+            priority = int(priority) if priority is not None else None
+            if data.get("id"):
+                await lessons.update_lesson(str(data["id"]), name=name, content=content, priority=priority)
+            else:
+                await lessons.create_lesson(name, content, priority if priority is not None else lessons.DEFAULT_PRIORITY)
+        elif msg_type == protocol.RETIRE_LESSON:
+            await lessons.retire_lesson(str(data.get("id", "")), "retired by user")
+        elif msg_type == protocol.DELETE_LESSON:
+            await lessons.delete_lesson(str(data.get("id", "")))
+        elif msg_type == protocol.RESOLVE_LESSON_PROPOSAL:
+            applied = await lessons.resolve_pending(str(data.get("id", "")), bool(data.get("approve")))
+            if applied:
+                await _broadcast(protocol.lesson_event("applied", applied))
+    except (ValueError, LookupError, lessons.LessonsUnavailable) as exc:
+        await _broadcast(protocol.lesson_event("error", str(exc)))
+    except Exception as exc:
+        print(f"[brain] lessons change failed: {exc!r}")
+        await _broadcast(protocol.lesson_event("error", "couldn't reach the lessons store"))
+    await _broadcast_lessons_state()
+
+
+async def _handle_rate_reply(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    """A thumbs up/down on one of her replies. The rating itself is always
+    logged locally (lessons.log_rating); learning from it only happens when
+    the feature is on, role-play is off (in-character replies shouldn't
+    teach her habits for normal conversation) and this is a LocalLLM (a
+    harness manages its own behavior). That part runs as a background task
+    -- it's an extra LLM call plus Hindsight writes, and the user shouldn't
+    wait on it.
+    """
+    rating = data.get("rating")
+    user_text = str(data.get("user_text", ""))
+    reply_text = str(data.get("reply_text", ""))
+    note = str(data.get("note", "")).strip()
+    if rating not in ("up", "down") or not reply_text.strip() or _fields_too_long(user_text, reply_text, note):
+        return
+    roleplay = profiles.read_roleplay_active()
+    lessons.log_rating(user_text, reply_text, rating, note, roleplay)
+    await _debug_log(websocket, "lessons", f"rating logged ({rating})")
+    if roleplay or not lessons.read_active() or not isinstance(brain.llm, LocalLLM):
+        return
+    task = asyncio.create_task(_learn_from_rating(websocket, brain, user_text, reply_text, rating, note))
+    _LESSON_TASKS.add(task)
+    task.add_done_callback(_LESSON_TASKS.discard)
+
+
+async def _learn_from_rating(
+    websocket: websockets.ServerConnection, brain: Brain, user_text: str, reply_text: str, rating: str, note: str
+) -> None:
+    start = time.monotonic()
+    try:
+        active = await lessons.active_lessons()
+        candidates = lessons.read_candidates() if lessons.read_autonomy() == lessons.ALL else []
+        raw = await asyncio.to_thread(
+            brain.llm.propose_lesson,
+            user_text,
+            reply_text,
+            rating,
+            note,
+            [l["content"] for l in active],
+            [c["content"] for c in candidates],
+        )
+        action = lessons.parse_distillation(raw, active, candidates)
+        if action is None:
+            await _debug_log(websocket, "lessons", "nothing to learn from that rating", (time.monotonic() - start) * 1000)
+            return
+        kind, text = await lessons.handle_action(action)
+    except Exception as exc:
+        await _debug_log(websocket, "lessons", f"learning from rating failed: {exc!r}", (time.monotonic() - start) * 1000)
+        print(f"[brain] learning from rating failed: {exc!r}")
+        return
+    await _debug_log(websocket, "lessons", f"{kind} ({action['action']})", (time.monotonic() - start) * 1000)
+    print(f"[brain] lesson {kind}: {text}")
+    await _broadcast(protocol.lesson_event(kind, text))
+    await _broadcast_lessons_state()
+
+
 async def _handle_save_hindsight_config(data: dict) -> None:
     """Saves the Settings panel's Memory Server fields, points memory.py's
     Hindsight client at the new server, and ensures the bank exists there
@@ -1370,6 +1518,8 @@ async def _handle_save_hindsight_config(data: dict) -> None:
             print(f"[brain] couldn't reach hindsight server {api_url!r}: {exc!r}")
     print(f"[brain] saved hindsight config (bank {bank_id!r})")
     await _broadcast(protocol.hindsight_config(api_url, api_key, bank_id))
+    lessons.invalidate()
+    await _broadcast_lessons_state()
 
 
 def _handle_set_debug_active(websocket: websockets.ServerConnection, data: dict) -> None:
@@ -1669,6 +1819,19 @@ async def _reply_to(
             # role-play just got turned on with a stale recall still
             # sitting in the system prompt from right before).
             brain.llm.set_memory("")
+
+    # Learned behavior rules (brain/lessons.py) -- like memory, off during
+    # role-play and cleared rather than skipped so a stale block can't linger
+    # into an in-character turn. Never lets a lookup failure break the reply.
+    if isinstance(brain.llm, LocalLLM):
+        if lessons.read_active() and not profiles.read_roleplay_active():
+            try:
+                brain.llm.set_lessons(await asyncio.wait_for(lessons.prompt_block(), timeout=LESSON_PROMPT_TIMEOUT_SEC))
+            except Exception as exc:
+                await _debug_log(websocket, "lessons", f"couldn't load lessons: {exc!r}")
+                brain.llm.set_lessons("")
+        else:
+            brain.llm.set_lessons("")
 
     llm_start = time.monotonic()
     try:

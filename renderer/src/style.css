@@ -932,7 +932,8 @@ body.overlay-chat-active #overlay-resend-button {
 
 .modal textarea,
 .modal input[type="text"],
-.modal input[type="password"] {
+.modal input[type="password"],
+.modal input[type="number"] {
   width: 100%;
   box-sizing: border-box;
   resize: vertical;
@@ -948,7 +949,8 @@ body.overlay-chat-active #overlay-resend-button {
 
 .modal textarea:focus,
 .modal input[type="text"]:focus,
-.modal input[type="password"]:focus {
+.modal input[type="password"]:focus,
+.modal input[type="number"]:focus {
   outline: none;
   border-color: #4a7bd8;
 }
@@ -1120,4 +1122,141 @@ body.overlay-chat-active #overlay-resend-button {
 
 .history-system .history-meta {
   align-self: center;
+}
+
+/* ---- Behavior learning (lessons_ui.js, brain_client.js's rating controls) ---- */
+
+/* An author display rule elsewhere beats the UA's [hidden]{display:none}. */
+.lessons-when-available[hidden] {
+  display: none !important;
+}
+
+.lessons-subhead {
+  margin: 12px 0 6px;
+  font-size: 13px;
+  color: #cbd0dc;
+}
+
+.lesson-row {
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  border: 1px solid #3a3f52;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.lesson-row.pending {
+  border-color: #b08a3a;
+}
+
+.lesson-text {
+  font-size: 13px;
+  line-height: 1.35;
+  color: #fff;
+  word-wrap: break-word;
+}
+
+.lesson-reason {
+  margin-top: 3px;
+  font-size: 11px;
+  color: #8a8fa0;
+}
+
+.lesson-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.lesson-priority {
+  margin-right: auto;
+  font-size: 11px;
+  color: #8a8fa0;
+}
+
+/* The shared .icon-button is a fixed 36px square; approve/reject carry words. */
+.lesson-button {
+  width: auto;
+  min-width: 36px;
+  height: 30px;
+  padding: 0 10px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* 👍/👎 beside a reply's timestamp -- muted like the retry button, and
+   padded out for a real thumb-sized tap target with matching negative margin
+   so the row doesn't visibly grow. */
+.rate-controls {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.rate-button {
+  padding: 8px 6px;
+  margin: -8px 0;
+  border: none;
+  background: none;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.15s ease;
+}
+
+.rate-button:hover:not(:disabled),
+.rate-button:focus-visible {
+  opacity: 1;
+}
+
+.rate-button:disabled {
+  cursor: default;
+  opacity: 0.2;
+}
+
+.rate-button.picked:disabled {
+  opacity: 1;
+}
+
+.rate-note {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.rate-note[hidden] {
+  display: none;
+}
+
+.rate-note input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 10px;
+  border-radius: 12px;
+  border: 1px solid #555;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.rate-note button {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 12px;
+  background: #4a7bd8;
+  color: #fff;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* Over-avatar chat mode's 👍/👎 -- only shown there, same as its resend button. */
+#chat-bar .overlay-rate-button {
+  display: none;
+}
+
+body.overlay-chat-active #chat-bar .overlay-rate-button {
+  display: flex;
 }
