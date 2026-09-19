@@ -9,6 +9,7 @@ config.local.*
 # (brain/souls.py) -- personal content, not source code.
 brain/profiles/
 brain/user.md
+brain/rp_user.md
 brain/roleplay_active.txt
 brain/active_profile_name.txt
 brain/souls/

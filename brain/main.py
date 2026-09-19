@@ -564,7 +564,7 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
         await _handle_save_hindsight_config(data)
     elif msg_type == protocol.GET_SOUL_AND_USER:
         await websocket.send(
-            json.dumps(protocol.soul_and_user_content(souls.read_main_soul(), profiles.read_active_profile()))
+            json.dumps(protocol.soul_and_user_content(souls.read_main_soul(), profiles.read_main_user()))
         )
     elif msg_type == protocol.SAVE_SOUL_AND_USER:
         _handle_save_soul_and_user(data, brain)
@@ -691,7 +691,7 @@ async def _handle_delete_profile(websocket: websockets.ServerConnection, data: d
         return
     print(f"[brain] deleted profile {name!r}")
     # The profile that was active just got deleted out from under it --
-    # fall back to DEFAULT_PROFILE_NAME rather than leaving user.md/the
+    # fall back to DEFAULT_PROFILE_NAME rather than leaving rp_user.md/the
     # LLM's persona pointing at a file that no longer exists.
     if profiles.read_active_profile_name() == name:
         content = profiles.load_profile(profiles.DEFAULT_PROFILE_NAME)
@@ -779,25 +779,24 @@ def _handle_save_notes(data: dict) -> None:
 
 def _handle_save_soul_and_user(data: dict, brain: Brain) -> None:
     """Manual-edit escape hatch (Settings' soul/user editor) -- writes her
-    MAIN soul (soul.md) and user.md directly, bypassing the named saved
+    MAIN soul (soul.md) and main user.md directly, bypassing the named saved
     soul/profile system entirely. This is the only thing that ever writes
-    soul.md (see souls.py); the saved role-play souls can't. The live LLM is
-    re-primed to match: her main soul applies whenever role-play is off (or
-    on with no RP soul selected), while user.md is the role-play profile and
-    only applies during role-play. Guarded on LocalLLM since HarnessLLM has
-    neither method -- if the harness is active the files are still saved for
-    whenever it's turned back off, just not applied to anything now.
+    either file (see souls.py/profiles.py); the saved role-play souls and
+    profiles can't. The live LLM is re-primed to match her main soul, which
+    applies whenever role-play is off (or on with no RP soul selected). The
+    role-play profile is a separate file (rp_user.md) this never touches.
+    Guarded on LocalLLM since HarnessLLM has neither method -- if the
+    harness is active the files are still saved for whenever it's turned
+    back off, just not applied to anything now.
     """
     soul_content = data.get("soul", "")
     user_content = data.get("user", "")
     if _fields_too_long(soul_content, user_content):
         return
     souls.write_main_soul(soul_content)
-    profiles.write_active_profile(user_content)
+    profiles.write_main_user(user_content)
     if isinstance(brain.llm, LocalLLM):
         brain.llm.set_soul(_effective_soul())
-        if profiles.read_roleplay_active():
-            brain.llm.set_persona(user_content)
     print("[brain] soul.md/user.md updated via manual editor")
 
 
@@ -1642,7 +1641,7 @@ def _handle_load_profile(data: dict, brain: Brain) -> None:
             brain.llm.set_persona(content)
         print(f"[brain] loaded profile {name!r}")
     else:
-        # Still recorded in user.md above -- just not applied to the LLM
+        # Still recorded in rp_user.md above -- just not applied to the LLM
         # while role-play is toggled off (see _handle_set_roleplay_active).
         print(f"[brain] selected profile {name!r} (role-play is off, not applied)")
 

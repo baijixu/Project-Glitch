@@ -2,12 +2,23 @@
 feature, not in SPEC.md). Each profile is one freeform markdown file in
 profiles/ -- character description and scenario combined into a single
 blob, not separate structured fields, since it's meant to be loaded
-straight into an LLM prompt rather than parsed. Loading a profile copies
-its content into user.md, the one "currently active" file LocalLLM reads
-its persona from -- similar in spirit to how this very session reads a
-project's own instructions file for context.
+straight into an LLM prompt rather than parsed.
 
-user.md persisting on disk (not just in Brain's memory) means the active
+Two separate files, never mixed up (the same split souls.py makes for
+soul.md/rp_soul.md):
+
+- user.md is the user's MAIN file -- who they actually are. Only ever
+  written by hand (the Settings manual editor, or the file itself); nothing
+  in this module can write it.
+- rp_user.md is the currently-selected ROLE-PLAY profile. Loading a saved
+  profile copies it here, and this is the only file that copying, saving,
+  editing or deleting a saved profile ever touches. It's what LocalLLM's
+  persona is read from while role-play is on.
+
+They used to be one file (user.md), so loading a role-play profile silently
+overwrote whatever the user had put there themselves.
+
+rp_user.md persisting on disk (not just in Brain's memory) means the active
 profile survives a Brain restart -- main.py reads it once at startup and
 primes the LLM with it, rather than relying on the Renderer to resend it
 on every reconnect the way the first version of this feature did.
@@ -18,14 +29,15 @@ from pathlib import Path
 from names import sanitize_name
 
 PROFILES_DIR = Path(__file__).parent / "profiles"
-USER_MD_PATH = Path(__file__).parent / "user.md"
+USER_MD_PATH = Path(__file__).parent / "user.md"  # the user's main file -- see the module docstring; written only by write_main_user
+RP_USER_MD_PATH = Path(__file__).parent / "rp_user.md"  # the selected role-play profile -- everything here that "loads" a profile writes this
 ROLEPLAY_ACTIVE_PATH = Path(__file__).parent / "roleplay_active.txt"
 ACTIVE_PROFILE_NAME_PATH = Path(__file__).parent / "active_profile_name.txt"
 
 # Reserved name for "no profile" -- never a real file in profiles/, always
 # offered by the Renderer's dropdown (main.js/brain_client.js prepend it
 # client-side, same pattern as avatars.py's DEFAULT_AVATAR_NAME), and
-# can't be deleted. Selecting it clears user.md, so it's what the active
+# can't be deleted. Selecting it clears rp_user.md (never user.md), so it's what the active
 # selection falls back to if the profile that *was* active gets deleted --
 # there always has to be something selected, and this is the one entry
 # guaranteed to still exist.
@@ -51,8 +63,9 @@ def save_profile(name: str, content: str) -> None:
 
 
 def load_profile(name: str) -> str:
-    """Copies the named profile's content into user.md (making it the
-    selected one) and returns that content. Always writes user.md
+    """Copies the named profile's content into rp_user.md (making it the
+    selected one) and returns that content. Never touches user.md -- the
+    user's main file. Always writes rp_user.md
     regardless of the role-play toggle (set_roleplay_active) -- selecting
     a profile while role-play is off just queues it for whenever the user
     turns it back on; main.py's _handle_load_profile is what actually
@@ -62,7 +75,7 @@ def load_profile(name: str) -> str:
     file read -- it's never a real file (see its own docstring above).
     """
     content = "" if name == DEFAULT_PROFILE_NAME else read_profile(name)
-    USER_MD_PATH.write_text(content, encoding="utf-8")
+    RP_USER_MD_PATH.write_text(content, encoding="utf-8")
     ACTIVE_PROFILE_NAME_PATH.write_text(name, encoding="utf-8")
     return content
 
@@ -79,7 +92,7 @@ def delete_profile(name: str) -> None:
     """Deletes a saved profile file. Raises ValueError for
     DEFAULT_PROFILE_NAME -- it isn't a real file, there's nothing to
     delete, and it must always stay selectable as the fallback. Does NOT
-    touch user.md or the active-name bookkeeping itself even if the
+    touch user.md, rp_user.md or the active-name bookkeeping itself even if the
     deleted profile happens to be the active one -- main.py's
     _handle_delete_profile decides whether that requires falling back to
     DEFAULT_PROFILE_NAME, since only it knows whether role-play is
@@ -91,17 +104,28 @@ def delete_profile(name: str) -> None:
     path.unlink()
 
 
-def write_active_profile(content: str) -> None:
-    """Directly overwrites user.md with raw content -- same manual-edit
-    escape hatch and reasoning as souls.write_main_soul.
+def write_main_user(content: str) -> None:
+    """Overwrites user.md -- the user's main file -- with raw content. The
+    ONLY function that writes that file, and only the Settings manual editor
+    calls it: nothing about creating, editing, saving, loading or deleting a
+    saved role-play profile can reach it.
     """
     USER_MD_PATH.write_text(content, encoding="utf-8")
 
 
-def read_active_profile() -> str:
-    """The content of user.md, or "" if no profile has ever been loaded."""
+def read_main_user() -> str:
+    """The content of user.md, or "" if there's none yet."""
     if USER_MD_PATH.exists():
         return USER_MD_PATH.read_text(encoding="utf-8")
+    return ""
+
+
+def read_active_profile() -> str:
+    """The selected ROLE-PLAY profile's content (rp_user.md), or "" if none
+    has ever been loaded. Not the user's main file -- see read_main_user.
+    """
+    if RP_USER_MD_PATH.exists():
+        return RP_USER_MD_PATH.read_text(encoding="utf-8")
     return ""
 
 
