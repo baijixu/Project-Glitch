@@ -283,6 +283,10 @@ async def _clear_hindsight() -> None:
         return
     await _client.adelete_bank(_bank_id)
     await _client.acreate_bank(_bank_id)
+    # A recreated bank starts with no retain_mission -- without this, everything
+    # retained until the next Brain restart (which re-applies it via ensure_bank)
+    # would be extracted with no guidance at all.
+    await _apply_default_retain_mission()
 
 
 # -- Local provider's own storage --------------------------------------------

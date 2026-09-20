@@ -90,6 +90,7 @@ brain/curiosity_active.txt
 brain/curiosity_questions.json
 brain/training_active.txt
 brain/training_queue.json
+brain/backups/
 brain/ratings_log.jsonl
 
 # A restarted Brain's own output (brain/main.py's RESTART_LOG_PATH) -- latest run only.
