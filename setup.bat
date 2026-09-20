@@ -48,7 +48,8 @@ echo   1. Edit config.yaml with your LLM endpoint.
 echo   2. cd renderer ^&^& npm run dev   (or run renderer\shell\launch.py once the dev server is up)
 echo   3. cd brain ^&^& uv run main.py
 echo.
-echo Optional: local Kokoro (brain\voice\tts.py's KokoroTTS) works with no extra setup and is
-echo always available as the "Default" speech engine in Glitch's settings panel. To run Kokoro
-echo in Docker instead (docker-compose.yml) and add it there as a saved engine:
+echo Optional voice: Glitch speaks through any OpenAI-style text-to-speech server, and stays
+echo text-only until you add one. To run the bundled Kokoro service:
 echo   docker compose up -d
+echo then open Settings, Speech Engine in the app and add an engine with the endpoint
+echo http://localhost:8880/v1
