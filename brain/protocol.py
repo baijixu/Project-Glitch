@@ -52,6 +52,7 @@ SAVE_LESSON = "save_lesson"
 RETIRE_LESSON = "retire_lesson"
 DELETE_LESSON = "delete_lesson"
 RESOLVE_LESSON_PROPOSAL = "resolve_lesson_proposal"
+SET_CURIOSITY_ACTIVE = "set_curiosity_active"
 SET_MEMORY_ACTIVE = "set_memory_active"
 CLEAR_MEMORY = "clear_memory"
 GET_MEMORY_CONTENT = "get_memory_content"
@@ -83,6 +84,7 @@ AVATAR_DATA = "avatar_data"
 ROLEPLAY_STATE = "roleplay_state"
 VOICE_STATE = "voice_state"
 WEB_SEARCH_STATE = "web_search_state"
+CURIOSITY_STATE = "curiosity_state"
 LESSONS_STATE = "lessons_state"
 LESSON_EVENT = "lesson_event"
 MEMORY_STATE = "memory_state"
@@ -201,6 +203,13 @@ def web_search_state(active: bool) -> dict:
     (config.yaml's brain.web_search block), regardless of what was saved.
     """
     return {"type": WEB_SEARCH_STATE, "active": active}
+
+
+def curiosity_state(active: bool) -> dict:
+    """Whether curiosity (brain/curiosity.py -- she asks the odd follow-up question) is
+    on. Sent on `ready`, same pattern as voice_state.
+    """
+    return {"type": CURIOSITY_STATE, "active": active}
 
 
 def memory_state(active: bool) -> dict:

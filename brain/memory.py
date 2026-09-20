@@ -67,7 +67,7 @@ _MISSION_V1 = (
     "small talk; or temporary states and debugging chatter."
 )
 
-RETAIN_MISSION = (
+_MISSION_V2 = (
     "Keep only durable, useful facts about the user: who they are, what they are building or "
     "working on, their preferences and interests, people in their life, decisions they have made, "
     "and corrections they have given the assistant. When the user engages with a topic (news, "
@@ -79,10 +79,18 @@ RETAIN_MISSION = (
     "states and debugging chatter."
 )
 
+RETAIN_MISSION = (
+    _MISSION_V2
+    + " In what you are given, 'User' is the human and 'Glitch' is the AI assistant, two different "
+    "beings. Attribute every statement to whoever actually said it: never record something the "
+    "assistant said, did, wore or pretended as a fact about the user, and never record the user's "
+    "name, life or traits as the assistant's."
+)
+
 # Earlier versions of the default above. A bank still carrying one of these
 # was never customized, so ensure_bank() upgrades it to the current default --
 # anything else there was written by hand and is left alone.
-_PREVIOUS_DEFAULT_MISSIONS = (_MISSION_V1,)
+_PREVIOUS_DEFAULT_MISSIONS = (_MISSION_V1, _MISSION_V2)
 
 _client: Hindsight | None = None
 _bank_id = ""

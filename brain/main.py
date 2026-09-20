@@ -35,6 +35,7 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 import avatars
+import curiosity
 import harness
 import kokoro_voices
 import llm_engines
@@ -568,6 +569,8 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
         voice_settings.set_voice_active(bool(data.get("active")))
     elif msg_type == protocol.SET_WEB_SEARCH_ACTIVE:
         web_search.set_active(bool(data.get("active")))
+    elif msg_type == protocol.SET_CURIOSITY_ACTIVE:
+        curiosity.set_active(bool(data.get("active")))
     elif msg_type == protocol.SET_MEMORY_ACTIVE:
         memory.set_memory_active(bool(data.get("active")))
     elif msg_type == protocol.CLEAR_MEMORY:
@@ -648,6 +651,7 @@ async def _handle_ready(websocket: websockets.ServerConnection, data: dict) -> N
     await websocket.send(json.dumps(protocol.roleplay_state(profiles.read_roleplay_active())))
     await websocket.send(json.dumps(protocol.voice_state(voice_settings.read_voice_active())))
     await websocket.send(json.dumps(protocol.web_search_state(web_search.read_active())))
+    await websocket.send(json.dumps(protocol.curiosity_state(curiosity.read_active())))
     await websocket.send(json.dumps(protocol.memory_state(memory.read_memory_active())))
     await websocket.send(json.dumps(protocol.memory_provider_state(memory.read_provider())))
     # Its own task -- fetching lessons is a network call to Hindsight, and an
@@ -1899,6 +1903,12 @@ async def _reply_to(
         else:
             brain.llm.set_lessons("")
 
+    # Curiosity (brain/curiosity.py) -- same shape as lessons: off during role-play,
+    # cleared rather than skipped. Not tied to Hindsight; it only needs the local files.
+    curious = isinstance(brain.llm, LocalLLM) and curiosity.read_active() and not profiles.read_roleplay_active()
+    if isinstance(brain.llm, LocalLLM):
+        brain.llm.set_curiosity(curiosity.start_turn() if curious else "")
+
     llm_start = time.monotonic()
     try:
         reply_text, mood = await asyncio.to_thread(
@@ -1954,6 +1964,13 @@ async def _reply_to(
     used_web_search = bool(getattr(brain.llm, "last_reply_used_web_search", False))
     omit_reply = used_web_search or bool(image_b64)
     asyncio.create_task(_maybe_retain_memory(websocket, text, "" if omit_reply else reply_text, brain))
+    if curious:
+        curiosity.end_turn(reply_text)
+        # "*" in the user's message means they're playing out an action/scene -- not a source of real questions
+        if text and "*" not in text and not omit_reply and curiosity.should_propose():
+            task = asyncio.create_task(_maybe_propose_question(websocket, text, reply_text, brain))
+            _LESSON_TASKS.add(task)
+            task.add_done_callback(_LESSON_TASKS.discard)
 
     if not voice_settings.read_voice_active():
         await _debug_log(websocket, "tts", "voice is off -- skipping synthesis")
@@ -1975,6 +1992,30 @@ async def _reply_to(
     audio_b64 = base64.b64encode(wav_bytes).decode("ascii")
     await websocket.send(json.dumps(protocol.speak_audio(audio_b64, brain.tts.SAMPLE_RATE)))
     await websocket.send(json.dumps(protocol.viseme_stream(frames)))
+
+
+async def _maybe_propose_question(
+    websocket: websockets.ServerConnection, user_text: str, reply_text: str, brain: Brain
+) -> None:
+    """Background: after a reply, ask the model whether there's one thing she'd like to
+    know about the user (brain/curiosity.py keeps it for a later turn). Skipped for search
+    and image turns, whose replies are about the world rather than the user. Never surfaces
+    a failure -- a turn with no new question is the normal outcome.
+    """
+    start = time.monotonic()
+    known = "\n".join(part for part in (_effective_user_info(), getattr(brain.llm, "_memory", "")) if part)
+    try:
+        raw = await asyncio.to_thread(
+            brain.llm.propose_question, user_text, reply_text, known, curiosity.all_question_texts()
+        )
+    except Exception as exc:
+        await _debug_log(websocket, "curiosity", f"question proposal failed: {exc!r}", (time.monotonic() - start) * 1000)
+        return
+    question = curiosity.parse_question(raw)
+    if question and curiosity.add_question(question):
+        await _debug_log(websocket, "curiosity", "new question kept", (time.monotonic() - start) * 1000)
+    else:
+        await _debug_log(websocket, "curiosity", "nothing to be curious about", (time.monotonic() - start) * 1000)
 
 
 async def _maybe_retain_memory(websocket: websockets.ServerConnection, user_text: str, reply_text: str, brain: Brain) -> None:

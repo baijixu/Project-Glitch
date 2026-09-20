@@ -664,6 +664,9 @@ export class BrainClient {
     // to know or care about, so those three just live in localStorage and
     // toggle the button's `hidden` -- no round trip needed.
     this.voiceToggleInputEl?.addEventListener("change", () => this._send({ type: "set_voice_active", active: this.voiceToggleInputEl.checked }));
+    document.getElementById("curiosity-toggle")?.addEventListener("change", (e) =>
+      this._send({ type: "set_curiosity_active", active: e.target.checked }),
+    );
     this.webSearchToggleInputEl?.addEventListener("change", () =>
       this._send({ type: "set_web_search_active", active: this.webSearchToggleInputEl.checked }),
     );
@@ -3069,6 +3072,11 @@ export class BrainClient {
       case "web_search_state":
         if (this.webSearchToggleInputEl) this.webSearchToggleInputEl.checked = !!data.active;
         break;
+      case "curiosity_state": {
+        const el = document.getElementById("curiosity-toggle");
+        if (el) el.checked = !!data.active;
+        break;
+      }
       case "memory_state":
         if (this.memoryToggleInputEl) this.memoryToggleInputEl.checked = !!data.active;
         break;

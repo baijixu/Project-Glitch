@@ -86,6 +86,8 @@ brain/lessons_autonomy.txt
 brain/lessons_retired.json
 brain/lessons_pending.json
 brain/lessons_candidates.json
+brain/curiosity_active.txt
+brain/curiosity_questions.json
 brain/ratings_log.jsonl
 
 # A restarted Brain's own output (brain/main.py's RESTART_LOG_PATH) -- latest run only.

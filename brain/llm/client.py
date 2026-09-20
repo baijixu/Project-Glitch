@@ -55,6 +55,14 @@ HONESTY_INSTRUCTION = (
     "suggestions, or ordinary conversation, only real factual claims."
 )
 
+# A small model drifts into speaking as the person it's talking to (taking their name,
+# echoing their life back as its own). Kept under every soul/persona like the two above.
+IDENTITY_INSTRUCTION = (
+    "You are the AI in this conversation. The person you're talking to is a separate human: "
+    "their name, life and words are theirs, not yours. Never speak as them or call yourself by "
+    "their name."
+)
+
 _MOOD_TAG = re.compile(r"\[mood:\s*(\w+)\]\s*$", re.IGNORECASE)
 
 
@@ -200,6 +208,26 @@ _MEMORY_EXTRACT_SYSTEM_PROMPT = (
     "Reply with ONLY the new fact as one short phrase (e.g. \"prefers dark mode\", \"has a cat "
     "named Pixel\"), or the single word NONE if nothing new and durable came up. Never invent "
     "facts not actually stated or clearly implied."
+)
+
+# Same reasoning-model budget as lessons: it thinks before it writes the JSON. Background
+# call, so the latency costs nothing.
+MAX_QUESTION_TOKENS = 2000
+
+_QUESTION_SYSTEM_PROMPT = (
+    "You help an AI companion be curious about its user. From the latest exchange, decide whether "
+    "there is ONE thing about the user's life or interests that the companion would genuinely like "
+    "to know and doesn't yet -- something the user just touched on but left open, or a natural "
+    "gap in what it knows.\n\n"
+    "Rules: the question must be short, warm and specific to this user (never generic like \"how "
+    "was your day?\"). Prefer their real projects, interests, plans and opinions. Never ask something "
+    "already covered by what is known about them below, about the same topic as any question already "
+    "kept (even reworded), or about a topic the user said they don't care about.\n"
+    "NEVER ask about: money, loans or finances; sex, bodies, clothing or intimacy; health or mental "
+    "health; family or relationships; or anything from role-play, fiction, a scene, a joke or a "
+    "hypothetical -- only the user's real life. Never ask what the user is hiding or keeping secret. "
+    "If nothing natural stands out, ask nothing -- that is the usual answer.\n\n"
+    "Reply with ONLY a JSON object: {\"question\": \"...\"} or {\"question\": null}."
 )
 
 # Same budget as a normal reply, not the small one maybe_extract_memory gets: a reasoning
@@ -353,6 +381,7 @@ class LocalLLM:
         self._soul = ""
         self._memory = ""
         self._lessons = ""
+        self._curiosity = ""
         self._user_info = ""
         # Whether the most recent reply() ran a web search -- read by main.py's
         # _reply_to right after reply() returns, so what a search returned
@@ -482,6 +511,35 @@ class LocalLLM:
         """
         self._lessons = lessons_block.strip()
 
+    def set_curiosity(self, curiosity_block: str) -> None:
+        """Sets this turn's curiosity guidance (brain/curiosity.py). Like
+        set_lessons, deliberately does NOT clear _history -- additive context.
+        Set fresh every turn by main.py's _reply_to, and "" during role-play.
+        """
+        self._curiosity = curiosity_block.strip()
+
+    def propose_question(self, user_text: str, reply_text: str, known: str, asked: list[str]) -> str:
+        """Asks the model for one thing she could be curious about after this
+        exchange -- returns its raw answer (JSON, see _QUESTION_SYSTEM_PROMPT)
+        for curiosity.parse_question to validate. `known` is everything she
+        already has on the user this turn (user.md + recalled memories), `asked`
+        every question already kept, open or closed. Separate from
+        _history/_system_prompt, same as maybe_extract_memory.
+        """
+        asked_block = "\n".join(f"- {q}" for q in asked) or "(none)"
+        messages = [
+            {"role": "system", "content": _QUESTION_SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": (
+                    f"What is already known about the user:\n{known or '(nothing yet)'}\n\n"
+                    f"Questions already kept (do not repeat or rephrase):\n{asked_block}\n\n"
+                    f"Latest exchange:\nUser: {user_text}\nAssistant: {reply_text}"
+                ),
+            },
+        ]
+        return self._complete(messages, MAX_QUESTION_TOKENS)
+
     def propose_lesson(
         self,
         user_text: str,
@@ -516,7 +574,7 @@ class LocalLLM:
 
     def _system_prompt(self) -> str:
         personality = self._soul or DEFAULT_PERSONALITY
-        parts = [personality, MOOD_TAG_INSTRUCTION, HONESTY_INSTRUCTION]
+        parts = [personality, IDENTITY_INSTRUCTION, MOOD_TAG_INSTRUCTION, HONESTY_INSTRUCTION]
         if self._user_info:
             parts.append(
                 "About the user, in their own words (treat as true, and respect the preferences it "
@@ -529,6 +587,8 @@ class LocalLLM:
                 "How this user wants you to behave (learned from their feedback -- follow these "
                 f"over your default habits):\n{self._lessons}"
             )
+        if self._curiosity:
+            parts.append(self._curiosity)
         if self._memory:
             # Placed before the persona block -- this describes the real
             # user underneath whatever pretend scenario is currently
@@ -736,6 +796,7 @@ class OllamaLLM(LocalLLM):
         self._soul = ""
         self._memory = ""
         self._lessons = ""
+        self._curiosity = ""
         self._user_info = ""
         self.last_reply_used_web_search = False
         self._reply_generation = 0
