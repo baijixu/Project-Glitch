@@ -9,6 +9,7 @@ Run with:
 """
 
 import asyncio
+import errno
 import base64
 import json
 import os
@@ -80,6 +81,19 @@ ROLEPLAY_LLM_ENGINE_NAME = "Ollama"
 _HARNESS_CONFIGS: dict = {}
 
 PING_INTERVAL_SEC = 15
+
+# A restart (see _handle_restart_brain) starts the replacement Brain while the old
+# one is still exiting, so the port can briefly still be taken. Rather than the
+# replacement dying on the first "address already in use", it retries for up to
+# this long.
+SERVE_BIND_ATTEMPTS = 30
+SERVE_BIND_RETRY_SEC = 1.0
+
+# Where a restarted Brain's own output goes (it has no console to print to once it's
+# been relaunched detached). Truncated on each restart, so it only ever holds the
+# latest run -- and a replacement that dies at startup leaves its error here
+# instead of vanishing.
+RESTART_LOG_PATH = Path(__file__).parent / "restart.log"
 
 # How long to wait for the first message (must be `ready` carrying the
 # matching token, see _authenticate) before giving up on a connection that
@@ -1640,15 +1654,21 @@ async def _handle_restart_brain(websocket: websockets.ServerConnection) -> None:
     await _debug_log(websocket, "brain", "restarting Brain process...")
     print("[brain] restart requested -- restarting process now")
     if sys.platform == "win32":
+        # The replacement's output goes to RESTART_LOG_PATH, not DEVNULL: it has
+        # no console of its own, and a replacement that crashes at startup used
+        # to just vanish, looking like Brain "killed itself and never came
+        # back". Still explicit std handles (not DETACHED_PROCESS) -- see this
+        # function's own docstring point 3.
+        restart_log = open(RESTART_LOG_PATH, "w", encoding="utf-8", buffering=1)
+        restart_log.write(f"[restart] relaunching {sys.executable} {' '.join(sys.argv)}\n")
         subprocess.Popen(
             [sys.executable, *sys.argv],
             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_BREAKAWAY_FROM_JOB,
-            # See this function's own docstring point 3 for why these are
-            # explicit rather than just passing DETACHED_PROCESS.
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=restart_log,
+            stderr=subprocess.STDOUT,
             close_fds=True,
+            env={**os.environ, "PYTHONUNBUFFERED": "1"},  # so the log fills as it happens, not in one lump at exit
         )
         os._exit(0)
     else:
@@ -2150,14 +2170,32 @@ async def main() -> None:
     # silently dying underneath it first.
     print(f"[brain] listening on ws://{host}:{port}")
     asyncio.create_task(_health_check_loop())
-    async with websockets.serve(
+    server = await _serve_when_free(
         lambda ws: handle_renderer(ws, brain, auth_token),
         host,
         port,
         max_size=100 * 1024 * 1024,
         ping_timeout=REQUEST_TIMEOUT_SEC + 30,
-    ):
+    )
+    async with server:
         await asyncio.Future()  # run forever
+
+
+async def _serve_when_free(handler, host: str, port: int, attempts: int = SERVE_BIND_ATTEMPTS, **serve_kwargs):
+    """websockets.serve, retrying while the port is still in use -- which is
+    normal for a moment during a restart, when the old process hasn't quite
+    let go yet. Any other startup error is raised immediately, and running
+    out of attempts raises the last "in use" error.
+    """
+    for attempt in range(1, attempts + 1):
+        try:
+            return await websockets.serve(handler, host, port, **serve_kwargs)
+        except OSError as exc:
+            in_use = exc.errno in (errno.EADDRINUSE, 10048) or getattr(exc, "winerror", None) == 10048
+            if not in_use or attempt == attempts:
+                raise
+            print(f"[brain] port {port} isn't free yet ({exc!r}) -- retrying ({attempt}/{attempts})")
+            await asyncio.sleep(SERVE_BIND_RETRY_SEC)
 
 
 if __name__ == "__main__":
