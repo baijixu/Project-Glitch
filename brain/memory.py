@@ -28,9 +28,11 @@ read_provider() is actually "hindsight"; the local functions never
 touch it at all.
 """
 
+import asyncio
 import json
 from pathlib import Path
 
+import training
 from hindsight_client import Hindsight
 
 MEMORY_PATH = Path(__file__).parent / "memory.md"
@@ -50,6 +52,7 @@ MAX_MEMORY_CHARS = 2000
 # provider's own MAX_MEMORY_CHARS cap -- plenty for what's actually
 # relevant to one message, not a dump of the whole bank.
 RECALL_MAX_TOKENS = 800
+CORE_RECALL_MAX_TOKENS = 300  # the always-shown "core" facts (retain_fact / brain/training.py)
 
 # Steers what Hindsight's server-side extraction keeps from each retained
 # exchange (its per-bank `retain_mission` setting). Without one it keeps
@@ -157,6 +160,10 @@ def hindsight_bank_id() -> str:
     return _bank_id
 
 
+def hindsight_configured() -> bool:
+    return _client is not None
+
+
 async def ensure_bank() -> None:
     """Creates the configured bank, or just updates it if it already
     exists (create_bank is documented as create-or-update, confirmed live
@@ -204,14 +211,54 @@ async def retain_exchange(user_text: str, reply_text: str) -> None:
     await _client.aretain(_bank_id, content=content)
 
 
+async def retain_fact(text: str, importance: str) -> None:
+    """Retains one fact the user reviewed and approved (brain/training.py),
+    tagged with its importance so core facts can be recalled every turn.
+    """
+    if _client is None:
+        raise RuntimeError("no Hindsight server configured")
+    await _client.aretain(
+        _bank_id,
+        content=text,
+        context="A fact the user reviewed and approved",
+        tags=[training.importance_tag(importance)],
+    )
+
+
+async def recall_core() -> list[str]:
+    """The facts the user marked "core" -- always in her prompt, whatever the
+    conversation is about. Best-effort: [] on any failure, so a hiccup here never
+    costs the ordinary recall.
+    """
+    if _client is None:
+        return []
+    try:
+        response = await _client.arecall(
+            _bank_id,
+            query="the most important things to know about the user",
+            max_tokens=CORE_RECALL_MAX_TOKENS,
+            tags=[training.importance_tag("core")],
+            tags_match="any_strict",
+        )
+    except Exception as exc:
+        print(f"[memory] core recall failed: {exc!r}")
+        return []
+    return [result.text for result in response.results]
+
+
 async def recall_relevant(query: str) -> str:
     """Whatever's actually relevant to `query` right now, joined into the
-    same "- fact" block shape LocalLLM.set_memory already expects.
+    same "- fact" block shape LocalLLM.set_memory already expects -- the
+    user's "core" facts first (see brain/training.py), then the rest.
     """
     if _client is None:
         return ""
-    response = await _client.arecall(_bank_id, query=query, max_tokens=RECALL_MAX_TOKENS)
-    return "\n".join(f"- {result.text}" for result in response.results)
+    response, core = await asyncio.gather(
+        _client.arecall(_bank_id, query=query, max_tokens=RECALL_MAX_TOKENS), recall_core()
+    )
+    lines = list(core)
+    lines += [result.text for result in response.results if result.text not in core]
+    return "\n".join(f"- {line}" for line in lines)
 
 
 def _item_text(item) -> str:

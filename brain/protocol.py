@@ -53,6 +53,8 @@ RETIRE_LESSON = "retire_lesson"
 DELETE_LESSON = "delete_lesson"
 RESOLVE_LESSON_PROPOSAL = "resolve_lesson_proposal"
 SET_CURIOSITY_ACTIVE = "set_curiosity_active"
+SET_TRAINING_ACTIVE = "set_training_active"
+RESOLVE_MEMORY_PROPOSAL = "resolve_memory_proposal"
 SET_MEMORY_ACTIVE = "set_memory_active"
 CLEAR_MEMORY = "clear_memory"
 GET_MEMORY_CONTENT = "get_memory_content"
@@ -85,6 +87,7 @@ ROLEPLAY_STATE = "roleplay_state"
 VOICE_STATE = "voice_state"
 WEB_SEARCH_STATE = "web_search_state"
 CURIOSITY_STATE = "curiosity_state"
+TRAINING_STATE = "training_state"
 LESSONS_STATE = "lessons_state"
 LESSON_EVENT = "lesson_event"
 MEMORY_STATE = "memory_state"
@@ -203,6 +206,17 @@ def web_search_state(active: bool) -> dict:
     (config.yaml's brain.web_search block), regardless of what was saved.
     """
     return {"type": WEB_SEARCH_STATE, "active": active}
+
+
+def training_state(available: bool, active: bool, pending: list, error: str = "") -> dict:
+    """Everything the Settings panel's Memory training section shows
+    (brain/training.py) -- sent on `ready`, and to every connected device after
+    any change. `available` is False unless the memory provider is a configured
+    Hindsight server. `pending` are proposed memories waiting for review, oldest
+    first, each {id, fact, source, created}; `error` is "" unless the last
+    approval couldn't be saved (the proposal then stays in the list).
+    """
+    return {"type": TRAINING_STATE, "available": available, "active": active, "pending": pending, "error": error}
 
 
 def curiosity_state(active: bool) -> dict:

@@ -213,6 +213,24 @@ _MEMORY_EXTRACT_SYSTEM_PROMPT = (
 # Same reasoning-model budget as lessons: it thinks before it writes the JSON. Background
 # call, so the latency costs nothing.
 MAX_QUESTION_TOKENS = 2000
+MAX_MEMORY_PROPOSAL_TOKENS = 2000  # same reasoning-model budget, for training mode's proposals
+
+_MEMORY_PROPOSAL_SYSTEM_PROMPT = (
+    "You help an AI companion decide what to remember about its user. You are shown what is "
+    "already known and the latest exchange, where 'User' is the HUMAN and 'Assistant' is the AI -- "
+    "two different beings. Propose at most ONE new fact worth keeping long-term, written as a "
+    "single self-contained sentence that starts with 'The user' (e.g. \"The user is moving into a "
+    "new house after Sept 22.\").\n\n"
+    "Only facts the user themselves stated about their real life: who they are, what they are "
+    "building or working on, plans, preferences, interests, decisions, or corrections they gave the "
+    "assistant. When they engage with a topic (news, sports, music), record THAT they discussed it or "
+    "how they feel about it, never the facts of the topic itself.\n"
+    "NEVER propose: anything the assistant said, did, wore or pretended; anything from role-play, a "
+    "scene, a joke or a hypothetical; questions the user merely asked; temporary states; anything "
+    "already known; or anything you are not sure the user actually said. Most exchanges have "
+    "nothing worth keeping -- that is the usual answer.\n\n"
+    "Reply with ONLY a JSON object: {\"fact\": \"...\"} or {\"fact\": null}."
+)
 
 _QUESTION_SYSTEM_PROMPT = (
     "You help an AI companion be curious about its user. From the latest exchange, decide whether "
@@ -517,6 +535,25 @@ class LocalLLM:
         Set fresh every turn by main.py's _reply_to, and "" during role-play.
         """
         self._curiosity = curiosity_block.strip()
+
+    def propose_memory(self, user_text: str, reply_text: str, known: str) -> str:
+        """Training mode (brain/training.py): asks the model for at most one fact from
+        this exchange worth remembering -- returns its raw answer (JSON, see
+        _MEMORY_PROPOSAL_SYSTEM_PROMPT) for training.parse_fact to validate. `known`
+        is what she already remembers plus what is already waiting for review.
+        Separate from _history/_system_prompt, same as maybe_extract_memory.
+        """
+        messages = [
+            {"role": "system", "content": _MEMORY_PROPOSAL_SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": (
+                    f"Already known or already proposed:\n{known or '(nothing yet)'}\n\n"
+                    f"Latest exchange:\nUser: {user_text}\nAssistant: {reply_text or '(reply omitted)'}"
+                ),
+            },
+        ]
+        return self._complete(messages, MAX_MEMORY_PROPOSAL_TOKENS)
 
     def propose_question(self, user_text: str, reply_text: str, known: str, asked: list[str]) -> str:
         """Asks the model for one thing she could be curious about after this

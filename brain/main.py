@@ -45,6 +45,7 @@ import notes
 import profiles
 import protocol
 import souls
+import training
 import tts_engines
 import voice_settings
 import web_search
@@ -569,6 +570,11 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
         voice_settings.set_voice_active(bool(data.get("active")))
     elif msg_type == protocol.SET_WEB_SEARCH_ACTIVE:
         web_search.set_active(bool(data.get("active")))
+    elif msg_type == protocol.SET_TRAINING_ACTIVE:
+        training.set_active(bool(data.get("active")))
+        await _broadcast(_training_state_message())
+    elif msg_type == protocol.RESOLVE_MEMORY_PROPOSAL:
+        await _handle_resolve_memory_proposal(data)
     elif msg_type == protocol.SET_CURIOSITY_ACTIVE:
         curiosity.set_active(bool(data.get("active")))
     elif msg_type == protocol.SET_MEMORY_ACTIVE:
@@ -652,6 +658,7 @@ async def _handle_ready(websocket: websockets.ServerConnection, data: dict) -> N
     await websocket.send(json.dumps(protocol.voice_state(voice_settings.read_voice_active())))
     await websocket.send(json.dumps(protocol.web_search_state(web_search.read_active())))
     await websocket.send(json.dumps(protocol.curiosity_state(curiosity.read_active())))
+    await websocket.send(json.dumps(_training_state_message()))
     await websocket.send(json.dumps(protocol.memory_state(memory.read_memory_active())))
     await websocket.send(json.dumps(protocol.memory_provider_state(memory.read_provider())))
     # Its own task -- fetching lessons is a network call to Hindsight, and an
@@ -1994,6 +2001,64 @@ async def _reply_to(
     await websocket.send(json.dumps(protocol.viseme_stream(frames)))
 
 
+def _training_state_message(error: str = "") -> dict:
+    available = memory.read_provider() == memory.HINDSIGHT_PROVIDER and memory.hindsight_configured()
+    return protocol.training_state(available, training.read_active(), training.read_pending(), error)
+
+
+async def _propose_memory(
+    websocket: websockets.ServerConnection, user_text: str, reply_text: str, brain: Brain
+) -> None:
+    """Training mode's replacement for retain_exchange: asks the model for at most one fact
+    worth keeping and queues it for the user to approve, edit or reject (brain/training.py).
+    Nothing is sent to Hindsight from here. A failure or an empty answer is the normal
+    outcome and never surfaces.
+    """
+    start = time.monotonic()
+    known = "\n".join(
+        part for part in (getattr(brain.llm, "_memory", ""), *(f"- {p['fact']}" for p in training.read_pending())) if part
+    )
+    try:
+        raw = await asyncio.to_thread(brain.llm.propose_memory, user_text, reply_text, known)
+    except Exception as exc:
+        await _debug_log(websocket, "training", f"memory proposal failed: {exc!r}", (time.monotonic() - start) * 1000)
+        return
+    fact = training.parse_fact(raw)
+    if fact and training.add_pending(fact, user_text):
+        await _debug_log(websocket, "training", "memory proposed for review", (time.monotonic() - start) * 1000)
+        await _broadcast(_training_state_message())
+    else:
+        await _debug_log(websocket, "training", "nothing worth proposing", (time.monotonic() - start) * 1000)
+
+
+async def _handle_resolve_memory_proposal(data: dict) -> None:
+    """Approve (with the user's edited wording and importance) or reject one queued memory.
+    Approval retains it to Hindsight first and only then removes it from the queue, so a
+    failed save leaves it waiting (and says why) instead of losing it.
+    """
+    proposal_id = str(data.get("id", ""))
+    error = ""
+    proposal = training.get_pending(proposal_id)
+    if proposal is None:
+        error = "that proposal is no longer in the list"
+    elif data.get("approve"):
+        fact = str(data.get("fact") or proposal["fact"]).strip()
+        importance = str(data.get("importance") or training.DEFAULT_IMPORTANCE)
+        if not fact or len(fact) > training.MAX_FACT_CHARS:
+            error = f"a memory needs 1-{training.MAX_FACT_CHARS} characters"
+        else:
+            try:
+                await memory.retain_fact(fact, importance)
+            except Exception as exc:
+                print(f"[brain] approving a memory failed: {exc!r}")
+                error = "couldn't save it to Hindsight -- it's still in the list"
+            else:
+                training.remove_pending(proposal_id)
+    else:
+        training.remove_pending(proposal_id)
+    await _broadcast(_training_state_message(error))
+
+
 async def _maybe_propose_question(
     websocket: websockets.ServerConnection, user_text: str, reply_text: str, brain: Brain
 ) -> None:
@@ -2047,6 +2112,9 @@ async def _maybe_retain_memory(websocket: websockets.ServerConnection, user_text
     if not user_text.strip() and not reply_text.strip():
         return  # an image-only turn with nothing the user said -- nothing left worth keeping
     start = time.monotonic()
+    if memory.read_provider() == memory.HINDSIGHT_PROVIDER and training.read_active():
+        await _propose_memory(websocket, user_text, reply_text, brain)
+        return
     if memory.read_provider() == memory.HINDSIGHT_PROVIDER:
         try:
             await memory.retain_exchange(user_text, reply_text)  # reply_text is "" for a web-search turn, see _reply_to

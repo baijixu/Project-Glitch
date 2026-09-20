@@ -5,6 +5,7 @@
 // rather than looking like a working no-op.
 
 import { LessonsUI } from "./lessons_ui.js";
+import { TrainingUI } from "./training_ui.js";
 
 const RECONNECT_DELAY_MS = 3000;
 // Fades out 10s after the text finishes streaming in, not 10s from when it
@@ -357,6 +358,10 @@ export class BrainClient {
     // own module, and these two rate the latest reply in Chat Bubbles Over
     // Avatar mode (the History panel rates per-bubble instead).
     this._lessonsUI = new LessonsUI({ send: (message) => this._send(message) });
+    this._trainingUI = new TrainingUI({
+      send: (message) => this._send(message),
+      onNewProposals: (fact) => this._showMemoryToast(fact, "🧠 Memory proposed (review in Settings): "),
+    });
     this._rateControls = new WeakMap(); // history entry -> {paint} for its 👍/👎 controls
     document.getElementById("overlay-thumbs-up")?.addEventListener("click", () => this._rateLastReply("up"));
     document.getElementById("overlay-thumbs-down")?.addEventListener("click", () => this._rateLastReply("down"));
@@ -3110,6 +3115,9 @@ export class BrainClient {
           this._pendingNotesOpen = false;
           this._openNotesModal(data.content || "");
         }
+        break;
+      case "training_state":
+        this._trainingUI.handleState(data);
         break;
       case "lessons_state":
         this._lessonsUI.handleState(data);

@@ -182,6 +182,26 @@
               she's wondered about you -- never more than one, and never during role-play.
             </p>
           </section>
+          <section id="training-section" class="settings-section">
+            <h3>Memory training<span id="training-count"></span></h3>
+            <p class="settings-hint">
+              While on, nothing is saved to her memory on its own. After a reply she proposes one short fact,
+              and it waits here for you to edit, rate (core / normal / minor) and save -- or reject.
+              Core facts are always in her prompt. Needs the Hindsight memory backend.
+            </p>
+            <p id="training-unavailable" class="settings-hint" hidden>
+              Pick the Hindsight memory backend and fill in the server above first.
+            </p>
+            <label class="settings-toggle-row">
+              <span>Review memories before saving</span>
+              <span class="settings-toggle">
+                <input type="checkbox" id="training-toggle" class="settings-toggle-input" />
+                <span class="settings-toggle-track"></span>
+              </span>
+            </label>
+            <p id="training-error" class="settings-hint" hidden></p>
+            <div id="training-list"></div>
+          </section>
           <section id="lessons-section" class="settings-section">
             <h3>Behavior learning</h3>
             <p class="settings-hint">
