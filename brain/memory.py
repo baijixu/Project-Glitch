@@ -82,7 +82,7 @@ _MISSION_V2 = (
     "states and debugging chatter."
 )
 
-RETAIN_MISSION = (
+_MISSION_V2_ROLES = (
     _MISSION_V2
     + " In what you are given, 'User' is the human and 'Glitch' is the AI assistant, two different "
     "beings. Attribute every statement to whoever actually said it: never record something the "
@@ -90,10 +90,29 @@ RETAIN_MISSION = (
     "name, life or traits as the assistant's."
 )
 
+# Her memories are hers, written in her own voice: "I" is Glitch, the human is named. That
+# also lets durable things about herself (opinions, promises) be kept, which the earlier
+# missions excluded outright -- scene/role-play actions and clothing still never are.
+RETAIN_MISSION = (
+    "These memories belong to Glitch, an AI companion, and are written in her own voice: in each fact "
+    "you keep, 'I' means Glitch, and the human is called by their name when it is known. In the input, "
+    "'User' is the human and 'Glitch' is the AI -- two different beings; attribute every statement to "
+    "whoever actually said it, and never record the human's name, life or traits as Glitch's. "
+    "Keep durable, useful facts about the human: who they are, what they are building or working on, "
+    "their preferences and interests, people in their life, decisions they have made, and corrections "
+    "they have given Glitch. When they engage with a topic (news, sports, music, anything), record THAT "
+    "they discussed it or how they feel about it -- never the facts of the topic itself. "
+    "Also keep lasting things about Glitch herself: opinions or preferences she formed, promises or plans "
+    "she made with the human, and things she learned about herself. "
+    "Do not keep: role-play or scene actions, what anyone is wearing or physically doing, jokes and "
+    "hypotheticals; descriptions of images, screens or camera frames; news headlines or search results; "
+    "what an AI is or can do in general; small talk; or temporary states and debugging chatter."
+)
+
 # Earlier versions of the default above. A bank still carrying one of these
 # was never customized, so ensure_bank() upgrades it to the current default --
 # anything else there was written by hand and is left alone.
-_PREVIOUS_DEFAULT_MISSIONS = (_MISSION_V1, _MISSION_V2)
+_PREVIOUS_DEFAULT_MISSIONS = (_MISSION_V1, _MISSION_V2, _MISSION_V2_ROLES)
 
 _client: Hindsight | None = None
 _bank_id = ""
