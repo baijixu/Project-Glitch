@@ -108,6 +108,11 @@ class TrainingThroughBrain(unittest.IsolatedAsyncioTestCase):
         await self._say("yeah")
         self.assertIn("moving into a new house", self.brain.llm.memory_known_seen[-1])
 
+    async def test_the_users_own_description_is_passed_so_she_can_use_their_name(self):
+        with mock.patch.object(main, "_effective_user_info", lambda: "My name is Josh."):
+            await self._say("hey")
+        self.assertIn("My name is Josh.", self.brain.llm.memory_known_seen[-1])
+
     async def test_nothing_worth_keeping_queues_nothing(self):
         await self._say("hello there")
         self.assertEqual(training.read_pending(), [])

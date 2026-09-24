@@ -2015,8 +2015,16 @@ async def _propose_memory(
     outcome and never surfaces.
     """
     start = time.monotonic()
+    # Their own user.md goes in too, so she can call them by name rather than "the user".
+    user_info = _effective_user_info()
     known = "\n".join(
-        part for part in (getattr(brain.llm, "_memory", ""), *(f"- {p['fact']}" for p in training.read_pending())) if part
+        part
+        for part in (
+            f"The human's own description of themselves:\n{user_info}" if user_info else "",
+            getattr(brain.llm, "_memory", ""),
+            *(f"- {p['fact']}" for p in training.read_pending()),
+        )
+        if part
     )
     try:
         raw = await asyncio.to_thread(brain.llm.propose_memory, user_text, reply_text, known)

@@ -20,7 +20,8 @@ import re
 from datetime import datetime
 
 import httpx
-from openai import OpenAI
+import openai
+from openai import BadRequestError, OpenAI
 
 import web_search
 
@@ -216,18 +217,24 @@ MAX_QUESTION_TOKENS = 2000
 MAX_MEMORY_PROPOSAL_TOKENS = 2000  # same reasoning-model budget, for training mode's proposals
 
 _MEMORY_PROPOSAL_SYSTEM_PROMPT = (
-    "You help an AI companion decide what to remember about its user. You are shown what is "
-    "already known and the latest exchange, where 'User' is the HUMAN and 'Assistant' is the AI -- "
-    "two different beings. Propose at most ONE new fact worth keeping long-term, written as a "
-    "single self-contained sentence that starts with 'The user' (e.g. \"The user is moving into a "
-    "new house after Sept 22.\").\n\n"
-    "Only facts the user themselves stated about their real life: who they are, what they are "
-    "building or working on, plans, preferences, interests, decisions, or corrections they gave the "
-    "assistant. When they engage with a topic (news, sports, music), record THAT they discussed it or "
+    "You are Glitch, an AI companion, deciding what to remember from your latest exchange with the "
+    "person you talk to. In the exchange, 'User' is that person -- a human -- and 'Assistant' is you. "
+    "Write at most ONE new memory, in YOUR OWN VOICE, as a single self-contained sentence: 'I', 'me' "
+    "and 'my' always mean you, Glitch. Call the human by their name if it appears in what you already "
+    "know (for example their own description of themselves), otherwise 'the user'. Examples: "
+    "\"Josh is moving into a new house after Sept 22.\" / \"I promised Josh I'd help him name his new "
+    "song.\" / \"I've realized I like quiet late-night chats more than busy ones.\"\n\n"
+    "Worth remembering about the human: facts they stated about their real life -- who they are, what "
+    "they are building or working on, plans, preferences, interests, decisions, or corrections they "
+    "gave you. When they engage with a topic (news, sports, music), record THAT they discussed it or "
     "how they feel about it, never the facts of the topic itself.\n"
-    "NEVER propose: anything the assistant said, did, wore or pretended; anything from role-play, a "
-    "scene, a joke or a hypothetical; questions the user merely asked; temporary states; anything "
-    "already known; or anything you are not sure the user actually said. Most exchanges have "
+    "Worth remembering about yourself: lasting things only -- an opinion or preference you formed, a "
+    "promise or plan you made with them, something you learned about yourself, or how things are "
+    "between the two of you.\n"
+    "NEVER propose: anything from role-play, a scene, *actions in asterisks*, what either of you is "
+    "wearing or physically doing, a joke or a hypothetical; questions merely asked; temporary moods or "
+    "states; anything already known; or anything you are not sure was really said. Never mix up who "
+    "said what -- what the human said about themselves is about them, not you. Most exchanges have "
     "nothing worth keeping -- that is the usual answer.\n\n"
     "Reply with ONLY a JSON object: {\"fact\": \"...\"} or {\"fact\": null}."
 )
@@ -424,7 +431,9 @@ class LocalLLM:
         """
         self._reply_generation += 1
 
-    def _complete_raw(self, messages: list[dict], max_tokens: int, tools: list[dict] | None) -> dict:
+    def _complete_raw(
+        self, messages: list[dict], max_tokens: int, tools: list[dict] | None, no_thinking: bool = False
+    ) -> dict:
         """Runs exactly one chat completion and returns
         {"content": str, "tool_calls": [{"id", "name", "arguments": dict}],
         "raw_message": dict} -- raw_message is this backend's own native
@@ -440,7 +449,16 @@ class LocalLLM:
         kwargs = {"model": self._model, "messages": messages, "max_tokens": max_tokens}
         if tools:
             kwargs["tools"] = tools
-        response = self._client.chat.completions.create(**kwargs)
+        if no_thinking and getattr(self, "_reasoning_effort_supported", True):
+            # See _complete's no_thinking. A server that rejects the parameter gets
+            # the call again without it, and is never sent it again.
+            try:
+                response = self._client.chat.completions.create(**kwargs, reasoning_effort="none")
+            except BadRequestError:
+                self._reasoning_effort_supported = False
+                response = self._client.chat.completions.create(**kwargs)
+        else:
+            response = self._client.chat.completions.create(**kwargs)
         message = response.choices[0].message
         tool_calls = []
         for call in message.tool_calls or []:
@@ -455,7 +473,9 @@ class LocalLLM:
             "raw_message": message.model_dump(exclude_none=True),
         }
 
-    def _complete(self, messages: list[dict], max_tokens: int, tools: list[dict] | None = None) -> str:
+    def _complete(
+        self, messages: list[dict], max_tokens: int, tools: list[dict] | None = None, no_thinking: bool = False
+    ) -> str:
         """Runs _complete_raw once, or -- while `tools` is given and the
         model actually asks to use one -- repeatedly: appends the
         assistant's own tool-call turn plus each tool's result, then calls
@@ -465,10 +485,16 @@ class LocalLLM:
         `messages` itself is never mutated -- the loop works on its own
         copy, so a tool-calling detour never pollutes what reply() ends up
         appending to self._history (only the clean final text does).
+
+        no_thinking asks a reasoning model to skip its thinking pass -- for the
+        short background JSON calls (memory/question/lesson proposals), never
+        her replies. Measured on the live Qwen model: a memory proposal spent its
+        whole 2000-token budget thinking and returned nothing after ~93 s; with
+        thinking off it answered correctly in ~2 s.
         """
         working = list(messages)
         for _ in range(MAX_TOOL_ITERATIONS):
-            result = self._complete_raw(working, max_tokens, tools)
+            result = self._complete_raw(working, max_tokens, tools, no_thinking=no_thinking)
             if not result["tool_calls"]:
                 return result["content"]
             working.append(result["raw_message"])
@@ -553,7 +579,7 @@ class LocalLLM:
                 ),
             },
         ]
-        return self._complete(messages, MAX_MEMORY_PROPOSAL_TOKENS)
+        return self._complete(messages, MAX_MEMORY_PROPOSAL_TOKENS, no_thinking=True)
 
     def propose_question(self, user_text: str, reply_text: str, known: str, asked: list[str]) -> str:
         """Asks the model for one thing she could be curious about after this
@@ -575,7 +601,7 @@ class LocalLLM:
                 ),
             },
         ]
-        return self._complete(messages, MAX_QUESTION_TOKENS)
+        return self._complete(messages, MAX_QUESTION_TOKENS, no_thinking=True)
 
     def propose_lesson(
         self,
@@ -607,7 +633,7 @@ class LocalLLM:
                 ),
             },
         ]
-        return self._complete(messages, MAX_LESSON_TOKENS)
+        return self._complete(messages, MAX_LESSON_TOKENS, no_thinking=True)
 
     def _system_prompt(self) -> str:
         personality = self._soul or DEFAULT_PERSONALITY
@@ -630,7 +656,10 @@ class LocalLLM:
             # Placed before the persona block -- this describes the real
             # user underneath whatever pretend scenario is currently
             # layered on top, not something a role-play toggle should hide.
-            parts.append(f"What you remember about the user from past conversations:\n{self._memory}")
+            parts.append(
+                "What you remember from past conversations (your own memories -- \"I\" in them is you):\n"
+                f"{self._memory}"
+            )
         if self._persona:
             parts.append(
                 f"You are role-playing with the user under this profile:\n{self._persona}\n\n"
@@ -768,7 +797,7 @@ class LocalLLM:
                 ),
             },
         ]
-        result = self._complete(messages, MAX_MEMORY_EXTRACT_TOKENS)
+        result = self._complete(messages, MAX_MEMORY_EXTRACT_TOKENS, no_thinking=True)
         if not result or result.upper().startswith("NONE"):
             return None
         return result.strip("\"'")
@@ -838,17 +867,20 @@ class OllamaLLM(LocalLLM):
         self.last_reply_used_web_search = False
         self._reply_generation = 0
 
-    def _complete_raw(self, messages: list[dict], max_tokens: int, tools: list[dict] | None) -> dict:
+    def _complete_raw(
+        self, messages: list[dict], max_tokens: int, tools: list[dict] | None, no_thinking: bool = False
+    ) -> dict:
+        think = self._think and not no_thinking
         # See MAX_REPLY_TOKENS_THINKING's own comment -- the caller passes
         # MAX_REPLY_TOKENS same as every other engine, but that's not
         # enough room once thinking is actually turned on, so this widens
         # it right here rather than needing every caller to know that.
-        if self._think:
+        if think:
             max_tokens = max(max_tokens, MAX_REPLY_TOKENS_THINKING)
         payload = {
             "model": self._model,
             "messages": [_to_ollama_message(m) for m in messages],
-            "think": self._think,
+            "think": think,
             "stream": False,
             "keep_alive": OLLAMA_KEEP_ALIVE,
             # Ollama's own generation-parameter shape -- num_predict is

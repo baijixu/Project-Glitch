@@ -76,6 +76,11 @@ class MemoryTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("'User' is the human", memory.RETAIN_MISSION)
         self.assertIn("'Glitch' is the AI", memory.RETAIN_MISSION)
 
+    async def test_mission_asks_for_her_own_first_person_voice(self):
+        self.assertIn("'I' means Glitch", memory.RETAIN_MISSION)
+        self.assertIn("things about Glitch herself", memory.RETAIN_MISSION)
+        self.assertIn("role-play or scene actions", memory.RETAIN_MISSION)  # still never kept
+
     async def test_clearing_memory_restores_the_mission(self):
         # Regression: a recreated bank started with no mission until the next Brain restart.
         fake = self.use(FakeHindsight(mission=memory.RETAIN_MISSION))
