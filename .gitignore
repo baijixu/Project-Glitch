@@ -90,6 +90,9 @@ brain/curiosity_active.txt
 brain/curiosity_questions.json
 brain/training_active.txt
 brain/training_queue.json
+brain/conversation.json
+brain/conversation.tmp
+brain/chat_logs/
 brain/backups/
 brain/ratings_log.jsonl
 

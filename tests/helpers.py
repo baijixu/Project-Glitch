@@ -4,7 +4,8 @@ Importing this puts brain/ on sys.path (Brain's modules import each other by
 bare name, e.g. `import memory`) and provides:
 
 * isolated_state() -- redirects every module-level state file/dir (souls,
-  profiles, lessons, curiosity, training, web-search toggle) into a temp folder,
+  profiles, lessons, curiosity, training, web-search toggle, conversation and
+  chat logs) into a temp folder,
   so a test can never read or overwrite the real soul.md, memory queue, etc.
 * FakeWS / FakeLLM / FakeBrain -- just enough of a websocket, model and Brain
   to drive main._reply_to and the message handlers without a network.
@@ -21,6 +22,7 @@ BRAIN_DIR = Path(__file__).resolve().parent.parent / "brain"
 if str(BRAIN_DIR) not in sys.path:
     sys.path.insert(0, str(BRAIN_DIR))
 
+import conversation  # noqa: E402
 import curiosity  # noqa: E402
 import lessons  # noqa: E402
 import main  # noqa: E402
@@ -56,6 +58,8 @@ def isolated_state():
         patch(lessons, "ACTIVE_PATH", tmp / "lessons_active.txt")
         patch(lessons, "AUTONOMY_PATH", tmp / "lessons_autonomy.txt")
         patch(web_search, "ACTIVE_PATH", tmp / "web_search_active.txt")
+        patch(conversation, "STATE_PATH", tmp / "conversation.json")
+        patch(conversation, "LOG_DIR", tmp / "chat_logs")
         yield tmp
 
 
