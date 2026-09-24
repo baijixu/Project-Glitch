@@ -517,6 +517,7 @@ class LocalLLM:
         """
         self._persona = persona_md.strip()
         self._history.clear()
+        self._history_changed()
 
     def set_soul(self, soul_md: str) -> None:
         """Sets the active soul (who Glitch is + example dialogue,
@@ -528,6 +529,7 @@ class LocalLLM:
         """
         self._soul = soul_md.strip()
         self._history.clear()
+        self._history_changed()
 
     def set_memory(self, memory_block: str) -> None:
         """Sets what Glitch remembers about the real user (brain/memory.py --
@@ -717,13 +719,33 @@ class LocalLLM:
         self.last_reply_used_web_search = False
         raw_reply = self._complete(messages, MAX_REPLY_TOKENS, tools)
         if generation != self._reply_generation:
+            self._history_changed()  # the user's own turn stays (see cancel_reply)
             return "", "neutral"  # cancelled via cancel_reply() while in flight -- discarded, never reaches _history
         mood, reply_text = _extract_mood(raw_reply)
         # Stored cleaned, not with the tag -- keeps the tag from cluttering
         # future turns' context for no benefit (the system prompt alone is
         # enough to keep the model tagging consistently turn to turn).
         self._history.append({"role": "assistant", "content": reply_text})
+        self._history_changed()
         return reply_text, mood
+
+    def restore_history(self, messages: list[dict]) -> None:
+        """Puts back a saved conversation (brain/conversation.py) -- at startup, or
+        when the LLM engine is switched. Capped the same way reply() caps it.
+        """
+        self._history[:] = list(messages)[-MAX_HISTORY_MESSAGES:]
+
+    def _history_changed(self) -> None:
+        """Tells whoever is listening (main.py saves it to disk) that _history
+        changed. Never lets a failure there break a reply.
+        """
+        callback = getattr(self, "_on_history_change", None)
+        if callback is None:
+            return
+        try:
+            callback(self._history)
+        except Exception as exc:
+            print(f"[llm] couldn't save the conversation: {exc!r}")
 
     def pop_last_exchange(self) -> str | None:
         """Removes the most recent turn from history and returns the user
@@ -766,6 +788,7 @@ class LocalLLM:
             user_message = self._history.pop()
         else:
             return None
+        self._history_changed()
         content = user_message.get("content")
         if isinstance(content, list):
             return "\n".join(part.get("text", "") for part in content if part.get("type") == "text")

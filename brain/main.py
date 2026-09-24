@@ -35,6 +35,7 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 import avatars
+import conversation
 import curiosity
 import harness
 import kokoro_voices
@@ -1301,7 +1302,18 @@ def _build_llm(name: str) -> LocalLLM | NoneLLM:
     active_profile = profiles.read_active_profile()
     if active_profile and profiles.read_roleplay_active():
         llm.set_persona(active_profile)
+    # Pick the conversation back up where it was (a Brain restart or an engine
+    # switch used to wipe it), then save it on every change from here on. Hooked
+    # up only after the set_soul/set_persona above, which each clear history and
+    # would otherwise save an empty conversation over the real one.
+    if isinstance(llm, LocalLLM):
+        llm.restore_history(conversation.load_state(_conversation_mode()))
+        llm._on_history_change = lambda history: conversation.save_state(history, _conversation_mode())
     return llm
+
+
+def _conversation_mode() -> str:
+    return conversation.ROLEPLAY if profiles.read_roleplay_active() else conversation.MAIN
 
 
 def _build_harness_llm(name: str) -> HarnessLLM | None:
@@ -1958,6 +1970,7 @@ async def _reply_to(
     # back to 0", which is exactly right after a mood-carrying reply.
     await websocket.send(json.dumps(protocol.set_expression(mood, 1.0)))
     await websocket.send(json.dumps(protocol.speak_text(reply_text)))
+    conversation.log_exchange(text, reply_text, roleplay=profiles.read_roleplay_active(), picture=bool(image_b64))
 
     # Fire-and-forget: must never slow down or affect the reply the user
     # already has. Runs regardless of whether voice/TTS succeeds below --

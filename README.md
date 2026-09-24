@@ -300,6 +300,14 @@ Git only holds the code. Everything personal is **gitignored** and lives on your
 the role-play files, `brain/souls/`, `brain/profiles/`, notes, lessons, ratings, toggles, saved engines, avatars, custom
 voices, and your configs.
 
+Two of those are your conversations:
+
+- **`brain/conversation.json`**: what she currently remembers of the chat. It's saved after every reply and picked back up
+  when the Brain restarts or you switch LLM engine, so a restart no longer wipes her short-term memory. A role-play
+  conversation is only restored into role-play, and a normal one only into normal chat. Pictures are kept as a
+  `[picture]` note, not the image itself.
+- **`brain/chat_logs/`**: a timestamped log of every exchange, one Markdown file per day (`2026-09-24.md`), for you to read.
+
 Back it all up with one command:
 
 ```bash
