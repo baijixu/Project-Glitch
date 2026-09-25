@@ -52,6 +52,7 @@ import voice_settings
 import web_search
 from config import load_config
 from llm import REQUEST_TIMEOUT_SEC, HarnessLLM, LocalLLM, NoneLLM, OllamaLLM, list_models, list_ollama_models
+from llm.client import MAX_HISTORY_MESSAGES
 from voice import FasterWhisperSTT, NoneTTS, RemoteTTS
 
 # config.yaml's brain.llm block, captured once at startup (main()) -- kept
@@ -659,6 +660,8 @@ async def _handle_ready(websocket: websockets.ServerConnection, data: dict) -> N
     await websocket.send(json.dumps(protocol.voice_state(voice_settings.read_voice_active())))
     await websocket.send(json.dumps(protocol.web_search_state(web_search.read_active())))
     await websocket.send(json.dumps(protocol.curiosity_state(curiosity.read_active())))
+    if _LAST_CONTEXT_USAGE:
+        await websocket.send(json.dumps(_LAST_CONTEXT_USAGE))
     await websocket.send(json.dumps(_training_state_message()))
     await websocket.send(json.dumps(protocol.memory_state(memory.read_memory_active())))
     await websocket.send(json.dumps(protocol.memory_provider_state(memory.read_provider())))
@@ -1971,6 +1974,9 @@ async def _reply_to(
     await websocket.send(json.dumps(protocol.set_expression(mood, 1.0)))
     await websocket.send(json.dumps(protocol.speak_text(reply_text)))
     conversation.log_exchange(text, reply_text, roleplay=profiles.read_roleplay_active(), picture=bool(image_b64))
+    task = asyncio.create_task(_send_context_usage(brain))
+    _LESSON_TASKS.add(task)
+    task.add_done_callback(_LESSON_TASKS.discard)
 
     # Fire-and-forget: must never slow down or affect the reply the user
     # already has. Runs regardless of whether voice/TTS succeeds below --
@@ -2078,6 +2084,30 @@ async def _handle_resolve_memory_proposal(data: dict) -> None:
     else:
         training.remove_pending(proposal_id)
     await _broadcast(_training_state_message(error))
+
+
+# The latest context_usage message, so a device that connects later sees the meter too.
+_LAST_CONTEXT_USAGE: dict | None = None
+
+
+async def _send_context_usage(brain: Brain) -> None:
+    """After a reply: how full her context is, for the Settings meter. Asking the
+    server for the context size is a network call (cached, see
+    LocalLLM.context_window), so this runs on its own and never delays her.
+    """
+    global _LAST_CONTEXT_USAGE
+    usage = getattr(brain.llm, "last_usage", None)
+    if not isinstance(brain.llm, LocalLLM) or not usage:
+        return
+    used = (usage.get("prompt") or 0) + (usage.get("completion") or 0)
+    if not used:
+        return  # the server didn't report token counts
+    try:
+        window = await asyncio.to_thread(brain.llm.context_window)
+    except Exception:
+        window = None
+    _LAST_CONTEXT_USAGE = protocol.context_usage(used, window, usage.get("history_messages", 0), MAX_HISTORY_MESSAGES)
+    await _broadcast(_LAST_CONTEXT_USAGE)
 
 
 async def _maybe_propose_question(

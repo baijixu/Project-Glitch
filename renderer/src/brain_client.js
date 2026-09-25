@@ -1791,6 +1791,26 @@ export class BrainClient {
   // from the permanent chat-history entry _handleMessage also adds for the
   // same event (see its "memory_learned" case); this one is just a
   // transient heads-up, not part of the conversation record.
+  // Settings' context meter (brain's context_usage message). Numbers only ever go in
+  // through textContent / style.width.
+  _renderContextUsage(data) {
+    const textEl = document.getElementById("context-meter-text");
+    const fillEl = document.getElementById("context-meter-fill");
+    if (!textEl || !fillEl) return;
+    const used = Number(data.used) || 0;
+    const window_ = Number(data.window) || 0;
+    const messages = `${Number(data.messages) || 0} of ${Number(data.max_messages) || 0} messages`;
+    if (window_ > 0) {
+      const pct = Math.min(100, Math.round((used / window_) * 100));
+      textEl.textContent = `${used.toLocaleString()} / ${window_.toLocaleString()} tokens (${pct}%) · ${messages}`;
+      fillEl.style.width = `${pct}%`;
+      fillEl.dataset.level = pct >= 85 ? "high" : pct >= 60 ? "mid" : "low";
+    } else {
+      textEl.textContent = `${used.toLocaleString()} tokens · ${messages} (the server doesn't report its limit)`;
+      fillEl.style.width = "0%";
+    }
+  }
+
   _showMemoryToast(fact, prefix = "🧠 Learned: ") {
     if (!this.memoryToastEl) return;
     this.memoryToastEl.textContent = `${prefix}${fact}`;
@@ -3076,6 +3096,9 @@ export class BrainClient {
         break;
       case "web_search_state":
         if (this.webSearchToggleInputEl) this.webSearchToggleInputEl.checked = !!data.active;
+        break;
+      case "context_usage":
+        this._renderContextUsage(data);
         break;
       case "curiosity_state": {
         const el = document.getElementById("curiosity-toggle");

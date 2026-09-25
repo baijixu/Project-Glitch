@@ -271,6 +271,10 @@ Stop button (cancels a reply in flight), resend last message, two chat layouts (
 **Restart Brain** button in Settings (useful from a phone), a notes scratchpad (`brain/notes.md`), and an opt-in debug
 log of connection and timing events (never conversation content).
 
+A **context meter** under *Settings → LLM* shows how much of the model's context her latest reply used (for example
+`4,235 / 65,536 tokens (6%) · 12 of 60 messages`). She keeps the last 60 messages of the conversation. The context size
+is read from LM Studio, llama.cpp's `llama-server`, or Ollama.
+
 ## Using it from your phone or another PC
 
 Because the page and the Brain-proxy are both served by the Vite dev server, any device that can reach port **5173** can use Glitch:

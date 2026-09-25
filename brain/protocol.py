@@ -87,6 +87,7 @@ ROLEPLAY_STATE = "roleplay_state"
 VOICE_STATE = "voice_state"
 WEB_SEARCH_STATE = "web_search_state"
 CURIOSITY_STATE = "curiosity_state"
+CONTEXT_USAGE = "context_usage"
 TRAINING_STATE = "training_state"
 LESSONS_STATE = "lessons_state"
 LESSON_EVENT = "lesson_event"
@@ -217,6 +218,15 @@ def training_state(available: bool, active: bool, pending: list, error: str = ""
     approval couldn't be saved (the proposal then stays in the list).
     """
     return {"type": TRAINING_STATE, "available": available, "active": active, "pending": pending, "error": error}
+
+
+def context_usage(used: int, window: int | None, messages: int, max_messages: int) -> dict:
+    """How full her context is, for the Settings meter: `used` tokens after the
+    latest reply (prompt + reply), out of the model's `window` (None if the server
+    doesn't say), and how many conversation messages she's holding out of
+    `max_messages`. Sent after each reply, and on `ready` if there's been one.
+    """
+    return {"type": CONTEXT_USAGE, "used": used, "window": window, "messages": messages, "max_messages": max_messages}
 
 
 def curiosity_state(active: bool) -> dict:

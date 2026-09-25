@@ -17,6 +17,7 @@ system SPEC.md section 2 explicitly excludes.
 
 import json
 import re
+import time
 from datetime import datetime
 
 import httpx
@@ -62,6 +63,12 @@ IDENTITY_INSTRUCTION = (
     "You are the AI in this conversation. The person you're talking to is a separate human: "
     "their name, life and words are theirs, not yours. Never speak as them or call yourself by "
     "their name."
+)
+
+# Heads the per-turn notes attached to the newest user message (see _turn_notes).
+TURN_NOTES_HEADER = (
+    "Notes for you from your own memory and the app, for this reply. The person you're talking to "
+    "did not write these and can't see them."
 )
 
 _MOOD_TAG = re.compile(r"\[mood:\s*(\w+)\]\s*$", re.IGNORECASE)
@@ -153,7 +160,15 @@ def list_ollama_models(endpoint: str, api_key: str | None = None) -> list[str]:
 # progressively slower re-processing a ever-larger context on a local
 # model, to the point one reply took 90+s and looked hung. Trimming keeps
 # every turn's latency roughly flat instead of degrading over a session.
-MAX_HISTORY_MESSAGES = 20  # ~10 user/assistant exchanges
+# Raised from 20 once the per-turn parts moved out of the system prompt (see
+# _system_prompt): the history now stays cached between turns instead of being
+# reread, so a longer window costs little time. 60 messages of chat measured at
+# ~8k tokens, well inside the 65k context the live model is loaded with.
+MAX_HISTORY_MESSAGES = 60  # ~30 user/assistant exchanges
+
+# LocalLLM.context_window: how long its answer is trusted, and how long to wait for it.
+CONTEXT_WINDOW_CACHE_SEC = 60
+CONTEXT_WINDOW_TIMEOUT_SEC = 3
 
 # Hard cap on how many tokens a single reply is allowed to generate.
 # Found via a real incident: asking her to reply in exactly five words
@@ -467,14 +482,24 @@ class LocalLLM:
             except ValueError:
                 arguments = {}
             tool_calls.append({"id": call.id, "name": call.function.name, "arguments": arguments})
+        usage = getattr(response, "usage", None)
         return {
             "content": _reply_content(message),
             "tool_calls": tool_calls,
             "raw_message": message.model_dump(exclude_none=True),
+            "usage": {
+                "prompt": getattr(usage, "prompt_tokens", None),
+                "completion": getattr(usage, "completion_tokens", None),
+            },
         }
 
     def _complete(
-        self, messages: list[dict], max_tokens: int, tools: list[dict] | None = None, no_thinking: bool = False
+        self,
+        messages: list[dict],
+        max_tokens: int,
+        tools: list[dict] | None = None,
+        no_thinking: bool = False,
+        usage: dict | None = None,
     ) -> str:
         """Runs _complete_raw once, or -- while `tools` is given and the
         model actually asks to use one -- repeatedly: appends the
@@ -495,6 +520,8 @@ class LocalLLM:
         working = list(messages)
         for _ in range(MAX_TOOL_ITERATIONS):
             result = self._complete_raw(working, max_tokens, tools, no_thinking=no_thinking)
+            if usage is not None:  # the last call's numbers are the conversation's current size
+                usage.update({k: v for k, v in (result.get("usage") or {}).items() if v is not None})
             if not result["tool_calls"]:
                 return result["content"]
             working.append(result["raw_message"])
@@ -638,6 +665,13 @@ class LocalLLM:
         return self._complete(messages, MAX_LESSON_TOKENS, no_thinking=True)
 
     def _system_prompt(self) -> str:
+        """Only what rarely changes. A local model reuses its work on an unchanged
+        start of the prompt, and the conversation history comes right after this --
+        so anything here that changed every turn made it reread the whole
+        conversation every turn. Measured on the live model with 60 messages: 19 s
+        when the top changed, 1.2-1.7 s when it didn't. The per-turn parts (recalled
+        memories, the curiosity nudge, the clock) go in _turn_notes instead.
+        """
         personality = self._soul or DEFAULT_PERSONALITY
         parts = [personality, IDENTITY_INSTRUCTION, MOOD_TAG_INSTRUCTION, HONESTY_INSTRUCTION]
         if self._user_info:
@@ -652,31 +686,49 @@ class LocalLLM:
                 "How this user wants you to behave (learned from their feedback -- follow these "
                 f"over your default habits):\n{self._lessons}"
             )
-        if self._curiosity:
-            parts.append(self._curiosity)
-        if self._memory:
-            # Placed before the persona block -- this describes the real
-            # user underneath whatever pretend scenario is currently
-            # layered on top, not something a role-play toggle should hide.
-            parts.append(
-                "What you remember from past conversations (your own memories -- \"I\" in them is you):\n"
-                f"{self._memory}"
-            )
         if self._persona:
             parts.append(
                 f"You are role-playing with the user under this profile:\n{self._persona}\n\n"
                 "Stay in character and play out this scenario naturally as the conversation continues."
             )
-        # Last on purpose: this changes every minute, and a local model reuses
-        # its work on the unchanged start of a prompt -- so the one part that
-        # changes each turn goes at the very end of the system prompt, where
-        # it can't force everything before it to be reprocessed. Real-world
-        # time, so left out during role-play (a persona is set then) -- same
-        # reason her real-life memory/user.md pause: the scene has its own
-        # fictional setting and clock.
+        return "\n\n".join(parts)
+
+    def _turn_notes(self) -> str:
+        """This turn's changing context -- recalled memories, the curiosity nudge,
+        the current time -- or "" when there's none. Attached to the newest user
+        message for this one request only (see reply()), never stored in history,
+        and clearly marked as not written by the user: the model's chat template
+        refuses a second system message ("System message must be at the
+        beginning"), and in live tests she used the notes and kept straight what
+        came from them versus what the user said. The clock is real-world time, so
+        it's left out during role-play, same as her memory.
+        """
+        parts = []
+        if self._memory:
+            parts.append(f"What you remember from past conversations (your own memories -- \"I\" in them is you):\n{self._memory}")
+        if self._curiosity:
+            parts.append(self._curiosity)
         if not self._persona:
             parts.append(_current_time_line())
         return "\n\n".join(parts)
+
+    def _request_messages(self) -> list[dict]:
+        """System prompt + history, with this turn's notes attached to the newest
+        user message -- a copy, so _history itself stays exactly what was said.
+        """
+        messages = [{"role": "system", "content": self._system_prompt()}, *self._history]
+        notes = self._turn_notes()
+        if notes and messages[-1].get("role") == "user":
+            wrapped = f"<notes>\n{TURN_NOTES_HEADER}\n\n{notes}\n</notes>\n\n"
+            content = messages[-1]["content"]
+            if isinstance(content, list):  # a picture turn: prefix the text part
+                content = [
+                    {**part, "text": wrapped + part.get("text", "")} if part.get("type") == "text" else part for part in content
+                ]
+            else:
+                content = wrapped + content
+            messages[-1] = {**messages[-1], "content": content}
+        return messages
 
     def reply(
         self,
@@ -713,11 +765,12 @@ class LocalLLM:
             ]
         self._history.append({"role": "user", "content": content})
         del self._history[:-MAX_HISTORY_MESSAGES]
-        messages = [{"role": "system", "content": self._system_prompt()}, *self._history]
+        messages = self._request_messages()
         tools = [WEB_SEARCH_TOOL] if web_search_enabled else None
         generation = self._reply_generation
         self.last_reply_used_web_search = False
-        raw_reply = self._complete(messages, MAX_REPLY_TOKENS, tools)
+        usage: dict = {}
+        raw_reply = self._complete(messages, MAX_REPLY_TOKENS, tools, usage=usage)
         if generation != self._reply_generation:
             self._history_changed()  # the user's own turn stays (see cancel_reply)
             return "", "neutral"  # cancelled via cancel_reply() while in flight -- discarded, never reaches _history
@@ -727,7 +780,35 @@ class LocalLLM:
         # enough to keep the model tagging consistently turn to turn).
         self._history.append({"role": "assistant", "content": reply_text})
         self._history_changed()
+        self.last_usage = {**usage, "history_messages": len(self._history)}
         return reply_text, mood
+
+    def context_window(self) -> int | None:
+        """How many tokens the loaded model can hold, or None if the server doesn't
+        say. Asked of LM Studio (/api/v0/models) or llama.cpp's llama-server (/props);
+        cached for a minute, since the Settings meter asks after every reply.
+        """
+        cached = getattr(self, "_context_window_cache", None)
+        if cached and time.monotonic() - cached[1] < CONTEXT_WINDOW_CACHE_SEC:
+            return cached[0]
+        root = str(self._client.base_url).rstrip("/").removesuffix("/v1")
+        window = None
+        try:
+            with httpx.Client(timeout=CONTEXT_WINDOW_TIMEOUT_SEC) as http:
+                response = http.get(f"{root}/api/v0/models")
+                if response.status_code == 200:
+                    models = [m for m in response.json().get("data") or [] if m.get("loaded_context_length")]
+                    match = [m for m in models if m.get("id") == self._model] or [m for m in models if m.get("state") == "loaded"]
+                    window = match[0]["loaded_context_length"] if match else None
+                if window is None:
+                    response = http.get(f"{root}/props")
+                    if response.status_code == 200:
+                        window = (response.json().get("default_generation_settings") or {}).get("n_ctx")
+        except (httpx.HTTPError, ValueError, AttributeError, TypeError) as exc:
+            print(f"[llm] couldn't read the model's context size: {exc!r}")
+        window = window if isinstance(window, int) and window > 0 else None
+        self._context_window_cache = (window, time.monotonic())
+        return window
 
     def restore_history(self, messages: list[dict]) -> None:
         """Puts back a saved conversation (brain/conversation.py) -- at startup, or
@@ -890,6 +971,25 @@ class OllamaLLM(LocalLLM):
         self.last_reply_used_web_search = False
         self._reply_generation = 0
 
+    def context_window(self) -> int | None:
+        """Ollama's own answer (/api/ps lists each loaded model's context_length),
+        cached like LocalLLM.context_window."""
+        cached = getattr(self, "_context_window_cache", None)
+        if cached and time.monotonic() - cached[1] < CONTEXT_WINDOW_CACHE_SEC:
+            return cached[0]
+        window = None
+        try:
+            response = self._http.get("/api/ps", timeout=CONTEXT_WINDOW_TIMEOUT_SEC)
+            if response.status_code == 200:
+                for model in response.json().get("models") or []:
+                    if model.get("name") == self._model or model.get("model") == self._model:
+                        window = model.get("context_length")
+        except (httpx.HTTPError, ValueError, AttributeError, TypeError) as exc:
+            print(f"[llm] couldn't read the model's context size: {exc!r}")
+        window = window if isinstance(window, int) and window > 0 else None
+        self._context_window_cache = (window, time.monotonic())
+        return window
+
     def _complete_raw(
         self, messages: list[dict], max_tokens: int, tools: list[dict] | None, no_thinking: bool = False
     ) -> dict:
@@ -919,7 +1019,8 @@ class OllamaLLM(LocalLLM):
             payload["tools"] = tools
         response = self._http.post("/api/chat", json=payload)
         response.raise_for_status()
-        message = response.json().get("message") or {}
+        body = response.json()
+        message = body.get("message") or {}
         tool_calls = []
         for i, call in enumerate(message.get("tool_calls") or []):
             function = call.get("function") or {}
@@ -933,6 +1034,7 @@ class OllamaLLM(LocalLLM):
             "content": (message.get("content") or "").strip(),
             "tool_calls": tool_calls,
             "raw_message": message,
+            "usage": {"prompt": body.get("prompt_eval_count"), "completion": body.get("eval_count")},
         }
 
 
