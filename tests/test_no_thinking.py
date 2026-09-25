@@ -64,5 +64,22 @@ class NoThinking(unittest.TestCase):
         self.assertEqual(["reasoning_effort" in c for c in fake.calls], [True, False, False])
 
 
+class ReplyLimits(unittest.TestCase):
+    """She thinks before every reply (the user's choice), so the limits must leave room for it."""
+
+    def test_a_reply_gets_room_to_think(self):
+        fake = FakeCompletions()
+        make_llm(fake).reply("hello")
+        self.assertGreaterEqual(fake.calls[-1]["max_tokens"], 8000)
+
+    def test_clients_wait_long_enough_and_never_silently_retry(self):
+        from llm.client import REQUEST_TIMEOUT_SEC, HarnessLLM
+
+        self.assertGreaterEqual(REQUEST_TIMEOUT_SEC, 400)  # above ~8,000 tokens at ~20 tokens/s
+        for llm in (LocalLLM("http://127.0.0.1:9/v1", "m"), HarnessLLM("http://127.0.0.1:9/v1", "m")):
+            self.assertEqual(llm._client.max_retries, 0, type(llm).__name__)
+            self.assertEqual(llm._client.timeout, REQUEST_TIMEOUT_SEC, type(llm).__name__)
+
+
 if __name__ == "__main__":
     unittest.main()

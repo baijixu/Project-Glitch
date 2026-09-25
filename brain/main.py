@@ -2323,7 +2323,7 @@ async def main() -> None:
     # (llm.reply's blocking call, run via asyncio.to_thread) for longer
     # than that, and the library's own automatic keepalive ping/pong gave
     # up and force-closed the connection with 1011 "keepalive ping
-    # timeout" -- well before llm.client.REQUEST_TIMEOUT_SEC's own 120s
+    # timeout" -- well before llm.client.REQUEST_TIMEOUT_SEC's own
     # timeout ever got a chance to fire and surface a proper error to the
     # user. Set comfortably above REQUEST_TIMEOUT_SEC so a slow-or-hung
     # LLM call gets to time out on its own terms instead of the transport
