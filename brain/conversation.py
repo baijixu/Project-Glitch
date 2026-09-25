@@ -58,7 +58,10 @@ def load_state(mode: str) -> list[dict]:
     return [
         {"role": m["role"], "content": m["content"]}
         for m in data["messages"]
-        if isinstance(m, dict) and m.get("role") in ("user", "assistant") and isinstance(m.get("content"), str)
+        if isinstance(m, dict)
+        and m.get("role") in ("user", "assistant")
+        and isinstance(m.get("content"), str)
+        and m["content"].strip()  # a blank turn (an old empty reply) is dropped, not restored
     ]
 
 

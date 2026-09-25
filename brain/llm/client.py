@@ -554,6 +554,13 @@ class LocalLLM:
         self._history.clear()
         self._history_changed()
 
+    def update_soul(self, soul_md: str) -> None:
+        """An edit to the soul she already has (the Settings editor) -- unlike
+        set_soul, keeps the conversation: it's still her, and saving a tweak
+        mid-chat used to wipe everything she'd just been told.
+        """
+        self._soul = soul_md.strip()
+
     def set_memory(self, memory_block: str) -> None:
         """Sets what Glitch remembers about the real user (brain/memory.py --
         her own native memory, never touched by the Hermes harness). Unlike
@@ -766,11 +773,29 @@ class LocalLLM:
         generation = self._reply_generation
         self.last_reply_used_web_search = False
         usage: dict = {}
+        self.last_reply_fell_back = False
         raw_reply = self._complete(messages, MAX_REPLY_TOKENS, tools, usage=usage)
         if generation != self._reply_generation:
             self._history_changed()  # the user's own turn stays (see cancel_reply)
             return "", "neutral"  # cancelled via cancel_reply() while in flight -- discarded, never reaches _history
         mood, reply_text = _extract_mood(raw_reply)
+        if not reply_text.strip():
+            # Thinking used up the whole budget and left no answer -- this model
+            # sometimes keeps re-checking her soul's rules until it runs out (seen
+            # live: 8,000 tokens, 7 minutes, nothing). Rather than nothing, answer
+            # once more with thinking off. Her normal replies still think.
+            self.last_reply_fell_back = True
+            raw_reply = self._complete(messages, MAX_REPLY_TOKENS, tools, no_thinking=True, usage=usage)
+            if generation != self._reply_generation:
+                self._history_changed()
+                return "", "neutral"
+            mood, reply_text = _extract_mood(raw_reply)
+        if not reply_text.strip():
+            # Still nothing: leave the user's turn and store no empty "reply" --
+            # a blank turn from her would sit in the conversation (and now
+            # survive restarts), and a model reads it as her ignoring them.
+            self._history_changed()
+            return "", mood
         # Stored cleaned, not with the tag -- keeps the tag from cluttering
         # future turns' context for no benefit (the system prompt alone is
         # enough to keep the model tagging consistently turn to turn).
