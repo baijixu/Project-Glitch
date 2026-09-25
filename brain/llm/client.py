@@ -97,11 +97,15 @@ def _current_time_line(now: datetime | None = None) -> str:
 # connected-but-silent forever (a stuck generation thread, not a network
 # failure), and without this the request just sits in asyncio.to_thread
 # with nothing ever sent back to the Renderer -- "she's not responding"
-# with no error, not even a slow one. 120s is chosen above the ~90s a
-# legitimately slow reasoning-model reply has been seen to take (see
-# MAX_HISTORY_MESSAGES's comment) so this only fires for a genuine hang,
-# not a merely slow local model.
-REQUEST_TIMEOUT_SEC = 120
+# with no error, not even a slow one. She thinks before every reply (the
+# user chose that over speed; a live reply has already taken 96s), so this
+# sits above the longest reply MAX_REPLY_TOKENS allows: ~8,000 tokens at the
+# ~20 tokens/s measured on the live model is ~6.5 minutes. The token cap is
+# what ends a runaway reply; this only catches a server that has hung.
+# Clients built with it also get max_retries=0 -- the openai library
+# otherwise silently re-runs a timed-out request twice, so one hang became
+# three full attempts and ~3x the wait before any error showed.
+REQUEST_TIMEOUT_SEC = 480
 
 # Ollama's own default (5m) unloads a model from memory after that long
 # idle, so the next request pays to load it back in -- confirmed live: a
@@ -170,28 +174,19 @@ MAX_HISTORY_MESSAGES = 60  # ~30 user/assistant exchanges
 CONTEXT_WINDOW_CACHE_SEC = 60
 CONTEXT_WINDOW_TIMEOUT_SEC = 3
 
-# Hard cap on how many tokens a single reply is allowed to generate.
-# Found via a real incident: asking her to reply in exactly five words
-# instead produced a reply that ran past 6,000 tokens and never stopped
-# looking "hung" -- chat.completions.create had no limit of its own, and
-# the model didn't reliably emit its own stop token.
-#
-# Root cause (confirmed via a direct API probe, not guessed): this
-# session's configured model is a reasoning/"thinking" model -- it writes
-# its internal monologue to the OpenAI response's separate
-# `reasoning_content` field and leaves `content` (the only field this
-# file reads) empty until it's done thinking, however long that takes.
-# For a trivial "say hi in five words" it was still visibly going in
-# circles recounting word counts past 6,000 tokens with `content` still
-# empty. A low cap (e.g. 400) bounds the hang but then tends to cut the
-# response off *during* the thinking phase, before any real content --
-# trading a hang for a silently empty reply, not actually fixing anything.
-# 2000 gives this kind of model realistic room to finish thinking and
-# still produce an answer for an ordinary conversational turn, at the
-# cost of a slower worst-case reply than a non-reasoning model would need
-# -- if replies are still coming back empty/slow, the real fix is a
-# non-reasoning/instruct model for this slot, not raising this further.
-MAX_REPLY_TOKENS = 2000
+# Hard cap on how many tokens a single reply is allowed to generate --
+# thinking AND answer share it. History: with no cap at all, asking her to
+# reply in exactly five words once ran past 6,000 tokens of a reasoning model
+# going in circles counting words, `content` still empty, looking hung. A cap
+# of 400 bounded that but cut replies off mid-thought (empty reply, no
+# answer); 2,000 was the compromise for a while. Measured later on the live
+# Qwen model: ordinary replies used 600-1,900 tokens, one 1,873 -- right at
+# the edge, where running out means no reply at all ("thinks herself to
+# death"). The user wants her thinking kept, so 8,000: real room to think,
+# still a bound on a runaway loop (with the Stop button for anything
+# sooner). A ceiling, not a target -- a reply stops as soon as it's done --
+# and well inside the 65k context the live model is loaded with.
+MAX_REPLY_TOKENS = 8000
 
 # OllamaLLM-only, and only when think=true (role-play deliberately runs
 # with think=false specifically to avoid needing this at all -- see
@@ -199,10 +194,9 @@ MAX_REPLY_TOKENS = 2000
 # both the thinking tokens and the actual reply for a single completion,
 # so 2000 is routinely not enough room for a model to both finish
 # reasoning and still answer -- confirmed live, replies came back empty
-# after ~2000 tokens of pure thinking. This is deliberately a second,
-# larger constant rather than raising MAX_REPLY_TOKENS itself, which
-# would slow down every other reply (LM Studio, think=false) for a
-# problem only the think=true path actually has.
+# after ~2000 tokens of pure thinking. It predates MAX_REPLY_TOKENS going
+# to 8,000 too (the same problem turned up on the LM Studio path); kept as
+# its own constant so the Ollama thinking budget can still be tuned apart.
 MAX_REPLY_TOKENS_THINKING = 8000
 
 # A short phrase at most -- this call only ever needs to return "NONE" or
@@ -406,7 +400,9 @@ def _extract_mood(text: str) -> tuple[str, str]:
 
 class LocalLLM:
     def __init__(self, endpoint: str, model: str | None, api_key: str | None = None) -> None:
-        self._client = OpenAI(base_url=endpoint, api_key=api_key or "not-needed", timeout=REQUEST_TIMEOUT_SEC)
+        self._client = OpenAI(
+            base_url=endpoint, api_key=api_key or "not-needed", timeout=REQUEST_TIMEOUT_SEC, max_retries=0
+        )
         # "" not None: the openai client's `model` param has no omit-if-
         # absent sentinel (unlike e.g. audio.speech.create's `speed`) --
         # passing None serializes to a literal JSON `null` in the request
@@ -1059,7 +1055,9 @@ class HarnessLLM:
     """
 
     def __init__(self, endpoint: str, model: str | None = None, api_key: str | None = None) -> None:
-        self._client = OpenAI(base_url=endpoint, api_key=api_key or "not-needed", timeout=REQUEST_TIMEOUT_SEC)
+        self._client = OpenAI(
+            base_url=endpoint, api_key=api_key or "not-needed", timeout=REQUEST_TIMEOUT_SEC, max_retries=0
+        )
         self._model = model or ""  # see LocalLLM.__init__'s comment -- None serializes to a literal JSON null
 
     def reply(
