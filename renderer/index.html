@@ -266,6 +266,16 @@
               <button id="new-llm-engine-button" class="icon-button" title="New LLM engine">➕</button>
               <button id="delete-llm-engine-button" class="icon-button danger" title="Delete LLM engine">🗑️</button>
             </div>
+            <div id="context-meter" class="context-meter">
+              <div class="context-meter-label">
+                <span>Context</span>
+                <span id="context-meter-text">after her next reply</span>
+              </div>
+              <div class="context-meter-track"><div id="context-meter-fill" class="context-meter-fill"></div></div>
+              <p id="context-meter-hint" class="settings-hint">
+                How much of the model's memory her latest reply used: her soul, notes and the conversation so far.
+              </p>
+            </div>
           </section>
         </div>
         <section id="harness-section" class="settings-section">

@@ -1176,6 +1176,45 @@ body.overlay-chat-active #overlay-resend-button {
 }
 
 /* The shared .icon-button is a fixed 36px square; approve/reject carry words. */
+.context-meter {
+  margin-top: 12px;
+}
+
+.context-meter-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+#context-meter-text {
+  color: #b8bccb;
+  text-align: right;
+}
+
+.context-meter-track {
+  height: 8px;
+  border-radius: 4px;
+  background: #2a2d3a;
+  overflow: hidden;
+}
+
+.context-meter-fill {
+  height: 100%;
+  width: 0;
+  background: #3fae6a;
+  transition: width 0.3s ease;
+}
+
+.context-meter-fill[data-level="mid"] {
+  background: #d1a13a;
+}
+
+.context-meter-fill[data-level="high"] {
+  background: #d0534d;
+}
+
 .training-fact {
   resize: vertical;
   min-height: 44px;
