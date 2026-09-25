@@ -852,7 +852,7 @@ def _handle_save_soul_and_user(data: dict, brain: Brain) -> None:
     souls.write_main_soul(soul_content)
     profiles.write_main_user(user_content)
     if isinstance(brain.llm, LocalLLM):
-        brain.llm.set_soul(_effective_soul())
+        brain.llm.update_soul(_effective_soul())  # an edit, not a new her: the conversation carries on
     print("[brain] soul.md/user.md updated via manual editor")
 
 
@@ -1949,6 +1949,8 @@ async def _reply_to(
     # Debugging feature's whole point (connection/timing/errors, not
     # conversation content).
     await _debug_log(websocket, "llm", "LLM reply received", (time.monotonic() - llm_start) * 1000)
+    if getattr(brain.llm, "last_reply_fell_back", False):
+        await _debug_log(websocket, "llm", "ran out of thinking room -- answered again with thinking off")
 
     if not reply_text.strip():
         # A real, confirmed failure mode (not hypothetical): the
