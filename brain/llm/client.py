@@ -158,17 +158,28 @@ def list_ollama_models(endpoint: str, api_key: str | None = None) -> list[str]:
     return sorted(name for name in names if name)
 
 
-# Not a memory system (SPEC.md section 2 excludes that) -- just a sane
-# bound on how much history gets resent every turn. Found by hitting it
-# directly: a long test session let this grow unbounded and each call got
-# progressively slower re-processing a ever-larger context on a local
-# model, to the point one reply took 90+s and looked hung. Trimming keeps
-# every turn's latency roughly flat instead of degrading over a session.
-# Raised from 20 once the per-turn parts moved out of the system prompt (see
-# _system_prompt): the history now stays cached between turns instead of being
-# reread, so a longer window costs little time. 60 messages of chat measured at
-# ~8k tokens, well inside the 65k context the live model is loaded with.
-MAX_HISTORY_MESSAGES = 60  # ~30 user/assistant exchanges
+# How much of the conversation she keeps (see LocalLLM._trim_history). Measured
+# in tokens, not messages: a fixed 60-message cap dropped old messages while
+# ~60,000 tokens of the 65k context sat unused. She keeps up to
+# HISTORY_CONTEXT_FRACTION of the model's context -- the rest is room for her
+# soul, notes and MAX_REPLY_TOKENS of thinking. HISTORY_FALLBACK_TOKENS when the
+# server doesn't report its context size.
+HISTORY_CONTEXT_FRACTION = 0.5
+HISTORY_FALLBACK_TOKENS = 12000
+HISTORY_MIN_TOKENS = 2000
+# Past the limit, the oldest part is dropped in one go, down to this fraction of
+# it -- not one message per turn. The model reuses its work on an unchanged start
+# of the prompt; trimming a message every turn changed that start every turn, so
+# every reply at the cap reread the whole conversation (measured: ~19 s for 60
+# messages, versus ~1.5 s cached).
+HISTORY_TRIM_TO_FRACTION = 0.6
+# Rough token counting for the trim: English runs ~4 characters a token, so 3.5
+# errs toward counting high (trimming a little early, never overflowing). A
+# picture in the running conversation counts as IMAGE_TOKEN_ESTIMATE.
+CHARS_PER_TOKEN = 3.5
+IMAGE_TOKEN_ESTIMATE = 1500
+# A backstop only, far past anything the token limit allows in normal chat.
+MAX_HISTORY_MESSAGES = 1000
 
 # LocalLLM.context_window: how long its answer is trusted, and how long to wait for it.
 CONTEXT_WINDOW_CACHE_SEC = 60
@@ -767,7 +778,7 @@ class LocalLLM:
                 {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_b64}"}},
             ]
         self._history.append({"role": "user", "content": content})
-        del self._history[:-MAX_HISTORY_MESSAGES]
+        self._trim_history()
         messages = self._request_messages()
         tools = [WEB_SEARCH_TOOL] if web_search_enabled else None
         generation = self._reply_generation
@@ -801,7 +812,7 @@ class LocalLLM:
         # enough to keep the model tagging consistently turn to turn).
         self._history.append({"role": "assistant", "content": reply_text})
         self._history_changed()
-        self.last_usage = {**usage, "history_messages": len(self._history)}
+        self.last_usage = dict(usage)
         return reply_text, mood
 
     def context_window(self) -> int | None:
@@ -839,11 +850,40 @@ class LocalLLM:
         self._history.clear()
         self._history_changed()
 
+    def history_budget(self) -> int:
+        """How many tokens of conversation she keeps -- see HISTORY_CONTEXT_FRACTION."""
+        try:
+            window = self.context_window()
+        except Exception:
+            window = None
+        if not window:
+            return HISTORY_FALLBACK_TOKENS
+        return max(HISTORY_MIN_TOKENS, int(window * HISTORY_CONTEXT_FRACTION))
+
+    def _trim_history(self) -> None:
+        """Keeps the conversation within history_budget(). Past it, drops the
+        oldest messages in one go down to HISTORY_TRIM_TO_FRACTION of the budget
+        (see its comment for why in one go), always starting on one of the
+        user's messages. The newest message is always kept.
+        """
+        sizes = [_estimate_tokens(m) for m in self._history]
+        budget = self.history_budget()
+        if sum(sizes) <= budget and len(self._history) <= MAX_HISTORY_MESSAGES:
+            return
+        target = budget * HISTORY_TRIM_TO_FRACTION
+        total, cut = sum(sizes), 0
+        while cut < len(self._history) - 1 and (total > target or len(self._history) - cut > MAX_HISTORY_MESSAGES * HISTORY_TRIM_TO_FRACTION):
+            total -= sizes[cut]
+            cut += 1
+        while cut < len(self._history) - 1 and self._history[cut].get("role") != "user":
+            cut += 1
+        del self._history[:cut]
+
     def restore_history(self, messages: list[dict]) -> None:
         """Puts back a saved conversation (brain/conversation.py) -- at startup, or
         when the LLM engine is switched. Capped the same way reply() caps it.
         """
-        self._history[:] = list(messages)[-MAX_HISTORY_MESSAGES:]
+        self._history[:] = list(messages)[-MAX_HISTORY_MESSAGES:]  # the token trim runs on the next reply
 
     def _history_changed(self) -> None:
         """Tells whoever is listening (main.py saves it to disk) that _history
@@ -934,6 +974,17 @@ class LocalLLM:
         if not result or result.upper().startswith("NONE"):
             return None
         return result.strip("\"'")
+
+
+def _estimate_tokens(message: dict) -> int:
+    """Rough token count of one history message (see CHARS_PER_TOKEN)."""
+    content = message.get("content")
+    if isinstance(content, list):
+        text = "".join(part.get("text", "") for part in content if part.get("type") == "text")
+        images = sum(1 for part in content if part.get("type") == "image_url")
+    else:
+        text, images = str(content or ""), 0
+    return int(len(text) / CHARS_PER_TOKEN) + 4 + images * IMAGE_TOKEN_ESTIMATE
 
 
 def _to_ollama_message(message: dict) -> dict:

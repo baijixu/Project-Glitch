@@ -1845,14 +1845,13 @@ export class BrainClient {
     if (!textEl || !fillEl) return;
     const used = Number(data.used) || 0;
     const window_ = Number(data.window) || 0;
-    const messages = `${Number(data.messages) || 0} of ${Number(data.max_messages) || 0} messages`;
     if (window_ > 0) {
       const pct = Math.min(100, Math.round((used / window_) * 100));
-      textEl.textContent = `${used.toLocaleString()} / ${window_.toLocaleString()} tokens (${pct}%) · ${messages}`;
+      textEl.textContent = `${used.toLocaleString()} / ${window_.toLocaleString()} tokens (${pct}%)`;
       fillEl.style.width = `${pct}%`;
       fillEl.dataset.level = pct >= 85 ? "high" : pct >= 60 ? "mid" : "low";
     } else {
-      textEl.textContent = `${used.toLocaleString()} tokens · ${messages} (the server doesn't report its limit)`;
+      textEl.textContent = `${used.toLocaleString()} tokens (the server doesn't report its limit)`;
       fillEl.style.width = "0%";
     }
   }

@@ -52,7 +52,6 @@ import voice_settings
 import web_search
 from config import load_config
 from llm import REQUEST_TIMEOUT_SEC, HarnessLLM, LocalLLM, NoneLLM, OllamaLLM, list_models, list_ollama_models
-from llm.client import MAX_HISTORY_MESSAGES
 from voice import FasterWhisperSTT, NoneTTS, RemoteTTS
 
 # config.yaml's brain.llm block, captured once at startup (main()) -- kept
@@ -2128,7 +2127,7 @@ async def _send_context_usage(brain: Brain) -> None:
         window = await asyncio.to_thread(brain.llm.context_window)
     except Exception:
         window = None
-    _LAST_CONTEXT_USAGE = protocol.context_usage(used, window, usage.get("history_messages", 0), MAX_HISTORY_MESSAGES)
+    _LAST_CONTEXT_USAGE = protocol.context_usage(used, window)
     await _broadcast(_LAST_CONTEXT_USAGE)
 
 

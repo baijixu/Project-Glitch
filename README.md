@@ -274,8 +274,9 @@ version instead), **Clear Chat** (starts her on a fresh conversation; her long-t
 log of connection and timing events (never conversation content).
 
 A **context meter** under *Settings → LLM* shows how much of the model's context her latest reply used (for example
-`4,235 / 65,536 tokens (6%) · 12 of 60 messages`). She keeps the last 60 messages of the conversation. The context size
-is read from LM Studio, llama.cpp's `llama-server`, or Ollama.
+`4,235 / 65,536 tokens (6%)`). She keeps as much of the conversation as fits in about half of the model's context
+(12,000 tokens if the server doesn't report its size); past that, the oldest part is dropped in one go, so the model
+can keep reusing its work on the rest. The context size is read from LM Studio, llama.cpp's `llama-server`, or Ollama.
 
 ## Using it from your phone or another PC
 
