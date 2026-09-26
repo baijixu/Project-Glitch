@@ -831,6 +831,14 @@ class LocalLLM:
         self._context_window_cache = (window, time.monotonic())
         return window
 
+    def clear_history(self) -> None:
+        """Starts a fresh conversation (the Clear Chat button). Her soul, memory
+        and everything else stay as they are. A reply still in flight is
+        discarded (same as cancel_reply), not added to the new conversation."""
+        self._reply_generation = getattr(self, "_reply_generation", 0) + 1
+        self._history.clear()
+        self._history_changed()
+
     def restore_history(self, messages: list[dict]) -> None:
         """Puts back a saved conversation (brain/conversation.py) -- at startup, or
         when the LLM engine is switched. Capped the same way reply() caps it.

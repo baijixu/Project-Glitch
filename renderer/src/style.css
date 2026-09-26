@@ -157,11 +157,13 @@ body.overlay-chat-active #subtitle {
    main view too), shown only while overlay chat is active. An ID
    selector here beats .vision-button's own base display:flex without
    needing !important. */
-#overlay-resend-button {
+#overlay-resend-button,
+#overlay-edit-button {
   display: none;
 }
 
-body.overlay-chat-active #overlay-resend-button {
+body.overlay-chat-active #overlay-resend-button,
+body.overlay-chat-active #overlay-edit-button {
   display: flex;
 }
 
