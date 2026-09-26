@@ -225,9 +225,13 @@ def _check_endpoint_reachable(endpoint: str) -> bool:
 
 
 async def _broadcast(message: dict) -> None:
-    """Sends one message to every currently-connected Renderer -- used for
-    health-check updates (see _health_check_loop), which need to reach
-    every open tab/device, not just whichever one happens to be asking.
+    """Sends one message to every currently-connected Renderer. Used for
+    anything that's shared state rather than a reply to one device: health
+    lights, and every list or selection a device can change (profiles, souls,
+    speech/LLM engines, harnesses, role-play) -- otherwise a phone and a PC
+    connected at once each kept showing their own stale lists until they
+    reconnected. A device that has just dropped is skipped (its send fails and
+    is ignored; handle_renderer removes it from _RENDERER_CONNECTIONS).
     """
     encoded = json.dumps(message)
     for websocket in list(_RENDERER_CONNECTIONS):
@@ -343,7 +347,14 @@ async def _debug_log(websocket: websockets.ServerConnection, category: str, mess
 
 
 async def _send_harness_state(websocket: websockets.ServerConnection) -> None:
-    """Sends the current harness_state -- reads harness.py's own saved
+    """Sends harness_state to one device (a newly connected one, _handle_ready).
+    After a change, every device gets it instead: _broadcast(_harness_state_message()).
+    """
+    await websocket.send(json.dumps(_harness_state_message()))
+
+
+def _harness_state_message() -> dict:
+    """The current harness_state -- reads harness.py's own saved
     active-harness file and saved-harness list fresh each call (not a
     cached value) so it's always accurate regardless of what just changed
     it. Shared by every handler that can change whether/which harness is
@@ -357,15 +368,11 @@ async def _send_harness_state(websocket: websockets.ServerConnection) -> None:
     # only fall back to the separately-persisted "last selected" record
     # while inactive, see protocol.py's harness_state docstring.
     selected_harness_name = active_harness_name or harness.read_selected_harness_name()
-    await websocket.send(
-        json.dumps(
-            protocol.harness_state(
-                bool(active_harness_name),
-                active_harness_name,
-                selected_harness_name,
-                harness.list_harnesses(),
-            )
-        )
+    return protocol.harness_state(
+        bool(active_harness_name),
+        active_harness_name,
+        selected_harness_name,
+        harness.list_harnesses(),
     )
 
 
@@ -629,6 +636,7 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
         await _handle_save_profile(websocket, data, brain)
     elif msg_type == protocol.LOAD_PROFILE:
         _handle_load_profile(data, brain)
+        await _broadcast(protocol.profiles(profiles.list_profiles(), profiles.read_active_profile_name()))
     elif msg_type == protocol.GET_PROFILE:
         await _handle_get_profile(websocket, data)
     elif msg_type == protocol.DELETE_PROFILE:
@@ -637,6 +645,7 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
         await _handle_save_soul(websocket, data)
     elif msg_type == protocol.LOAD_SOUL:
         _handle_load_soul(data, brain)
+        await _broadcast(protocol.souls(souls.list_souls(), souls.read_active_soul_name()))
     elif msg_type == protocol.GET_SOUL:
         await _handle_get_soul(websocket, data)
     elif msg_type == protocol.DELETE_SOUL:
@@ -647,6 +656,8 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
         await _handle_load_avatar(websocket, data)
     elif msg_type == protocol.SET_ROLEPLAY_ACTIVE:
         _handle_set_roleplay_active(data, brain)
+        await _broadcast(protocol.roleplay_state(profiles.read_roleplay_active()))
+        await _broadcast(protocol.llm_engines(llm_engines.list_engines(), llm_engines.read_active_engine_name()))
     elif msg_type == protocol.SET_VOICE_ACTIVE:
         voice_settings.set_voice_active(bool(data.get("active")))
     elif msg_type == protocol.SET_WEB_SEARCH_ACTIVE:
@@ -787,7 +798,7 @@ async def _handle_save_profile(websocket: websockets.ServerConnection, data: dic
         print(f"[brain] couldn't save profile {name!r}: {exc!r}")
         return
     print(f"[brain] saved profile {name!r}")
-    await websocket.send(json.dumps(protocol.profiles(profiles.list_profiles(), profiles.read_active_profile_name())))
+    await _broadcast(protocol.profiles(profiles.list_profiles(), profiles.read_active_profile_name()))
 
 
 async def _handle_get_profile(websocket: websockets.ServerConnection, data: dict) -> None:
@@ -822,7 +833,7 @@ async def _handle_delete_profile(websocket: websockets.ServerConnection, data: d
         if profiles.read_roleplay_active() and isinstance(brain.llm, LocalLLM):
             brain.llm.set_persona(content)
         print(f"[brain] active profile was deleted -- reset to {profiles.DEFAULT_PROFILE_NAME!r}")
-    await websocket.send(json.dumps(protocol.profiles(profiles.list_profiles(), profiles.read_active_profile_name())))
+    await _broadcast(protocol.profiles(profiles.list_profiles(), profiles.read_active_profile_name()))
 
 
 async def _handle_save_soul(websocket: websockets.ServerConnection, data: dict) -> None:
@@ -837,7 +848,7 @@ async def _handle_save_soul(websocket: websockets.ServerConnection, data: dict) 
         print(f"[brain] couldn't save soul {name!r}: {exc!r}")
         return
     print(f"[brain] saved soul {name!r}")
-    await websocket.send(json.dumps(protocol.souls(souls.list_souls(), souls.read_active_soul_name())))
+    await _broadcast(protocol.souls(souls.list_souls(), souls.read_active_soul_name()))
 
 
 def _effective_soul() -> str:
@@ -953,7 +964,7 @@ async def _handle_delete_soul(websocket: websockets.ServerConnection, data: dict
         if profiles.read_roleplay_active() and isinstance(brain.llm, LocalLLM):
             brain.llm.set_soul(_effective_soul())
         print(f"[brain] active soul was deleted -- reset to {souls.DEFAULT_SOUL_NAME!r}")
-    await websocket.send(json.dumps(protocol.souls(souls.list_souls(), souls.read_active_soul_name())))
+    await _broadcast(protocol.souls(souls.list_souls(), souls.read_active_soul_name()))
 
 
 async def _handle_save_avatar(websocket: websockets.ServerConnection, data: dict) -> None:
@@ -1020,9 +1031,7 @@ async def _handle_save_tts_engine(websocket: websockets.ServerConnection, data: 
     # last knew for this name -- drop it rather than showing a stale color
     # until the next periodic tick happens to overwrite it.
     _LAST_TTS_REACHABLE.pop(name, None)
-    await websocket.send(
-        json.dumps(protocol.tts_engines(tts_engines.list_engines(), tts_engines.read_active_engine_name()))
-    )
+    await _broadcast(protocol.tts_engines(tts_engines.list_engines(), tts_engines.read_active_engine_name()))
 
 
 async def _handle_get_tts_engine(websocket: websockets.ServerConnection, data: dict) -> None:
@@ -1065,6 +1074,7 @@ async def _handle_load_tts_engine(websocket: websockets.ServerConnection, data: 
         print(f"[brain] couldn't switch to speech engine {name!r}: {exc!r}")
         return
     tts_engines.set_active_engine_name(name)
+    await _broadcast(protocol.tts_engines(tts_engines.list_engines(), name))
     await _debug_log(websocket, "tts", f"switched speech engine to {name!r}", (time.monotonic() - start) * 1000)
     print(f"[brain] switched speech engine to {name!r}")
 
@@ -1088,9 +1098,7 @@ async def _handle_delete_tts_engine(websocket: websockets.ServerConnection, data
         else:
             tts_engines.set_active_engine_name(tts_engines.NONE_NAME)
             print(f"[brain] active speech engine was deleted -- reset to {tts_engines.NONE_NAME!r}")
-    await websocket.send(
-        json.dumps(protocol.tts_engines(tts_engines.list_engines(), tts_engines.read_active_engine_name()))
-    )
+    await _broadcast(protocol.tts_engines(tts_engines.list_engines(), tts_engines.read_active_engine_name()))
 
 
 async def _send_tts_voices(websocket: websockets.ServerConnection, name: str) -> None:
@@ -1230,9 +1238,7 @@ async def _handle_save_llm_engine(websocket: websockets.ServerConnection, data: 
         print(f"[brain] couldn't save LLM engine {name!r}: {exc!r}")
         return
     print(f"[brain] saved LLM engine {name!r}")
-    await websocket.send(
-        json.dumps(protocol.llm_engines(llm_engines.list_engines(), llm_engines.read_active_engine_name()))
-    )
+    await _broadcast(protocol.llm_engines(llm_engines.list_engines(), llm_engines.read_active_engine_name()))
 
 
 async def _handle_get_llm_engine(websocket: websockets.ServerConnection, data: dict) -> None:
@@ -1296,6 +1302,7 @@ async def _handle_load_llm_engine(websocket: websockets.ServerConnection, data: 
         print(f"[brain] couldn't switch to LLM engine {name!r}: {exc!r}")
         return
     llm_engines.set_active_engine_name(name)
+    await _broadcast(protocol.llm_engines(llm_engines.list_engines(), name))
     await _debug_log(websocket, "llm", f"switched LLM engine to {name!r}")
     print(f"[brain] switched LLM engine to {name!r}")
 
@@ -1318,9 +1325,7 @@ async def _handle_delete_llm_engine(websocket: websockets.ServerConnection, data
         else:
             llm_engines.set_active_engine_name(llm_engines.NONE_NAME)
             print(f"[brain] active LLM engine was deleted -- reset to {llm_engines.NONE_NAME!r}")
-    await websocket.send(
-        json.dumps(protocol.llm_engines(llm_engines.list_engines(), llm_engines.read_active_engine_name()))
-    )
+    await _broadcast(protocol.llm_engines(llm_engines.list_engines(), llm_engines.read_active_engine_name()))
 
 
 def _build_llm(name: str) -> LocalLLM | NoneLLM:
@@ -1444,7 +1449,7 @@ async def _handle_set_harness_active(websocket: websockets.ServerConnection, dat
         brain.llm = _build_llm(llm_engines.read_active_engine_name())
         print("[brain] disconnected from harness -- restored her own profile/soul/LLM engine")
 
-    await _send_harness_state(websocket)
+    await _broadcast(_harness_state_message())
 
 
 async def _handle_select_harness(websocket: websockets.ServerConnection, data: dict) -> None:
@@ -1461,7 +1466,7 @@ async def _handle_select_harness(websocket: websockets.ServerConnection, data: d
     """
     name = data.get("name", "")
     harness.set_selected_harness_name("" if name == harness.NONE_NAME else name)
-    await _send_harness_state(websocket)
+    await _broadcast(_harness_state_message())
 
 
 async def _handle_save_harness(websocket: websockets.ServerConnection, data: dict) -> None:
@@ -1481,7 +1486,7 @@ async def _handle_save_harness(websocket: websockets.ServerConnection, data: dic
     # last knew for this name -- drop it rather than showing a stale color
     # until the next periodic tick happens to overwrite it.
     _LAST_HARNESS_REACHABLE.pop(name, None)
-    await _send_harness_state(websocket)
+    await _broadcast(_harness_state_message())
 
 
 async def _handle_get_harness(websocket: websockets.ServerConnection, data: dict) -> None:
@@ -1516,7 +1521,7 @@ async def _handle_delete_harness(websocket: websockets.ServerConnection, data: d
     # leave it pointing at a harness that no longer exists.
     if harness.read_selected_harness_name() == name:
         harness.set_selected_harness_name("")
-    await _send_harness_state(websocket)
+    await _broadcast(_harness_state_message())
 
 
 
