@@ -162,6 +162,21 @@ _RENDERER_CONNECTIONS: set[websockets.ServerConnection] = set()
 # are tiny, not worth the complexity of an eviction policy.
 _AUTH_FAILURES: dict[str, tuple[int, float]] = {}
 
+# Strong references to every fire-and-forget task (see _spawn). asyncio's own
+# event loop only keeps a weak reference to a task, so a task nobody holds can be
+# garbage-collected partway through -- the lessons refresh, memory saving and
+# even the health-check loop used to be started that way.
+_BACKGROUND_TASKS: set[asyncio.Task] = set()
+
+
+def _spawn(coro) -> asyncio.Task:
+    """Starts `coro` in the background and keeps it alive until it finishes."""
+    task = asyncio.create_task(coro)
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
+    return task
+
+
 ENDPOINT_HEALTH_CHECK_INTERVAL_SEC = 20
 # Short and TCP-only on purpose -- this only needs to tell "something's
 # listening" from "nothing is", not exercise a full request. A slow-but-up
@@ -403,7 +418,16 @@ async def handle_renderer(websocket: websockets.ServerConnection, brain: Brain, 
                 reply_tasks.add(task)
                 task.add_done_callback(reply_tasks.discard)
             else:
-                await _handle_message(websocket, raw, brain)
+                # A handler that raises (a bug, or a message with a missing or
+                # wrong-typed field) is logged and the connection carries on --
+                # before, the exception escaped this loop and dropped the device.
+                try:
+                    await _handle_message(websocket, raw, brain)
+                except ConnectionClosed:
+                    raise
+                except Exception as exc:
+                    print(f"[brain] {msg_type!r} handler failed: {exc!r}")
+                    await _debug_log(websocket, "brain", f"{msg_type!r} handler failed: {exc!r}")
     except ConnectionClosed:
         pass
     finally:
@@ -669,7 +693,7 @@ async def _handle_ready(websocket: websockets.ServerConnection, data: dict) -> N
     # Its own task -- fetching lessons is a network call to Hindsight, and an
     # unreachable server shouldn't hold up the rest of the ready handshake
     # (including the avatar_data that signals it's finished).
-    asyncio.create_task(_send_lessons_state(websocket))
+    _spawn(_send_lessons_state(websocket))
     hindsight_cfg = memory.read_hindsight_config()
     await websocket.send(
         json.dumps(
@@ -1452,9 +1476,6 @@ _LESSON_SETTINGS_TYPES = {
 LESSONS_STATE_TIMEOUT_SEC = 8
 LESSON_PROMPT_TIMEOUT_SEC = 5
 
-# Strong references to in-flight background learn tasks -- asyncio only
-# holds weak ones, so an unreferenced task can be garbage-collected mid-run.
-_LESSON_TASKS: set[asyncio.Task] = set()
 
 
 async def _lessons_state_message() -> dict:
@@ -1542,9 +1563,7 @@ async def _handle_rate_reply(websocket: websockets.ServerConnection, data: dict,
     await _debug_log(websocket, "lessons", f"rating logged ({rating})")
     if roleplay or not lessons.read_active() or not isinstance(brain.llm, LocalLLM):
         return
-    task = asyncio.create_task(_learn_from_rating(websocket, brain, user_text, reply_text, rating, note))
-    _LESSON_TASKS.add(task)
-    task.add_done_callback(_LESSON_TASKS.discard)
+    _spawn(_learn_from_rating(websocket, brain, user_text, reply_text, rating, note))
 
 
 async def _learn_from_rating(
@@ -1995,9 +2014,7 @@ async def _reply_to(
     await websocket.send(json.dumps(protocol.set_expression(mood, 1.0)))
     await websocket.send(json.dumps(protocol.speak_text(reply_text)))
     conversation.log_exchange(text, reply_text, roleplay=profiles.read_roleplay_active(), picture=bool(image_b64))
-    task = asyncio.create_task(_send_context_usage(brain))
-    _LESSON_TASKS.add(task)
-    task.add_done_callback(_LESSON_TASKS.discard)
+    _spawn(_send_context_usage(brain))
 
     # Fire-and-forget: must never slow down or affect the reply the user
     # already has. Runs regardless of whether voice/TTS succeeds below --
@@ -2010,14 +2027,12 @@ async def _reply_to(
     # can't repeat a bad search result back later as if it were a memory).
     used_web_search = bool(getattr(brain.llm, "last_reply_used_web_search", False))
     omit_reply = used_web_search or bool(image_b64)
-    asyncio.create_task(_maybe_retain_memory(websocket, text, "" if omit_reply else reply_text, brain))
+    _spawn(_maybe_retain_memory(websocket, text, "" if omit_reply else reply_text, brain))
     if curious:
         curiosity.end_turn(reply_text)
         # "*" in the user's message means they're playing out an action/scene -- not a source of real questions
         if text and "*" not in text and not omit_reply and curiosity.should_propose():
-            task = asyncio.create_task(_maybe_propose_question(websocket, text, reply_text, brain))
-            _LESSON_TASKS.add(task)
-            task.add_done_callback(_LESSON_TASKS.discard)
+            _spawn(_maybe_propose_question(websocket, text, reply_text, brain))
 
     if not voice_settings.read_voice_active():
         await _debug_log(websocket, "tts", "voice is off -- skipping synthesis")
@@ -2271,7 +2286,14 @@ async def main() -> None:
         memory.save_hindsight_config(
             hindsight_cfg["api_url"], hindsight_cfg.get("api_key") or "", hindsight_cfg.get("bank_id") or "glitch-native"
         )
-        await memory.ensure_bank()
+        # Unreachable at startup (the server is off, or on a machine that's
+        # asleep) must not stop Brain from starting -- that used to crash it
+        # before it ever listened. Memory calls fail softly per turn instead,
+        # and the bank is re-checked whenever the settings are saved again.
+        try:
+            await memory.ensure_bank()
+        except Exception as exc:
+            print(f"[brain] WARNING: couldn't reach the Hindsight server at {hindsight_cfg['api_url']!r} ({exc!r}) -- starting without it")
         # Also a one-time seed: nothing explicitly chosen yet (no Memory
         # backend dropdown pick saved), but hindsight is configured, so
         # default to actually using it rather than silently leaving what
@@ -2350,7 +2372,7 @@ async def main() -> None:
     # LLM call gets to time out on its own terms instead of the transport
     # silently dying underneath it first.
     print(f"[brain] listening on ws://{host}:{port}")
-    asyncio.create_task(_health_check_loop())
+    _spawn(_health_check_loop())
     server = await _serve_when_free(
         lambda ws: handle_renderer(ws, brain, auth_token),
         host,

@@ -21,7 +21,6 @@ import time
 from datetime import datetime
 
 import httpx
-import openai
 from openai import BadRequestError, OpenAI
 
 import web_search
