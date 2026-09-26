@@ -564,6 +564,12 @@ class LocalLLM:
         self._history.clear()
         self._history_changed()
 
+    def update_persona(self, persona_md: str) -> None:
+        """Like set_persona but keeps the conversation -- used when role-play is
+        toggled, where main.py restores the right saved conversation itself.
+        """
+        self._persona = persona_md.strip()
+
     def update_soul(self, soul_md: str) -> None:
         """An edit to the soul she already has (the Settings editor) -- unlike
         set_soul, keeps the conversation: it's still her, and saving a tweak

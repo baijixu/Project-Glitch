@@ -91,7 +91,9 @@ brain/curiosity_questions.json
 brain/training_active.txt
 brain/training_queue.json
 brain/conversation.json
-brain/conversation.tmp
+brain/conversation_roleplay.json
+brain/conversation*.tmp
+brain/roleplay_previous_engine.txt
 brain/chat_logs/
 brain/backups/
 brain/ratings_log.jsonl

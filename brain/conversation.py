@@ -1,12 +1,15 @@
 """Her conversation, kept on disk -- two separate things:
 
-* conversation.json -- what she currently sees of the conversation (LocalLLM's
-  _history), saved every time it changes and restored when Brain starts or the
-  LLM engine is switched. Without it, a Brain restart wiped her short-term memory
-  while the chat history panel still showed everything. Tagged with the mode it
-  belongs to ("main" or "roleplay"), and only restored into the same mode, so a
-  role-play scene can't come back as part of a normal chat or vice versa.
-  Pictures are stored as a short "[picture]" note, not the image data.
+* conversation.json / conversation_roleplay.json -- what she currently sees of
+  the conversation (LocalLLM._history), one file per mode, saved every time it
+  changes and restored when Brain starts, the LLM engine is switched, or
+  role-play is toggled. Without it, a Brain restart wiped her short-term memory
+  while the chat history panel still showed everything. Separate files (they
+  used to share one) so a role-play session can't overwrite the normal
+  conversation: turning role-play off brings the normal one back, and turning it
+  on resumes the last scene. Each file is also tagged with its mode, and only
+  restored into that mode. Pictures are stored as a short "[picture]" note, not
+  the image data.
 
 * chat_logs/YYYY-MM-DD.md -- a plain, timestamped, append-only log of every
   exchange, one file per day, for the user to read. Never read back by Brain.
@@ -19,7 +22,8 @@ from datetime import datetime
 from pathlib import Path
 
 _DIR = Path(__file__).parent
-STATE_PATH = _DIR / "conversation.json"
+STATE_PATH = _DIR / "conversation.json"  # normal chat (the original file name, kept)
+ROLEPLAY_STATE_PATH = _DIR / "conversation_roleplay.json"
 LOG_DIR = _DIR / "chat_logs"
 
 MAIN, ROLEPLAY = "main", "roleplay"
@@ -36,13 +40,18 @@ def _storable(message: dict) -> dict:
     return {"role": message.get("role"), "content": f"{text} {PICTURE_NOTE}".strip() if has_image else text}
 
 
+def _path(mode: str):
+    return ROLEPLAY_STATE_PATH if mode == ROLEPLAY else STATE_PATH
+
+
 def save_state(history: list[dict], mode: str) -> None:
     """Best-effort: a disk problem must never break a reply."""
     try:
         data = {"mode": mode, "saved": datetime.now().isoformat(timespec="seconds"), "messages": [_storable(m) for m in history]}
-        tmp = STATE_PATH.with_suffix(".tmp")
+        path = _path(mode)
+        tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-        tmp.replace(STATE_PATH)  # atomic: a crash mid-write can't leave a half-written file
+        tmp.replace(path)  # atomic: a crash mid-write can't leave a half-written file
     except OSError as exc:
         print(f"[conversation] couldn't save the conversation: {exc!r}")
 
@@ -50,7 +59,7 @@ def save_state(history: list[dict], mode: str) -> None:
 def load_state(mode: str) -> list[dict]:
     """The saved conversation if it belongs to `mode`, else []. Anything unreadable is []."""
     try:
-        data = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+        data = json.loads(_path(mode).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return []
     if not isinstance(data, dict) or data.get("mode") != mode or not isinstance(data.get("messages"), list):
@@ -63,6 +72,15 @@ def load_state(mode: str) -> list[dict]:
         and isinstance(m.get("content"), str)
         and m["content"].strip()  # a blank turn (an old empty reply) is dropped, not restored
     ]
+
+
+def clear_state(mode: str) -> None:
+    """Forgets the saved conversation for `mode` (e.g. the old scene, once a
+    different role-play profile or soul is picked)."""
+    try:
+        _path(mode).unlink(missing_ok=True)
+    except OSError as exc:
+        print(f"[conversation] couldn't clear the saved {mode} conversation: {exc!r}")
 
 
 def log_marker(text: str, now: datetime | None = None) -> None:
