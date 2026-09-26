@@ -1,11 +1,46 @@
 """Brain entry point -- hosts the WebSocket server the Renderer connects to
-(spec section 5). Build order step 4 (voice slice): user_audio (mic) or
-user_text (chat box) -> [STT ->] LLM -> TTS -> speak_text + speak_audio +
-viseme_stream, so either input path ends up going through the exact same
-reply pipeline.
+(spec section 5). A message from the Renderer (the chat box, the mic, a
+Settings control) comes in over one WebSocket per device; replies go back the
+same way, and anything that's shared state goes to every device.
 
 Run with:
     uv run main.py
+
+How a reply flows
+-----------------
+user_text / user_audio (-> STT) / regenerate_last
+  -> handle_renderer starts it as its own task (_run_reply_message), queued
+     behind any reply already running (_reply_lock)
+  -> _reply_to: recall memories, set user.md, lessons and curiosity on the LLM,
+     then LocalLLM.reply (llm/client.py) in a worker thread
+  -> set_expression + speak_text back to the device, the chat log, the context
+     meter, then memory saving / training proposals / curiosity in the
+     background (_spawn), then TTS -> speak_audio + viseme_stream.
+
+Map of this file (sections are marked with a `# ===` banner)
+-------------------------------------------------------------
+  Settings and shared state ... constants, connection sets, _spawn
+  Health checks .............. status lights for harnesses and speech engines
+  Connections and login ...... Brain, handle_renderer, _authenticate, lockout
+  Message dispatch ........... _handle_message: one branch per message type
+  Handshake .................. _handle_ready: everything a new device needs
+  Souls, profiles, notes ..... saved characters, her main soul and user.md
+  Avatars .................... import and switch VRM/PNG avatars
+  Speech engines ............. TTS engines, voices, Kokoro voice blending
+  LLM engines and harnesses .. building the LLM, switching, Hermes
+  Behavior learning .......... lessons from thumbs up/down
+  Memory server, debug, restart
+  Role-play .................. the toggle, and switching engines for it
+  Voice input, clear, regenerate
+  The reply pipeline ......... _reply_to
+  After a reply .............. memory training, context meter, curiosity, memory saving
+  Startup .................... main(), _serve_when_free
+
+Two things to keep in mind throughout: there's ONE Brain and ONE conversation
+shared by every connected device (see Brain), and brain.llm can be a LocalLLM,
+an OllamaLLM (a LocalLLM subclass), a HarnessLLM or a NoneLLM -- anything
+that touches her soul, memory or history checks isinstance(brain.llm,
+LocalLLM) first.
 """
 
 import asyncio
@@ -53,6 +88,10 @@ import web_search
 from config import load_config
 from llm import REQUEST_TIMEOUT_SEC, HarnessLLM, LocalLLM, NoneLLM, OllamaLLM, list_models, list_ollama_models
 from voice import FasterWhisperSTT, NoneTTS, RemoteTTS
+
+# ============================================================================
+# Settings and shared state
+# ============================================================================
 
 # config.yaml's brain.llm block, captured once at startup (main()) -- kept
 # reachable here (not just a local in main()) so _build_llm can rebuild
@@ -115,8 +154,10 @@ AUTH_TIMEOUT_SEC = 10
 # a connection to this port (a compromised/malicious device on the LAN or
 # Tailscale tailnet, not just a stranger off the internet) could brute-force
 # it with unlimited attempts. AUTH_MAX_FAILURES wrong tokens from the same
-# IP locks that IP out for AUTH_LOCKOUT_SEC; a lockout doesn't even consume
-# a message once triggered, it fails immediately in _authenticate.
+# device lock that device out for AUTH_LOCKOUT_SEC (a device is its own
+# address, even behind the Vite proxy -- see _auth_ip); a lockout doesn't even
+# consume a message once triggered, it fails immediately in _authenticate.
+# When it runs out, that device starts over from zero.
 AUTH_MAX_FAILURES = 5
 AUTH_LOCKOUT_SEC = 60
 
@@ -182,6 +223,10 @@ def _spawn(coro) -> asyncio.Task:
     task.add_done_callback(_BACKGROUND_TASKS.discard)
     return task
 
+
+# ============================================================================
+# Health checks (status lights)
+# ============================================================================
 
 ENDPOINT_HEALTH_CHECK_INTERVAL_SEC = 20
 # Short and TCP-only on purpose -- this only needs to tell "something's
@@ -375,6 +420,10 @@ def _harness_state_message() -> dict:
         harness.list_harnesses(),
     )
 
+
+# ============================================================================
+# Connections and login
+# ============================================================================
 
 class Brain:
     """Everything the WebSocket handler needs to answer a message: the
@@ -601,6 +650,10 @@ async def _ping_loop(websocket: websockets.ServerConnection) -> None:
         await websocket.send(json.dumps(protocol.ping()))
 
 
+# ============================================================================
+# Message dispatch
+# ============================================================================
+
 async def _handle_message(websocket: websockets.ServerConnection, raw: str, brain: Brain) -> None:
     try:
         data = json.loads(raw)
@@ -741,6 +794,10 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
         print(f"[brain] ignoring unknown message type: {msg_type!r}")
 
 
+# ============================================================================
+# Handshake: everything a newly connected device needs
+# ============================================================================
+
 async def _handle_ready(websocket: websockets.ServerConnection, data: dict) -> None:
     print(f"[brain] renderer ready, model={data.get('model')!r}")
     await websocket.send(json.dumps(protocol.profiles(profiles.list_profiles(), profiles.read_active_profile_name())))
@@ -786,6 +843,10 @@ async def _handle_ready(websocket: websockets.ServerConnection, data: dict) -> N
             data_b64 = base64.b64encode(avatar_bytes).decode("ascii")
             await websocket.send(json.dumps(protocol.avatar_data(active_avatar, data_b64, kind)))
 
+
+# ============================================================================
+# Souls, profiles and notes
+# ============================================================================
 
 async def _handle_save_profile(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     name = data.get("name", "")
@@ -967,6 +1028,10 @@ async def _handle_delete_soul(websocket: websockets.ServerConnection, data: dict
     await _broadcast(protocol.souls(souls.list_souls(), souls.read_active_soul_name()))
 
 
+# ============================================================================
+# Avatars
+# ============================================================================
+
 async def _handle_save_avatar(websocket: websockets.ServerConnection, data: dict) -> None:
     name = data.get("name", "")
     data_b64 = data.get("data_b64", "")
@@ -1011,6 +1076,10 @@ async def _handle_load_avatar(websocket: websockets.ServerConnection, data: dict
     data_b64 = base64.b64encode(avatar_bytes).decode("ascii")
     await websocket.send(json.dumps(protocol.avatar_data(name, data_b64, kind)))
 
+
+# ============================================================================
+# Speech engines
+# ============================================================================
 
 async def _handle_save_tts_engine(websocket: websockets.ServerConnection, data: dict) -> None:
     name = data.get("name", "")
@@ -1222,6 +1291,10 @@ def _build_tts(name: str) -> RemoteTTS | NoneTTS:
         engine.get("model") or RemoteTTS.DEFAULT_MODEL,
     )
 
+
+# ============================================================================
+# LLM engines and harnesses
+# ============================================================================
 
 async def _handle_save_llm_engine(websocket: websockets.ServerConnection, data: dict) -> None:
     name = data.get("name", "")
@@ -1524,6 +1597,9 @@ async def _handle_delete_harness(websocket: websockets.ServerConnection, data: d
     await _broadcast(_harness_state_message())
 
 
+# ============================================================================
+# Behavior learning (lessons)
+# ============================================================================
 
 _LESSON_SETTINGS_TYPES = {
     protocol.SET_LESSONS_ACTIVE,
@@ -1658,6 +1734,10 @@ async def _learn_from_rating(
     await _broadcast_lessons_state()
 
 
+# ============================================================================
+# Memory server, debug and restart
+# ============================================================================
+
 async def _handle_save_hindsight_config(data: dict) -> None:
     """Saves the Settings panel's Memory Server fields, points memory.py's
     Hindsight client at the new server, and ensures the bank exists there
@@ -1781,6 +1861,10 @@ async def _handle_restart_brain(websocket: websockets.ServerConnection) -> None:
     else:
         os.execv(sys.executable, [sys.executable, *sys.argv])
 
+
+# ============================================================================
+# Role-play
+# ============================================================================
 
 def _handle_load_profile(data: dict, brain: Brain) -> None:
     name = data.get("name", "")
@@ -1946,6 +2030,10 @@ def _switch_to_roleplay_engine(think: bool, brain: Brain) -> None:
     print(f"[brain] role-play switched LLM engine to {ROLEPLAY_LLM_ENGINE_NAME!r} (think={think})")
 
 
+# ============================================================================
+# Voice input, clear chat, regenerate
+# ============================================================================
+
 async def _handle_user_audio(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     audio_b64 = data.get("audio_b64") or ""
     if not audio_b64:
@@ -2021,6 +2109,10 @@ def _transcribe(stt: FasterWhisperSTT, audio_b64: str, mime_type: str) -> str:
     finally:
         Path(temp_path).unlink(missing_ok=True)
 
+
+# ============================================================================
+# The reply pipeline
+# ============================================================================
 
 async def _reply_to(
     websocket: websockets.ServerConnection,
@@ -2185,6 +2277,10 @@ async def _reply_to(
     await websocket.send(json.dumps(protocol.speak_audio(audio_b64, brain.tts.SAMPLE_RATE)))
     await websocket.send(json.dumps(protocol.viseme_stream(frames)))
 
+
+# ============================================================================
+# After a reply: memory training, context meter, curiosity, memory saving
+# ============================================================================
 
 def _training_state_message(error: str = "") -> dict:
     available = memory.read_provider() == memory.HINDSIGHT_PROVIDER and memory.hindsight_configured()
@@ -2374,6 +2470,10 @@ async def _maybe_retain_memory(websocket: websockets.ServerConnection, user_text
     await _debug_log(websocket, "memory", "learned something new", (time.monotonic() - start) * 1000)
     await websocket.send(json.dumps(protocol.memory_learned(fact)))
 
+
+# ============================================================================
+# Startup
+# ============================================================================
 
 async def main() -> None:
     config = load_config()

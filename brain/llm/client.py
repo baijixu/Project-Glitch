@@ -422,7 +422,15 @@ class LocalLLM:
         # way config.yaml's own `model: null` comment promises. An empty
         # string is a normal, harmless value for a server to see instead.
         self._model = model or ""
+        self._init_state()
+
+    def _init_state(self) -> None:
+        """Everything that makes up her conversation and prompt, set to empty.
+        Shared with OllamaLLM (which has a different connection but the same
+        state) so a new prompt part only has to be added in one place.
+        """
         self._history: list[dict] = []
+        # Prompt parts, each set by main.py (see _system_prompt/_turn_notes).
         self._persona = ""
         self._soul = ""
         self._memory = ""
@@ -1046,15 +1054,7 @@ class OllamaLLM(LocalLLM):
         self._http = httpx.Client(base_url=endpoint.rstrip("/"), timeout=REQUEST_TIMEOUT_SEC)
         self._model = model or ""
         self._think = think
-        self._history: list[dict] = []
-        self._persona = ""
-        self._soul = ""
-        self._memory = ""
-        self._lessons = ""
-        self._curiosity = ""
-        self._user_info = ""
-        self.last_reply_used_web_search = False
-        self._reply_generation = 0
+        self._init_state()
 
     def context_window(self) -> int | None:
         """Ollama's own answer (/api/ps lists each loaded model's context_length),
