@@ -462,6 +462,57 @@ body.overlay-chat-active #overlay-edit-button {
   right: 16px;
 }
 
+/* "processing..." beside the chat-history flower while she works on a reply.
+   Same height and backing as the corner buttons, so it reads over any avatar. */
+#processing-indicator {
+  position: fixed;
+  top: 16px;
+  left: 70px; /* the flower's 16px + 44px, plus a 10px gap */
+  z-index: 20;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 22px;
+  background: rgba(0, 0, 0, 0.4);
+  color: #eee;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+
+#processing-indicator[hidden] {
+  display: none;
+}
+
+.processing-dot {
+  animation: processing-dot 1.4s infinite;
+  opacity: 0;
+}
+
+.processing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.processing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes processing-dot {
+  0%, 20% {
+    opacity: 0;
+  }
+  40%, 100% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .processing-dot {
+    animation: none;
+    opacity: 1;
+  }
+}
+
 .connection-light {
   position: fixed;
   top: 32px;

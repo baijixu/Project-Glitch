@@ -1173,6 +1173,8 @@ export class BrainClient {
     this._awaitingReply = awaiting;
     this._updateSendButtonDisabled();
     if (this.stopButtonEl) this.stopButtonEl.hidden = !awaiting;
+    const processingEl = document.getElementById("processing-indicator");
+    if (processingEl) processingEl.hidden = !awaiting;
   }
 
   // The Stop button inside the chat box (only visible while a reply is

@@ -26,6 +26,10 @@
     <div id="bubble-overlay"></div>
     <div id="memory-toast"></div>
     <button id="history-button" class="corner-button" title="Chat history">🌸</button>
+    <!-- Shown while she's working on a reply (see brain_client.js _setAwaitingReply). -->
+    <div id="processing-indicator" role="status" hidden>
+      processing<span class="processing-dot">.</span><span class="processing-dot">.</span><span class="processing-dot">.</span>
+    </div>
     <aside id="history-panel" class="slide-panel">
       <h2>Chat History</h2>
       <div id="history-list"></div>
