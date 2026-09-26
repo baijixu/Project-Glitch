@@ -439,13 +439,42 @@ async def handle_renderer(websocket: websockets.ServerConnection, brain: Brain, 
         print("[brain] renderer disconnected")
 
 
+_LOOPBACK_ADDRESSES = frozenset({"127.0.0.1", "::1", "::ffff:127.0.0.1"})
+
+
 def _auth_ip(websocket: websockets.ServerConnection) -> str:
-    return websocket.remote_address[0] if websocket.remote_address else "unknown"
+    """Which device a connection is, for the failed-login lockout.
+
+    Brain listens on this PC only, so every device reaches it through the
+    Renderer's Vite proxy -- and to Brain they would all look like 127.0.0.1.
+    One stale tab with an old token would then lock out *every* device. Vite
+    is set to pass the real address on (vite.config.js, xfwd), appending it as
+    the LAST entry of X-Forwarded-For. Only that last entry is used -- earlier
+    ones are whatever the device itself sent, and could be made up -- and only
+    when the connection really comes from this machine (the proxy). A direct
+    connection from elsewhere is identified by its own address as before.
+    """
+    peer = websocket.remote_address[0] if websocket.remote_address else "unknown"
+    if peer in _LOOPBACK_ADDRESSES:
+        headers = getattr(getattr(websocket, "request", None), "headers", None)
+        forwarded = headers.get("X-Forwarded-For", "") if headers is not None else ""
+        last_hop = forwarded.split(",")[-1].strip()
+        if last_hop:
+            return last_hop
+    return peer
 
 
 def _is_locked_out(ip: str) -> bool:
     count, locked_until = _AUTH_FAILURES.get(ip, (0, 0.0))
-    return count >= AUTH_MAX_FAILURES and time.monotonic() < locked_until
+    if count < AUTH_MAX_FAILURES:
+        return False
+    if time.monotonic() < locked_until:
+        return True
+    # The lockout has run out: start that device's count over. Before, the
+    # count kept climbing, so after the minute was up a single further miss
+    # locked it out again at once.
+    _AUTH_FAILURES.pop(ip, None)
+    return False
 
 
 def _record_auth_failure(ip: str) -> None:

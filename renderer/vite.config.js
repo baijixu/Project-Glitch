@@ -39,7 +39,12 @@ export default defineConfig({
       // page navigated to directly can prompt that. See main.js for the
       // client side of this (deriving the URL from location.host instead
       // of a hardcoded LAN IP in .env).
-      "/brain-ws": { target: "ws://127.0.0.1:8765", ws: true, changeOrigin: true },
+      //
+      // xfwd passes each device's real address on to Brain (X-Forwarded-For),
+      // so a device that keeps failing to log in only locks itself out -- without
+      // it, every device looks like this PC to Brain and one stale tab locks out
+      // all of them. See brain/main.py's _auth_ip.
+      "/brain-ws": { target: "ws://127.0.0.1:8765", ws: true, changeOrigin: true, xfwd: true },
     },
   },
 });
