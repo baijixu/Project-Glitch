@@ -2788,10 +2788,10 @@ export class BrainClient {
     const meta = document.createElement("div");
     meta.className = "history-meta";
 
-    // Only your latest message can be edited, so only it shows ✏️: a new message
-    // of yours (with or without a picture) takes it away from all the earlier ones.
+    // ↻ and ✏️ only on your latest message: a new message of yours (with or
+    // without a picture) takes them away from all the earlier ones.
     if (role === "user") {
-      for (const button of this.historyListEl.querySelectorAll(".history-edit-button")) button.hidden = true;
+      for (const button of this.historyListEl.querySelectorAll(".history-retry-button")) button.hidden = true;
     }
 
     const time = document.createElement("div");
