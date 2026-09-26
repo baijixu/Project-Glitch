@@ -65,6 +65,7 @@ SAVE_SOUL_AND_USER = "save_soul_and_user"
 GET_NOTES = "get_notes"
 SAVE_NOTES = "save_notes"
 REGENERATE_LAST = "regenerate_last"
+CLEAR_CONVERSATION = "clear_conversation"
 STOP_REPLY = "stop_reply"
 SET_DEBUG_ACTIVE = "set_debug_active"
 DEBUG_PING = "debug_ping"
@@ -88,6 +89,7 @@ VOICE_STATE = "voice_state"
 WEB_SEARCH_STATE = "web_search_state"
 CURIOSITY_STATE = "curiosity_state"
 CONTEXT_USAGE = "context_usage"
+CONVERSATION_CLEARED = "conversation_cleared"
 TRAINING_STATE = "training_state"
 LESSONS_STATE = "lessons_state"
 LESSON_EVENT = "lesson_event"
@@ -218,6 +220,12 @@ def training_state(available: bool, active: bool, pending: list, error: str = ""
     approval couldn't be saved (the proposal then stays in the list).
     """
     return {"type": TRAINING_STATE, "available": available, "active": active, "pending": pending, "error": error}
+
+
+def conversation_cleared() -> dict:
+    """Sent to every device after clear_conversation: she's on a fresh
+    conversation, so each device clears its chat panel too."""
+    return {"type": CONVERSATION_CLEARED}
 
 
 def context_usage(used: int, window: int | None, messages: int, max_messages: int) -> dict:

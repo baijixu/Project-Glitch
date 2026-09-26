@@ -51,9 +51,20 @@ _STOPWORDS = frozenset(
 )
 
 GUIDANCE = (
-    "You're genuinely curious about the user. When they share something, you may ask ONE short, "
-    "natural follow-up about it -- but only when it fits. Never stack questions, never quiz them, "
-    "and hold back when they're brief, busy, venting, or just gave you a task."
+    "You're genuinely curious about the user, but most of your replies should NOT end in a question: "
+    "react, share your own thoughts, opinions or a bit of yourself instead. Ask only when you really want "
+    "to know -- one short question at most, never a stack of them, and never something you've already "
+    "asked in this conversation, even reworded. Hold back when they're brief, busy, venting, or just gave "
+    "you a task."
+)
+
+# Used instead of GUIDANCE when one of her last QUESTION_COOLDOWN_REPLIES replies
+# already asked something. Seen live: 36 of 41 replies in one evening ended in a
+# question, several near-identical ("Do you like how...?" three times running).
+QUESTION_COOLDOWN_REPLIES = 2
+NO_QUESTION_GUIDANCE = (
+    "You asked a question recently, so don't ask one in this reply. Respond to what they said, share "
+    "something of your own, or just let it rest -- a conversation doesn't need a question to keep going."
 )
 
 # The states a question moves through: open -> asked (she worked it in) -> closed
@@ -161,11 +172,15 @@ def _mark(question_id: str, **changes) -> None:
     _write(questions)
 
 
-def start_turn() -> str:
+def start_turn(recent_replies: list[str] | tuple = ()) -> str:
     """Called once per user message, before the reply. Closes the question she
     asked last turn (the user's message is its answer), then returns this
     turn's prompt block: the standing guidance, plus one open question when
     it's been long enough since the last. Records which one, for end_turn.
+
+    `recent_replies` are her own latest replies, oldest first. If any of the
+    last QUESTION_COOLDOWN_REPLIES asked something, this turn is told not to
+    ask anything, and no open question is offered.
     """
     global _turns_since_offer, _turns_since_propose, _offered_id
     _turns_since_offer += 1
@@ -174,6 +189,8 @@ def start_turn() -> str:
     for q in _read():
         if q["status"] == ASKED:
             _mark(q["id"], status=CLOSED)  # text kept so it isn't proposed again
+    if any("?" in reply for reply in list(recent_replies)[-QUESTION_COOLDOWN_REPLIES:]):
+        return NO_QUESTION_GUIDANCE
     block = GUIDANCE
     if _turns_since_offer >= OFFER_EVERY_TURNS:
         pool = open_questions()

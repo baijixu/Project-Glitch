@@ -267,7 +267,9 @@ memory and skills, not Glitch's.
 
 ### Everyday controls
 
-Stop button (cancels a reply in flight), resend last message, two chat layouts (history panel or bubbles over the avatar),
+Stop button (cancels a reply in flight), resend last message, ✏️ edit your latest message (she answers the corrected
+version instead), **Clear Chat** (starts her on a fresh conversation; her long-term memory stays), two chat layouts
+(history panel or bubbles over the avatar),
 **Restart Brain** button in Settings (useful from a phone), a notes scratchpad (`brain/notes.md`), and an opt-in debug
 log of connection and timing events (never conversation content).
 

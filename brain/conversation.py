@@ -65,6 +65,19 @@ def load_state(mode: str) -> list[dict]:
     ]
 
 
+def log_marker(text: str, now: datetime | None = None) -> None:
+    """A one-line note in today's log, e.g. where the chat was cleared."""
+    now = now or datetime.now()
+    try:
+        LOG_DIR.mkdir(exist_ok=True)
+        path = LOG_DIR / f"{now:%Y-%m-%d}.md"
+        header = "" if path.exists() else f"# Chat log -- {now:%A %d %B %Y}\n\n"
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(f"{header}---\n\n*{now:%H:%M:%S} -- {text}*\n\n")
+    except OSError as exc:
+        print(f"[conversation] couldn't write the chat log: {exc!r}")
+
+
 def log_exchange(user_text: str, reply_text: str, *, roleplay: bool, picture: bool = False, now: datetime | None = None) -> None:
     """Appends one exchange to today's log. Best-effort, like save_state."""
     now = now or datetime.now()

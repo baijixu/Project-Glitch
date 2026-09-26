@@ -363,6 +363,7 @@ export class BrainClient {
       onNewProposals: (fact) => this._showMemoryToast(fact, "🧠 Memory proposed (review in Settings): "),
     });
     this._rateControls = new WeakMap(); // history entry -> {paint} for its 👍/👎 controls
+    this._entryBubbles = new WeakMap(); // history entry -> its bubble in the History panel, for editing
     document.getElementById("overlay-thumbs-up")?.addEventListener("click", () => this._rateLastReply("up"));
     document.getElementById("overlay-thumbs-down")?.addEventListener("click", () => this._rateLastReply("down"));
     this.fileUploadButtonEl = fileUploadButtonEl;
@@ -413,7 +414,11 @@ export class BrainClient {
     this._historyEntries = [];
     this._loadStoredHistory();
     this.resendLastButtonEl?.addEventListener("click", () => this._resendLastUserMessage());
-    this.clearHistoryButtonEl?.addEventListener("click", () => this._clearHistory());
+    this.clearHistoryButtonEl?.addEventListener("click", () => this._clearConversation());
+    document.getElementById("overlay-edit-button")?.addEventListener("click", () => {
+      const last = [...this._historyEntries].reverse().find((e) => e.role === "user");
+      if (last) this._editUserMessage(last);
+    });
     this.connectionLightEl = connectionLightEl;
     this._connectionState = "red"; // haven't connected yet
     this._slowReplyTimer = null;
@@ -1072,6 +1077,51 @@ export class BrainClient {
   // to remove in the first place, so this is a no-op past the removal
   // check and just goes straight to asking again.
   _regenerateLast(entry) {
+    this._removeStaleReply(entry);
+    const text = entry.text;
+    this._send({ type: "regenerate_last", text });
+    this._startSlowReplyTimer();
+    this._setAwaitingReply(true);
+    this._pendingReplySentAt = Date.now();
+    this._logDebug("ws", `sent regenerate_last (${text.length} chars)`);
+  }
+
+  // The ✏️ button on a user bubble (and the over-avatar mode's ✏️): fix your
+  // latest message and she answers the corrected version instead, her old
+  // reply removed -- same in-place swap as regenerating. Only the latest
+  // message: editing an older one would mean dropping everything after it.
+  // A plain prompt dialog, so it works one-handed on a phone.
+  _editUserMessage(entry) {
+    if (this._awaitingReply || this._connectionState === "red") return;
+    if (!this._isLastUserEntry(entry)) {
+      this._setStatus("Only your latest message can be edited");
+      setTimeout(() => this._setStatus(""), 2500);
+      return;
+    }
+    const edited = window.prompt("Edit your message", entry.text);
+    const text = edited === null ? "" : edited.trim();
+    if (!text || text === entry.text) return;
+    this._removeStaleReply(entry);
+    entry.text = text;
+    const bubble = this._entryBubbles.get(entry);
+    if (bubble?.lastChild) bubble.lastChild.nodeValue = text;
+    const overlayBubble = this._overlayChatActive ? this.bubbleOverlayEl?.lastElementChild : null;
+    if (overlayBubble?.classList.contains("user") && overlayBubble.lastChild) overlayBubble.lastChild.nodeValue = text;
+    try {
+      localStorage.setItem(CHAT_HISTORY_STORAGE_KEY, JSON.stringify(this._historyEntries));
+    } catch {
+      // The edit still goes to Brain -- the panel just shows the old text after a reload.
+    }
+    this._send({ type: "regenerate_last", text, edited: true });
+    this._startSlowReplyTimer();
+    this._setAwaitingReply(true);
+    this._pendingReplySentAt = Date.now();
+    this._logDebug("ws", `sent regenerate_last (${text.length} chars, edited)`);
+  }
+
+  // Removes her reply to `entry` (the History panel bubble, the over-avatar
+  // bubble, the stored entry) if there is one -- see _regenerateLast.
+  _removeStaleReply(entry) {
     const index = this._historyEntries.indexOf(entry);
     if (index !== -1 && this._historyEntries[index + 1]?.role === "glitch") {
       this._historyEntries.splice(index + 1, 1);
@@ -1095,12 +1145,6 @@ export class BrainClient {
         // Nothing to fall back to -- the DOM/in-memory removal above already happened either way.
       }
     }
-    const text = entry.text;
-    this._send({ type: "regenerate_last", text });
-    this._startSlowReplyTimer();
-    this._setAwaitingReply(true);
-    this._pendingReplySentAt = Date.now();
-    this._logDebug("ws", `sent regenerate_last (${text.length} chars)`);
   }
 
   // The History panel's "Resend Last" button -- a bigger, easier-to-hit
@@ -1155,6 +1199,8 @@ export class BrainClient {
     const disabled = this._awaitingReply || this._connectionState === "red";
     if (this.sendButtonEl) this.sendButtonEl.disabled = disabled;
     if (this.overlayResendButtonEl) this.overlayResendButtonEl.disabled = disabled;
+    const overlayEditButton = document.getElementById("overlay-edit-button");
+    if (overlayEditButton) overlayEditButton.disabled = disabled;
     if (this.fileUploadButtonEl) this.fileUploadButtonEl.disabled = disabled;
     if (this.cameraVisionButtonEl) this.cameraVisionButtonEl.disabled = disabled;
     if (this.desktopVisionButtonEl) this.desktopVisionButtonEl.disabled = disabled;
@@ -2766,6 +2812,13 @@ export class BrainClient {
       // most recent user message.
       retryButton.addEventListener("click", () => this._retryUserMessage(entry));
       meta.appendChild(retryButton);
+      const editButton = document.createElement("button");
+      editButton.className = "history-retry-button";
+      editButton.textContent = "✏️";
+      editButton.title = "Edit this message (your latest one only)";
+      editButton.addEventListener("click", () => this._editUserMessage(entry));
+      meta.appendChild(editButton);
+      this._entryBubbles.set(entry, bubble);
     }
 
     // Rating only makes sense on something she actually said.
@@ -2946,7 +2999,25 @@ export class BrainClient {
   // already leaves it untouched (see _addHistoryEntry's comment). This is
   // "tidy up what I'm looking at", not "make her forget" -- that's what
   // Restart Brain is for.
+  // The History panel's Clear Chat: clears this screen AND starts her on a fresh
+  // conversation (Brain clears its side, then tells every device to clear theirs
+  // via conversation_cleared). Her long-term memory isn't touched.
+  _clearConversation() {
+    if (!window.confirm("Clear the chat and start her on a fresh conversation? She keeps her long-term memory.")) return;
+    if (this._connectionState === "red") {
+      this._clearHistory();
+      this._setStatus("Brain isn't connected -- only this screen was cleared");
+      return;
+    }
+    this._send({ type: "clear_conversation" });
+    this._clearHistory();
+  }
+
   _clearHistory() {
+    const meterText = document.getElementById("context-meter-text");
+    if (meterText) meterText.textContent = "after her next reply";
+    const meterFill = document.getElementById("context-meter-fill");
+    if (meterFill) meterFill.style.width = "0%";
     this._historyEntries = [];
     if (this.historyListEl) this.historyListEl.innerHTML = "";
     if (this.bubbleOverlayEl) this.bubbleOverlayEl.innerHTML = "";
@@ -3096,6 +3167,9 @@ export class BrainClient {
         break;
       case "web_search_state":
         if (this.webSearchToggleInputEl) this.webSearchToggleInputEl.checked = !!data.active;
+        break;
+      case "conversation_cleared":
+        this._clearHistory();
         break;
       case "context_usage":
         this._renderContextUsage(data);

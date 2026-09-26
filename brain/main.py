@@ -544,6 +544,8 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
         )
     elif msg_type == protocol.USER_AUDIO:
         await _handle_user_audio(websocket, data, brain)
+    elif msg_type == protocol.CLEAR_CONVERSATION:
+        await _handle_clear_conversation(brain)
     elif msg_type == protocol.REGENERATE_LAST:
         await _handle_regenerate_last(websocket, data, brain)
     elif msg_type == protocol.SAVE_PROFILE:
@@ -1820,6 +1822,20 @@ async def _handle_user_audio(websocket: websockets.ServerConnection, data: dict,
     await _reply_to(websocket, text, brain)
 
 
+async def _handle_clear_conversation(brain: Brain) -> None:
+    """The chat history panel's Clear Chat: she starts a fresh conversation too,
+    not just the panel. Her long-term memory is untouched -- only the running
+    conversation goes. Every connected device clears its panel as well.
+    """
+    global _LAST_CONTEXT_USAGE
+    if isinstance(brain.llm, LocalLLM):
+        brain.llm.clear_history()
+    conversation.log_marker("New conversation (chat cleared)")
+    _LAST_CONTEXT_USAGE = None
+    print("[brain] conversation cleared")
+    await _broadcast(protocol.conversation_cleared())
+
+
 async def _handle_regenerate_last(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     """The Renderer's "resend" controls (per-bubble retry, History panel's
     Resend Last) -- re-answers the same prompt without leaving the stale
@@ -1835,10 +1851,13 @@ async def _handle_regenerate_last(websocket: websockets.ServerConnection, data: 
     recollection of the last prompt), same as an ordinary user_text, for
     that case and for NoneLLM.
     """
-    text = data.get("text", "")
+    text = str(data.get("text", ""))
+    edited = bool(data.get("edited"))  # the ✏️ button: answer their corrected text instead
+    if edited and _fields_too_long(text):
+        return
     if isinstance(brain.llm, LocalLLM):
         popped_text = brain.llm.pop_last_exchange()
-        if popped_text is not None:
+        if popped_text is not None and not edited:
             text = popped_text
     await _reply_to(websocket, text, brain)
 
@@ -1929,7 +1948,8 @@ async def _reply_to(
     # cleared rather than skipped. Not tied to Hindsight; it only needs the local files.
     curious = isinstance(brain.llm, LocalLLM) and curiosity.read_active() and not profiles.read_roleplay_active()
     if isinstance(brain.llm, LocalLLM):
-        brain.llm.set_curiosity(curiosity.start_turn() if curious else "")
+        recent = [m["content"] for m in brain.llm._history if m.get("role") == "assistant" and isinstance(m.get("content"), str)]
+        brain.llm.set_curiosity(curiosity.start_turn(recent[-curiosity.QUESTION_COOLDOWN_REPLIES:]) if curious else "")
 
     llm_start = time.monotonic()
     try:
