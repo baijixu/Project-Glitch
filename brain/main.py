@@ -1912,17 +1912,10 @@ def _handle_set_roleplay_active(data: dict, brain: Brain) -> None:
         _apply_conversation_mode(brain, persona=content)
         print(f"[brain] role-play activated{' with the selected profile' if content else ' (no profile selected yet)'}")
     else:
-        # Mirrors the "on" path: re-enables thinking on ROLEPLAY_LLM_ENGINE_NAME
-        # and switches to it, so turning role-play off always lands back on
-        # full reasoning -- the fast/no-think mode is specifically an RP
-        # thing, not something that should quietly stay on afterward. This
-        # used to be the actual source of empty replies outside RP (a model
-        # can burn its entire reply-token budget on reasoning and never
-        # reach real content) -- fixed at the source now, not by avoiding
-        # think=true: see llm/client.py's MAX_REPLY_TOKENS_THINKING, a
-        # wider budget OllamaLLM applies specifically when think is on.
-        # Same graceful no-op as the "on" path if that engine isn't
-        # configured.
+        # Turns thinking back on in ROLEPLAY_LLM_ENGINE_NAME's saved settings
+        # (the fast no-think mode is only for role-play) and puts her back on
+        # the engine she was using before role-play was turned on. Stays on
+        # the current engine if there's no record of one or it's gone.
         _restore_engine_after_roleplay(brain)
         _apply_conversation_mode(brain, persona="")  # the flag is already off, so this is her main soul
         print("[brain] role-play deactivated -- back to her main soul and her normal conversation")

@@ -44,9 +44,9 @@ if not exist renderer\.env (
 
 echo.
 echo Setup complete. Next steps:
-echo   1. Edit config.yaml with your LLM endpoint.
-echo   2. cd renderer ^&^& npm run dev   (or run renderer\shell\launch.py once the dev server is up)
-echo   3. cd brain ^&^& uv run main.py
+echo   1. Run start-glitch.bat (starts the Brain and the Renderer)
+echo   2. Open https://localhost:5173 and accept the certificate warning
+echo   3. In Settings, LLM, add your LLM server's endpoint and model, and select it
 echo.
 echo Optional voice: Glitch speaks through any OpenAI-style text-to-speech server, and stays
 echo text-only until you add one. To run the bundled Kokoro service:

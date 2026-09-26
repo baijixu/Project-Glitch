@@ -43,9 +43,10 @@ fi
 
 echo
 echo "Setup complete. Next steps:"
-echo "  1. Edit config.yaml with your LLM endpoint."
-echo "  2. cd renderer && npm run dev   (or run renderer/shell/launch.py once the dev server is up)"
-echo "  3. cd brain && uv run main.py"
+echo "  1. In one terminal:     cd brain && uv run main.py"
+echo "  2. In another terminal: cd renderer && npm run dev"
+echo "  3. Open https://localhost:5173, accept the certificate warning, then in"
+echo "     Settings > LLM add your LLM server's endpoint and model, and select it"
 echo
 echo "Optional voice: Glitch speaks through any OpenAI-style text-to-speech server, and stays"
 echo "text-only until you add one. To run the bundled Kokoro service:"

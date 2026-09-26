@@ -164,8 +164,8 @@ Prefer a native window? With the dev server running: `cd renderer/shell && uv ru
 Everything below is done in the **Settings** panel, no config file editing required.
 
 1. **LLM engine.** *Settings → LLM*: add an engine with your server's endpoint (for example
-   `http://localhost:1234/v1` for LM Studio) and model name, save it, and select it. Until you do, she replies with
-   "no LLM engine configured".
+   `http://localhost:1234/v1` for LM Studio) and model name, save it, and select it. Until you do, her only reply is
+   "No LLM engine is configured yet".
 2. **Her soul.** *Settings → Soul & User Files*: write who she is in `soul.md`, and who you are in `user.md`. Both are read
    from `brain/`, and `user.md` is re-read on every message, so edits apply immediately.
 3. **Voice (optional).** Start the bundled speech server with `docker compose up -d`, then *Settings → Speech Engine* and add an
@@ -212,6 +212,11 @@ under `brain/`.
   copied into `rp_soul.md` / `rp_user.md` when selected. **No role-play action ever writes `soul.md` or `user.md`.**
 - While role-play is on, her real memory, your `user.md`, learned behavior rules, the clock, and curiosity are all paused, so
   a scene never leaks into real life and vice versa.
+- **Role-play runs on a saved LLM engine named exactly `Ollama`.** Turning role-play on switches her to it (the confirm dialog
+  lets you choose whether thinking stays on), and turning it off puts her back on the engine she was using before. Make it an
+  Ollama-provider engine, since that's the one that can reliably switch thinking off. Without an engine of that name she stays
+  on her current engine.
+- The normal conversation and the role-play scene are saved separately, so switching between them doesn't lose either one.
 
 > **First-run note:** role-play is treated as *on* until you've toggled it once. If memory or lessons seem inactive on a
 > fresh install, open Settings and switch role-play off.
@@ -269,8 +274,8 @@ memory and skills, not Glitch's.
 Stop button (cancels a reply in flight), resend last message, ✏️ edit your latest message (she answers the corrected
 version instead), **Clear Chat** (starts her on a fresh conversation; her long-term memory stays), two chat layouts
 (history panel or bubbles over the avatar),
-**Restart Brain** button in Settings (useful from a phone), a notes scratchpad (`brain/notes.md`), and an opt-in debug
-log of connection and timing events (never conversation content).
+**Restart Brain** button in Settings (useful from a phone), a notes scratchpad (`brain/notes.md`), and a per-device debug
+log of connection and timing events (never conversation content), on by default and downloadable from Settings.
 
 A **context meter** under *Settings → LLM* shows how much of the model's context her latest reply used (for example
 `4,235 / 65,536 tokens (6%)`). She keeps as much of the conversation as fits in about half of the model's context
@@ -294,7 +299,8 @@ Glitch is a personal tool, not a hardened service. Know these before exposing it
 
 - **Anyone who can open the Renderer's page can use Glitch** as you, because the page (which contains the auth token) is served
   to them. Only expose port 5173 on networks you trust, or only over Tailscale. **Never port-forward it to the internet.**
-- The Brain rejects a wrong or missing token, and locks an IP out for a minute after five failed attempts.
+- The Brain rejects a wrong or missing token, and locks a device out for a minute after five failed attempts (only that
+  device, even when every device connects through the Renderer's proxy).
 - `config.yaml` and `renderer/.env` contain secrets and are gitignored. Backups contain them too, so keep those private.
 - Glitch has **no content filter of its own.** What she says depends entirely on the model and soul you give her, and you are
   responsible for them.
@@ -328,14 +334,16 @@ back to the same relative paths and restart the Brain. Memory that lives in a Hi
 
 ```
 brain/                 Python backend (WebSocket server)
-  main.py              entry point and message handling
+  main.py              entry point and message handling (a map of its sections is at the top)
   llm/                 LLM clients (OpenAI-compatible, Ollama native, Hermes harness)
   voice/               speech-to-text and text-to-speech
+  conversation.py      saving/restoring the conversation, daily chat logs
   memory.py            memory providers (local / Hindsight), core-fact recall
   training.py          memory-training review queue
   lessons.py           behavior learning
   curiosity.py         follow-up questions
   souls.py profiles.py soul / user / role-play file handling
+  llm_engines.py tts_engines.py harness.py   saved engines and harnesses
   web_search.py        SearXNG search and trust labels
   protocol.py          message constructors
 renderer/              Vite + three.js front end
@@ -354,7 +362,7 @@ SPEC.md                original design notes
 | Symptom | Try |
 | --- | --- |
 | Certificate warning in the browser | Expected: self-signed HTTPS. Choose *Advanced → Continue*. Needed for camera and mic. |
-| She only says "no LLM engine configured" | Add and select an LLM engine in *Settings → LLM*. |
+| She only says "No LLM engine is configured yet" | Add and select an LLM engine in *Settings → LLM*. |
 | She never speaks | No speech engine is selected. Add one in *Settings → Speech Engine*, and check the *Voice* toggle. |
 | Memory, lessons or curiosity seem inactive | Role-play may be on (it pauses them). Toggle it off in Settings. Lessons and memory training also need the Hindsight provider. |
 | Phone can't connect | Both devices on the same network or Tailscale, port 5173 reachable, and Vite running with its default `host: true`. Check the PC's firewall. |
@@ -362,7 +370,7 @@ SPEC.md                original design notes
 | Photos look black | Reload the page and retry, and check the browser's camera permission for the site. |
 | "failed auth" in the Brain log | The Renderer's token doesn't match. Set `VITE_BRAIN_AUTH_TOKEN` to the same value as `brain.auth_token`, then restart the dev server. |
 | Edited `soul.md` but nothing changed | The soul is read at startup: restart Brain (Settings → Restart Brain) or save it in the Settings editor. |
-| Replies are empty or cut off | A reasoning model may be spending its whole token budget thinking. Cap its reasoning in your LLM server, or use a non-reasoning model. |
+| Replies are slow, or read as if she didn't think them through | Replies get an 8,000-token budget and an 8-minute timeout. If a reasoning model spends the whole budget thinking, she answers again without thinking rather than saying nothing. If it happens often, cap reasoning in your LLM server. |
 | Linux: native window fails | Install `python3-gi` and `gir1.2-webkit2-4.1`, or just use the browser. |
 | Something else | Turn on the debug log in Settings, or run `uv run main.py` and read the Brain's console. |
 
