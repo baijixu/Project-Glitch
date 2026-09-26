@@ -495,13 +495,32 @@ def _peek_message_type(raw: str) -> str | None:
         return None
 
 
+# One reply at a time, across every connected device. She has one shared
+# conversation (see Brain's docstring), and reply() appends to it before and
+# after the model call -- two replies running at once (two devices sending
+# together) interleaved as user, user, her, her and could pair answers with the
+# wrong questions. A second message now waits for the first reply to finish;
+# Stop cancels a waiting one as well as a running one. One lock per event loop
+# (created on first use) -- an asyncio.Lock can't be shared across loops.
+_REPLY_LOCKS: dict[asyncio.AbstractEventLoop, asyncio.Lock] = {}
+
+
+def _reply_lock() -> asyncio.Lock:
+    loop = asyncio.get_running_loop()
+    if loop not in _REPLY_LOCKS:
+        _REPLY_LOCKS[loop] = asyncio.Lock()
+    return _REPLY_LOCKS[loop]
+
+
 async def _run_reply_message(websocket: websockets.ServerConnection, raw: str, brain: Brain) -> None:
     """_handle_message for a reply-generating message, run as its own task
     (see handle_renderer) -- so an exception here is reported instead of
     vanishing as an unretrieved task exception the way it otherwise would.
+    Waits its turn behind any reply already in progress (_reply_lock).
     """
     try:
-        await _handle_message(websocket, raw, brain)
+        async with _reply_lock():
+            await _handle_message(websocket, raw, brain)
     except ConnectionClosed:
         pass
     except Exception as exc:
