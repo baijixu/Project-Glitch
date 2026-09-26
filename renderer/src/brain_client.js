@@ -776,6 +776,7 @@ export class BrainClient {
       if (e.key === "Escape" && !this.roleplayConfirmModalBackdropEl?.hidden) this._closeRoleplayConfirmModal();
       if (e.key === "Escape" && !this.soulUserEditorModalBackdropEl?.hidden) this._closeSoulUserEditorModal();
       if (e.key === "Escape" && !this.notesModalBackdropEl?.hidden) this._closeNotesModal();
+      if (e.key === "Escape" && !document.getElementById("edit-message-modal-backdrop")?.hidden) this._closeEditModal();
     });
 
     this._renderSoulList([], DEFAULT_SOUL_NAME); // shows just "Default" immediately, before any `souls` message arrives
@@ -921,6 +922,11 @@ export class BrainClient {
       this._send({ type: "get_notes" });
     });
     this.notesCancelButtonEl?.addEventListener("click", () => this._closeNotesModal());
+    document.getElementById("edit-message-cancel-button")?.addEventListener("click", () => this._closeEditModal());
+    document.getElementById("edit-message-send-button")?.addEventListener("click", () => this._submitEdit());
+    document.getElementById("edit-message-modal-backdrop")?.addEventListener("click", (e) => {
+      if (e.target.id === "edit-message-modal-backdrop") this._closeEditModal();
+    });
     this.notesSaveButtonEl?.addEventListener("click", () => this._saveNotes());
     this.notesModalBackdropEl?.addEventListener("click", (e) => {
       if (e.target === this.notesModalBackdropEl) this._closeNotesModal();
@@ -1090,7 +1096,8 @@ export class BrainClient {
   // latest message and she answers the corrected version instead, her old
   // reply removed -- same in-place swap as regenerating. Only the latest
   // message: editing an older one would mean dropping everything after it.
-  // A plain prompt dialog, so it works one-handed on a phone.
+  // Opens a window with a big text box (the same as Notes), so there's room to
+  // work; Send and Cancel are plain buttons, so it works one-handed.
   _editUserMessage(entry) {
     if (this._awaitingReply || this._connectionState === "red") return;
     if (!this._isLastUserEntry(entry)) {
@@ -1098,9 +1105,29 @@ export class BrainClient {
       setTimeout(() => this._setStatus(""), 2500);
       return;
     }
-    const edited = window.prompt("Edit your message", entry.text);
-    const text = edited === null ? "" : edited.trim();
-    if (!text || text === entry.text) return;
+    const backdrop = document.getElementById("edit-message-modal-backdrop");
+    const textarea = document.getElementById("edit-message-textarea");
+    if (!backdrop || !textarea) return;
+    this._editingEntry = entry;
+    textarea.value = entry.text;
+    backdrop.hidden = false;
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+  }
+
+  _closeEditModal() {
+    const backdrop = document.getElementById("edit-message-modal-backdrop");
+    if (backdrop) backdrop.hidden = true;
+    this._editingEntry = null;
+  }
+
+  // The edit window's Send: she answers the corrected text, her old reply removed.
+  _submitEdit() {
+    const entry = this._editingEntry;
+    const text = (document.getElementById("edit-message-textarea")?.value || "").trim();
+    this._closeEditModal();
+    if (!entry || !text || text === entry.text) return;
+    if (this._awaitingReply || this._connectionState === "red" || !this._isLastUserEntry(entry)) return;
     this._removeStaleReply(entry);
     entry.text = text;
     const bubble = this._entryBubbles.get(entry);
