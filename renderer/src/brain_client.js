@@ -2788,6 +2788,12 @@ export class BrainClient {
     const meta = document.createElement("div");
     meta.className = "history-meta";
 
+    // Only your latest message can be edited, so only it shows ✏️: a new message
+    // of yours (with or without a picture) takes it away from all the earlier ones.
+    if (role === "user") {
+      for (const button of this.historyListEl.querySelectorAll(".history-edit-button")) button.hidden = true;
+    }
+
     const time = document.createElement("div");
     time.className = "history-time";
     time.textContent = timeText;
@@ -2813,7 +2819,7 @@ export class BrainClient {
       retryButton.addEventListener("click", () => this._retryUserMessage(entry));
       meta.appendChild(retryButton);
       const editButton = document.createElement("button");
-      editButton.className = "history-retry-button";
+      editButton.className = "history-retry-button history-edit-button";
       editButton.textContent = "✏️";
       editButton.title = "Edit this message (your latest one only)";
       editButton.addEventListener("click", () => this._editUserMessage(entry));
