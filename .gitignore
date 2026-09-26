@@ -98,3 +98,8 @@ brain/ratings_log.jsonl
 
 # A restarted Brain's own output (brain/main.py's RESTART_LOG_PATH) -- latest run only.
 brain/restart.log
+
+# Tests never go in git: they stay on this machine only.
+tests/
+run-tests.bat
+run-tests.sh

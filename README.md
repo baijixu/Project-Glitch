@@ -35,7 +35,6 @@ The main window with the shipped default avatar:
 - [Using it from your phone or another PC](#using-it-from-your-phone-or-another-pc)
 - [Security](#security)
 - [Your data, and backing it up](#your-data-and-backing-it-up)
-- [Tests](#tests)
 - [Project layout](#project-layout)
 - [Troubleshooting](#troubleshooting)
 - [Credits](#credits)
@@ -325,17 +324,6 @@ This copies every gitignored local file to a dated folder **outside** the repo (
 skips the run if nothing changed, and keeps the newest 10. Options: `--dest PATH`, `--keep N`, `--force`. To restore, copy the files
 back to the same relative paths and restart the Brain. Memory that lives in a Hindsight server is backed up separately, on that server.
 
-## Tests
-
-```bash
-run-tests.bat            # Windows
-./run-tests.sh           # macOS / Linux
-run-tests.bat tests.test_memory   # a single file
-```
-
-96 tests, standard-library `unittest`, no network or LLM required (a fake model and websocket drive the real code, isolated to a
-temp folder so they never touch your real files). See [`tests/README.md`](tests/README.md).
-
 ## Project layout
 
 ```
@@ -354,7 +342,6 @@ renderer/              Vite + three.js front end
   src/                 avatar, chat UI, settings panels, Brain client
   shell/               optional pywebview native window
   assets/Glitch.vrm    default avatar
-tests/                 unit and integration tests
 tools/                 backup_local_state.py
 config.example.yaml    copy to config.yaml
 docker-compose.yml     optional Kokoro speech server
