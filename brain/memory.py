@@ -255,7 +255,7 @@ async def _apply_default_retain_mission() -> None:
 # -- Hindsight provider's own storage ----------------------------------------
 
 
-async def retain_exchange(user_text: str, reply_text: str) -> None:
+async def retain_exchange(user_text: str, reply_text: str, asked: str = "") -> None:
     """Fire-and-forget: hands one exchange to Hindsight to decide what, if
     anything, is worth remembering long-term. An empty reply_text retains
     only what the user said -- main.py passes that for a turn where she
@@ -265,6 +265,8 @@ async def retain_exchange(user_text: str, reply_text: str) -> None:
     if _client is None:
         return
     content = f"User: {user_text}\nGlitch: {reply_text}" if reply_text else f"User: {user_text}"
+    if asked:  # her question he was answering (curiosity.answered_question) -- the answer needs it
+        content = f"Glitch: {asked}\n{content}"
     await _client.aretain(_bank_id, content=content)
 
 

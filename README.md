@@ -56,7 +56,7 @@ The main window with the shipped default avatar:
 - **She learns how you like her to behave.** Rate replies 👍/👎 (with an optional reason) and she distills short behavior
   rules from your feedback. You choose how much she may change on her own, and you can edit or retire any rule.
 - **Curiosity.** She asks the occasional follow-up question about what you said, or something she's wondered about you, paced so
-  it never turns into an interrogation. Off-limits topics (money, intimacy, health...) are filtered out.
+  it never turns into an interrogation and never repeats. After an hour of quiet she reaches out first, once, until you reply.
 - **Vision.** Show her your camera, your screen, or attach a picture or text file (with a vision-capable model).
 - **Web access.** Optional web search through your own [SearXNG](https://docs.searxng.org/) instance, with results labeled
   trusted / unverified / user-uploaded so she doesn't mistake an AI-generated fan upload for the real thing.
@@ -246,9 +246,16 @@ rules need a reason. Needs Hindsight.
 
 ### Curiosity
 
-Standing guidance to ask at most one natural follow-up, plus a small list of questions she has generated about you in the
-background and works in at most every few messages. Questions about money, intimacy, health, family, or anything from fiction or
-role-play are never proposed. Toggle it in Settings.
+Three parts, all toggled by *Curiosity* in Settings and paused during role-play and while a harness is in control:
+
+- **Follow-ups.** Standing guidance to ask at most one natural question now and then, and not in two replies running.
+- **Things she wonders about.** Every few of your messages she may note one thing she'd like to know about you, and she works one
+  in at most every few messages. A question is never kept or asked twice, even reworded. There's no list of forbidden topics.
+- **Speaking first.** After an hour with no message from you, she reaches out once (with a question she's been saving, or just
+  checking in), on every connected device. If you don't reply she stays quiet; your next message starts the hour again.
+
+Your answer is remembered like anything else you tell her, together with the question it answers, so with memory training on it
+shows up in the review list.
 
 ### Voice and vision
 

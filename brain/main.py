@@ -2158,6 +2158,7 @@ async def _reply_to(
         await websocket.send(json.dumps(protocol.no_reply()))
         return
     print(f"[brain] user said: {text!r}" + (" (+ image)" if image_b64 else ""))
+    curiosity.note_user_message(time.time())  # restarts the hour before she may reach out (see _reach_out_loop)
 
     # isinstance guard: same reasoning as every other brain.llm-touching
     # call in this file -- HarnessLLM has no set_memory at all, and it
@@ -2222,6 +2223,7 @@ async def _reply_to(
     if isinstance(brain.llm, LocalLLM):
         recent = [m["content"] for m in brain.llm._history if m.get("role") == "assistant" and isinstance(m.get("content"), str)]
         brain.llm.set_curiosity(curiosity.start_turn(recent[-curiosity.QUESTION_COOLDOWN_REPLIES:]) if curious else "")
+    answered = curiosity.answered_question() if curious else ""  # her question this message answers, for memory
 
     llm_start = time.monotonic()
     try:
@@ -2286,7 +2288,7 @@ async def _reply_to(
     # can't repeat a bad search result back later as if it were a memory).
     used_web_search = bool(getattr(brain.llm, "last_reply_used_web_search", False))
     omit_reply = used_web_search or bool(image_b64)
-    _spawn(_maybe_retain_memory(websocket, text, "" if omit_reply else reply_text, brain))
+    _spawn(_maybe_retain_memory(websocket, text, "" if omit_reply else reply_text, brain, asked=answered))
     if curious:
         curiosity.end_turn(reply_text)
         # "*" in the user's message means they're playing out an action/scene -- not a source of real questions
@@ -2325,7 +2327,7 @@ def _training_state_message(error: str = "") -> dict:
 
 
 async def _propose_memory(
-    websocket: websockets.ServerConnection, user_text: str, reply_text: str, brain: Brain
+    websocket: websockets.ServerConnection, user_text: str, reply_text: str, brain: Brain, asked: str = ""
 ) -> None:
     """Training mode's replacement for retain_exchange: asks the model for at most one fact
     worth keeping and queues it for the user to approve, edit or reject (brain/training.py).
@@ -2345,7 +2347,7 @@ async def _propose_memory(
         if part
     )
     try:
-        raw = await asyncio.to_thread(brain.llm.propose_memory, user_text, reply_text, known)
+        raw = await asyncio.to_thread(brain.llm.propose_memory, user_text, reply_text, known, asked)
     except Exception as exc:
         await _debug_log(websocket, "training", f"memory proposal failed: {exc!r}", (time.monotonic() - start) * 1000)
         return
@@ -2433,7 +2435,66 @@ async def _maybe_propose_question(
         await _debug_log(websocket, "curiosity", "nothing to be curious about", (time.monotonic() - start) * 1000)
 
 
-async def _maybe_retain_memory(websocket: websockets.ServerConnection, user_text: str, reply_text: str, brain: Brain) -> None:
+REACH_OUT_CHECK_SEC = 60  # how often the reach-out loop looks at the clock
+
+
+async def _reach_out_loop(brain: Brain) -> None:
+    """Curiosity's third part: after an hour with no message from him, she speaks
+    first -- once, until he replies (brain/curiosity.py's should_reach_out). Only
+    for her own LLM (not a harness), with curiosity on, role-play off, a device
+    connected to hear it, and no reply already in progress.
+    """
+    while True:
+        await asyncio.sleep(REACH_OUT_CHECK_SEC)
+        try:
+            if (
+                isinstance(brain.llm, LocalLLM)
+                and curiosity.read_active()
+                and not profiles.read_roleplay_active()
+                and _RENDERER_CONNECTIONS
+                and not _reply_lock().locked()
+                and curiosity.should_reach_out(time.time())
+            ):
+                async with _reply_lock():
+                    await _reach_out(brain)
+        except Exception as exc:  # never let one bad attempt stop the loop
+            print(f"[brain] reaching out failed: {exc!r}")
+
+
+async def _reach_out(brain: Brain) -> None:
+    """Writes her unprompted message and delivers it like a reply -- expression,
+    text and voice -- to every connected device, since there's no one device
+    that asked. Logged in her chat log. Marked as done even if nothing came of
+    it, so a failing model can't make her try every minute.
+    """
+    question = curiosity.question_to_reach_out_with()
+    brain.llm.set_user_info(_effective_user_info())
+    brain.llm.set_sampling(sampling.active_values())
+    brain.llm.set_curiosity("")  # the reach-out note carries its own instruction
+    print("[brain] an hour of quiet -- reaching out" + (f" with {question['text']!r}" if question else ""))
+    try:
+        text, mood = await asyncio.to_thread(brain.llm.reach_out, question["text"] if question else None)
+    finally:
+        curiosity.mark_reached_out(question["id"] if question else None)
+    if not text:
+        return
+    await _broadcast(protocol.set_expression(mood, 1.0))
+    await _broadcast(protocol.speak_text(text))
+    conversation.log_reach_out(text)
+    if not voice_settings.read_voice_active() or isinstance(brain.tts, NoneTTS):
+        return
+    try:
+        wav_bytes, frames = await asyncio.to_thread(brain.tts.synthesize, text)
+    except Exception as exc:
+        print(f"[brain] TTS failed for her reach-out: {exc!r}")
+        return
+    await _broadcast(protocol.speak_audio(base64.b64encode(wav_bytes).decode("ascii"), brain.tts.SAMPLE_RATE))
+    await _broadcast(protocol.viseme_stream(frames))
+
+
+async def _maybe_retain_memory(
+    websocket: websockets.ServerConnection, user_text: str, reply_text: str, brain: Brain, asked: str = ""
+) -> None:
     """Glitch's own native memory (brain/memory.py) -- entirely separate
     from anything Hermes does with its own memory. Gated on three things:
     not the harness (isinstance check, not a duck-typed call -- HarnessLLM
@@ -2463,11 +2524,11 @@ async def _maybe_retain_memory(websocket: websockets.ServerConnection, user_text
         return  # an image-only turn with nothing the user said -- nothing left worth keeping
     start = time.monotonic()
     if memory.read_provider() == memory.HINDSIGHT_PROVIDER and training.read_active():
-        await _propose_memory(websocket, user_text, reply_text, brain)
+        await _propose_memory(websocket, user_text, reply_text, brain, asked)
         return
     if memory.read_provider() == memory.HINDSIGHT_PROVIDER:
         try:
-            await memory.retain_exchange(user_text, reply_text)  # reply_text is "" for a web-search turn, see _reply_to
+            await memory.retain_exchange(user_text, reply_text, asked)  # reply_text is "" for a web-search turn, see _reply_to
         except Exception as exc:
             await _debug_log(websocket, "memory", f"retain failed: {exc!r}", (time.monotonic() - start) * 1000)
             return
@@ -2640,6 +2701,7 @@ async def main() -> None:
     # silently dying underneath it first.
     print(f"[brain] listening on ws://{host}:{port}")
     _spawn(_health_check_loop())
+    _spawn(_reach_out_loop(brain))
     server = await _serve_when_free(
         lambda ws: handle_renderer(ws, brain, auth_token),
         host,

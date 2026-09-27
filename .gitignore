@@ -91,6 +91,7 @@ brain/sampling_profiles.json
 brain/harness_sessions.json
 brain/sampling_profiles.tmp
 brain/curiosity_questions.json
+brain/curiosity_pacing.json
 brain/training_active.txt
 brain/training_queue.json
 brain/conversation.json

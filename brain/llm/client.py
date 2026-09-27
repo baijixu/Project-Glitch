@@ -273,11 +273,12 @@ _QUESTION_SYSTEM_PROMPT = (
     "Rules: the question must be short, warm and specific to this user (never generic like \"how "
     "was your day?\"). Prefer their real projects, interests, plans and opinions. Never ask something "
     "already covered by what is known about them below, about the same topic as any question already "
-    "kept (even reworded), or about a topic the user said they don't care about.\n"
-    "NEVER ask about: money, loans or finances; sex, bodies, clothing or intimacy; health or mental "
-    "health; family or relationships; or anything from role-play, fiction, a scene, a joke or a "
-    "hypothetical -- only the user's real life. Never ask what the user is hiding or keeping secret. "
-    "If nothing natural stands out, ask nothing -- that is the usual answer.\n\n"
+    "kept (even reworded), or about a topic the user said they don't care about. Only ask about "
+    "something the USER said about their own life: never turn something the companion said about "
+    "herself (her looks, clothes, habits, feelings) into a question about the user, and never mix up "
+    "who is who -- the user, the companion, and anyone or any pet they mention are different.\n"
+    "Ask about the user's real life, not about a joke or a hypothetical. If nothing natural stands "
+    "out, ask nothing -- that is the usual answer.\n\n"
     "Reply with ONLY a JSON object: {\"question\": \"...\"} or {\"question\": null}."
 )
 
@@ -650,20 +651,23 @@ class LocalLLM:
         """
         self._sampling = dict(values or {})
 
-    def propose_memory(self, user_text: str, reply_text: str, known: str) -> str:
+    def propose_memory(self, user_text: str, reply_text: str, known: str, asked: str = "") -> str:
         """Training mode (brain/training.py): asks the model for at most one fact from
         this exchange worth remembering -- returns its raw answer (JSON, see
         _MEMORY_PROPOSAL_SYSTEM_PROMPT) for training.parse_fact to validate. `known`
         is what she already remembers plus what is already waiting for review.
+        `asked` is her question the user was answering, if there was one -- without
+        it an answer like "anime stuff mostly" has nothing to be about.
         Separate from _history/_system_prompt, same as maybe_extract_memory.
         """
+        before = f"Assistant (asking): {asked}\n" if asked else ""
         messages = [
             {"role": "system", "content": _MEMORY_PROPOSAL_SYSTEM_PROMPT},
             {
                 "role": "user",
                 "content": (
                     f"Already known or already proposed:\n{known or '(nothing yet)'}\n\n"
-                    f"Latest exchange:\nUser: {user_text}\nAssistant: {reply_text or '(reply omitted)'}"
+                    f"Latest exchange:\n{before}User: {user_text}\nAssistant: {reply_text or '(reply omitted)'}"
                 ),
             },
         ]
@@ -683,9 +687,13 @@ class LocalLLM:
             {
                 "role": "user",
                 "content": (
-                    f"What is already known about the user:\n{known or '(nothing yet)'}\n\n"
+                    # Who's who, spelled out: her memories are in her voice ("I" = Glitch),
+                    # and without saying so this call read them as the user's -- her
+                    # "high-impact support for jogging" came back as "your runs".
+                    f"What is already known (the user's own description, then Glitch's memories -- in "
+                    f"those, 'I' is Glitch, not the user):\n{known or '(nothing yet)'}\n\n"
                     f"Questions already kept (do not repeat or rephrase):\n{asked_block}\n\n"
-                    f"Latest exchange:\nUser: {user_text}\nAssistant: {reply_text}"
+                    f"Latest exchange:\nUser: {user_text}\nGlitch (the AI companion): {reply_text}"
                 ),
             },
         ]
@@ -888,6 +896,40 @@ class LocalLLM:
         window = window if isinstance(window, int) and window > 0 else None
         self._context_window_cache = (window, time.monotonic())
         return window
+
+    def reach_out(self, question: str | None = None) -> tuple[str, str]:
+        """She speaks first -- nothing new from the user for a while (main.py's
+        reach-out loop). Returns (text, mood) like reply(). The instruction goes in
+        as an app note after the conversation (the model needs a final user turn)
+        and isn't kept: only her message is added to _history, right after her
+        last reply. Two of her turns in a row is fine for this model's chat
+        template (checked live), and she knows afterwards what she asked.
+        """
+        hint = (
+            f'If it fits, bring up something you\'ve wondered about: "{question}" -- in your own words. '
+            if question
+            else "Pick up something from your recent conversation, or just check in. "
+        )
+        note = (
+            f"<notes>\n{TURN_NOTES_HEADER}\n\n"
+            "He hasn't said anything in over an hour. Reach out to him first -- once, briefly, in your own "
+            f"voice, the way a friend might text. {hint}Don't mention these notes or that an app told you to.\n\n"
+            f"{_current_time_line()}\n</notes>"
+        )
+        messages = [{"role": "system", "content": self._system_prompt()}, *self._history, {"role": "user", "content": note}]
+        generation = self._reply_generation
+        usage: dict = {}
+        raw_reply = self._complete(messages, MAX_REPLY_TOKENS, usage=usage, sampling=self._sampling)
+        mood, text = _extract_mood(raw_reply)
+        if not text.strip():  # same fallback as reply(): thinking ran out, answer without it
+            mood, text = _extract_mood(
+                self._complete(messages, MAX_REPLY_TOKENS, no_thinking=True, usage=usage, sampling=self._sampling)
+            )
+        if generation != self._reply_generation or not text.strip():
+            return "", mood  # cleared or cancelled meanwhile, or nothing to say
+        self._history.append({"role": "assistant", "content": text})
+        self._history_changed()
+        return text, mood
 
     def clear_history(self) -> None:
         """Starts a fresh conversation (the Clear Chat button). Her soul, memory

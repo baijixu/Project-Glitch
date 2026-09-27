@@ -1,23 +1,32 @@
 """Curiosity: she wants to know more about the user, and asks -- sparingly.
 
-Two parts, both feeding the prompt LocalLLM builds each turn:
+Three parts. The first two feed the prompt LocalLLM builds each turn:
 
 * Standing guidance (GUIDANCE) -- react to what the user just said and, when
   it fits, ask ONE short follow-up about it. No storage; it's just a nudge.
 * Open questions -- a short list of things she doesn't know about the user
   yet, generated in the background from the conversation (LocalLLM.propose_question,
   parse_question here) and worked into a reply at most once every few turns.
-  The answer needs no special handling: the user's reply goes through memory
-  like anything else, and the question is closed once she's actually asked it.
+  The answer goes through memory like anything else (memory review, when
+  training is on), with her question alongside it for context -- see
+  answered_question(). A question is never kept or asked twice.
+* Reaching out -- after an hour with no message from the user, she speaks
+  first, once (main.py's reach-out loop; should_reach_out here). If he
+  doesn't reply she stays quiet; his next message starts the hour again.
+  She uses a question from the open list if there is one.
+
+There is no list of forbidden topics: the user was clear he doesn't mind what
+she asks, only that she doesn't repeat herself.
 
 Off during role-play (main.py clears it, same as memory and lessons) -- a
 scene has its own story, and real-life questions would break it. The user's
 own thumbs up/down on a question flows through the lessons system, so "stop
 asking about X" is learned the same way as any other preference.
 
-State: curiosity_active.txt (the toggle) and curiosity_questions.json (the open
-list), both beside this file and gitignored. Counters that only pace things
-(turns since the last question) live in memory and simply restart with Brain.
+State: curiosity_active.txt (the toggle), curiosity_questions.json (the list)
+and curiosity_pacing.json (the counters and the reach-out clock), all beside this
+file and gitignored. The counters used to live in memory and restart with Brain,
+so with frequent restarts she rarely got as far as thinking up a new question.
 """
 
 import json
@@ -28,6 +37,7 @@ from pathlib import Path
 _DIR = Path(__file__).parent
 ACTIVE_PATH = _DIR / "curiosity_active.txt"
 QUESTIONS_PATH = _DIR / "curiosity_questions.json"
+PACING_PATH = _DIR / "curiosity_pacing.json"
 
 MAX_OPEN = 4  # she never hoards more than this waiting to be asked
 MAX_CLOSED_KEPT = 30  # remembered so the same question isn't proposed again
@@ -35,19 +45,14 @@ MAX_QUESTION_CHARS = 200
 OFFER_EVERY_TURNS = 6  # at least this many of the user's messages between questions she's nudged to ask
 PROPOSE_EVERY_TURNS = 8  # how often the background "what am I curious about?" call runs
 MAX_OFFERS_UNUSED = 3  # closed unasked if offered this many times and she never worked it in
-
-# Backstop for the prompt's own "never ask about" list -- a small model ignores
-# instructions now and then, and these are the topics that must never be asked about.
-_OFF_LIMITS = re.compile(
-    r"\b(loan|loans|debt|mortgage|salary|income|afford|money|paid|paycheck|bank|credit|rent"
-    r"|sex|sexual|naked|nude|underwear|boxers|lingerie|bra|panties|body|weight|"
-    r"pregnan\w*|diagnos\w*|medication|therap\w*|depress\w*|suicid\w*|divorce|ex-?(?:wife|husband|girlfriend|boyfriend))\b",
-    re.I,
-)
+REACH_OUT_AFTER_SEC = 60 * 60  # an hour with no message from him before she speaks first
 _STOPWORDS = frozenset(
     "the a an and or of to in on at for with your you you're youre is are was were be do does did it its this that "
     "what whats how when where which who why about into from more been have has had will would could can just like "
-    "one first most really still".split()
+    "one first most really still "
+    # filler verbs and words that carry no topic ("how did you get into X?" = "what got you started on X?")
+    "get got gotten getting start started make made take took going ever yet any some there here them they "
+    "their now way place thing things kind sort much many lot also even".split()
 )
 
 GUIDANCE = (
@@ -71,9 +76,31 @@ NO_QUESTION_GUIDANCE = (
 # (the user's next message answered it); or straight to closed if it's never used.
 OPEN, ASKED, CLOSED = "open", "asked", "closed"
 
-_turns_since_offer = OFFER_EVERY_TURNS  # start ready: the first question needn't wait
-_turns_since_propose = 0
 _offered_id: str | None = None  # the question nudged into THIS turn's prompt, if any
+_answered: str = ""  # the question his current message is answering, if she asked one (answered_question)
+
+
+def _pacing() -> dict:
+    """{turns_since_offer, turns_since_propose, last_user_at, reached_out} -- kept on
+    disk so a Brain restart doesn't reset them. A fresh start is ready to offer a
+    question right away (the first one needn't wait)."""
+    try:
+        data = json.loads(PACING_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        data = {}
+    data = data if isinstance(data, dict) else {}
+    data.setdefault("turns_since_offer", OFFER_EVERY_TURNS)
+    data.setdefault("turns_since_propose", 0)
+    data.setdefault("last_user_at", None)
+    data.setdefault("reached_out", False)
+    return data
+
+
+def _save_pacing(data: dict) -> None:
+    try:
+        PACING_PATH.write_text(json.dumps(data), encoding="utf-8")
+    except OSError as exc:
+        print(f"[curiosity] couldn't save pacing: {exc!r}")
 
 
 def set_active(active: bool) -> None:
@@ -105,16 +132,24 @@ def _norm(text: str) -> str:
     return re.sub(r"[^a-z0-9 ]", "", text.lower()).strip()
 
 
+def _stem(word: str) -> str:
+    """Just enough to match "climbing"/"climb" and "names"/"name" -- no dictionary."""
+    for suffix in ("ing", "ed", "es", "s"):
+        if word.endswith(suffix) and len(word) - len(suffix) >= 4:
+            return word[: -len(suffix)]
+    return word
+
+
 def _topic_words(text: str) -> set[str]:
-    return {w for w in _norm(text).split() if w not in _STOPWORDS and len(w) > 2}
+    return {_stem(w) for w in _norm(text).split() if w not in _STOPWORDS and len(w) > 2}
 
 
-def _same_topic(a: str, b: str) -> bool:
+def _same_topic(a: str, b: str, threshold: float = 0.6) -> bool:
     """Reworded repeats: most of the shorter question's content words appear in the other."""
     wa, wb = _topic_words(a), _topic_words(b)
     if not wa or not wb:
         return False
-    return len(wa & wb) / min(len(wa), len(wb)) >= 0.6
+    return len(wa & wb) / min(len(wa), len(wb)) >= threshold
 
 
 def open_questions() -> list[dict]:
@@ -133,8 +168,6 @@ def add_question(text: str) -> bool:
         return False
     questions = _read()
     if sum(1 for q in questions if q["status"] == OPEN) >= MAX_OPEN:
-        return False
-    if _OFF_LIMITS.search(text):
         return False
     if any(_same_topic(text, q["text"]) for q in questions):
         return False
@@ -164,6 +197,18 @@ def parse_question(raw: str) -> str | None:
     return question
 
 
+def _asked_it(question: str, reply: str) -> bool:
+    """Whether her reply actually asks this question, reworded or not -- one of
+    its question sentences is on the same topic. Any '?' used to count, so the
+    stored question was ticked off whenever she asked anything at all: 11 of 12
+    were closed that way without ever being asked.
+    """
+    asked = [s for s in re.split(r"(?<=[.!?])\s+", reply) if s.strip().endswith("?")]
+    # A little looser than the repeat check: she's told to work it in casually, so
+    # it's usually reworded. A miss isn't lost -- it's offered again, up to 3 times.
+    return any(_same_topic(question, sentence, threshold=0.5) for sentence in asked)
+
+
 def _mark(question_id: str, **changes) -> None:
     questions = _read()
     for q in questions:
@@ -182,17 +227,21 @@ def start_turn(recent_replies: list[str] | tuple = ()) -> str:
     last QUESTION_COOLDOWN_REPLIES asked something, this turn is told not to
     ask anything, and no open question is offered.
     """
-    global _turns_since_offer, _turns_since_propose, _offered_id
-    _turns_since_offer += 1
-    _turns_since_propose += 1
+    global _offered_id, _answered
+    pacing = _pacing()
+    pacing["turns_since_offer"] += 1
+    pacing["turns_since_propose"] += 1
+    _save_pacing(pacing)
     _offered_id = None
+    _answered = ""
     for q in _read():
         if q["status"] == ASKED:
+            _answered = q["text"]  # his message is the answer (see answered_question)
             _mark(q["id"], status=CLOSED)  # text kept so it isn't proposed again
     if any("?" in reply for reply in list(recent_replies)[-QUESTION_COOLDOWN_REPLIES:]):
         return NO_QUESTION_GUIDANCE
     block = GUIDANCE
-    if _turns_since_offer >= OFFER_EVERY_TURNS:
+    if pacing["turns_since_offer"] >= OFFER_EVERY_TURNS:
         pool = open_questions()
         if pool:
             _offered_id = pool[0]["id"]
@@ -205,10 +254,10 @@ def start_turn(recent_replies: list[str] | tuple = ()) -> str:
 
 def end_turn(reply_text: str) -> None:
     """Called after her reply. If a question was nudged in and she actually asked
-    something (the reply has a '?'), it's asked; otherwise it stays open, and is
-    closed unasked after MAX_OFFERS_UNUSED misses so it can't sit there forever.
+    it (see _asked_it), it's asked; otherwise it stays open, and is closed unasked
+    after MAX_OFFERS_UNUSED misses so it can't sit there forever.
     """
-    global _turns_since_offer, _offered_id
+    global _offered_id
     if not _offered_id:
         return
     question_id, _offered_id = _offered_id, None
@@ -216,9 +265,11 @@ def end_turn(reply_text: str) -> None:
     for q in questions:
         if q["id"] != question_id:
             continue
-        if "?" in reply_text:
+        if _asked_it(q["text"], reply_text):
             q["status"] = ASKED
-            _turns_since_offer = 0
+            pacing = _pacing()
+            pacing["turns_since_offer"] = 0
+            _save_pacing(pacing)
         else:
             q["offers"] = q.get("offers", 0) + 1
             if q["offers"] >= MAX_OFFERS_UNUSED:
@@ -228,8 +279,58 @@ def end_turn(reply_text: str) -> None:
 
 def should_propose() -> bool:
     """Whether it's time for the background call that thinks up a new question."""
-    global _turns_since_propose
-    if _turns_since_propose < PROPOSE_EVERY_TURNS or len(open_questions()) >= MAX_OPEN:
+    pacing = _pacing()
+    if pacing["turns_since_propose"] < PROPOSE_EVERY_TURNS or len(open_questions()) >= MAX_OPEN:
         return False
-    _turns_since_propose = 0
+    pacing["turns_since_propose"] = 0
+    _save_pacing(pacing)
     return True
+
+
+def answered_question() -> str:
+    """The question of hers that the current message answers ("" if none) -- her
+    stored question she asked last turn, or one she reached out with. Passed to
+    memory with his answer: on its own, an answer like "anime stuff mostly" says
+    nothing about what it was answering.
+    """
+    return _answered
+
+
+# -- Reaching out --------------------------------------------------------------
+
+
+def note_user_message(now: float) -> None:
+    """He said something: the hour starts again, and she may reach out once more."""
+    pacing = _pacing()
+    pacing["last_user_at"] = now
+    pacing["reached_out"] = False
+    _save_pacing(pacing)
+
+
+def should_reach_out(now: float) -> bool:
+    """True once an hour has passed since his last message and she hasn't reached
+    out since. Nothing to measure from yet (a fresh install) starts the clock now.
+    """
+    pacing = _pacing()
+    if pacing["last_user_at"] is None:
+        pacing["last_user_at"] = now
+        _save_pacing(pacing)
+        return False
+    return not pacing["reached_out"] and now - pacing["last_user_at"] >= REACH_OUT_AFTER_SEC
+
+
+def question_to_reach_out_with() -> dict | None:
+    """The oldest open question, if any -- what she'll bring up."""
+    pool = open_questions()
+    return pool[0] if pool else None
+
+
+def mark_reached_out(question_id: str | None) -> None:
+    """She spoke first: not again until he replies. The question she used (if any)
+    counts as asked, so his reply is taken as its answer."""
+    pacing = _pacing()
+    pacing["reached_out"] = True
+    pacing["turns_since_offer"] = 0
+    _save_pacing(pacing)
+    if question_id:
+        _mark(question_id, status=ASKED)
