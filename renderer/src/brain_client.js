@@ -787,6 +787,7 @@ export class BrainClient {
       if (e.key === "Escape" && !this.soulUserEditorModalBackdropEl?.hidden) this._closeSoulUserEditorModal();
       if (e.key === "Escape" && !this.notesModalBackdropEl?.hidden) this._closeNotesModal();
       if (e.key === "Escape" && !document.getElementById("edit-message-modal-backdrop")?.hidden) this._closeEditModal();
+      if (e.key === "Escape" && !document.getElementById("rate-modal-backdrop")?.hidden) this._closeRateModal();
     });
 
     this._renderSoulList([], DEFAULT_SOUL_NAME); // shows just "Default" immediately, before any `souls` message arrives
@@ -932,6 +933,20 @@ export class BrainClient {
       this._send({ type: "get_notes" });
     });
     this.notesCancelButtonEl?.addEventListener("click", () => this._closeNotesModal());
+    document.getElementById("rate-modal-cancel-button")?.addEventListener("click", () => this._closeRateModal());
+    document.getElementById("rate-modal-send-button")?.addEventListener("click", () => this._submitRate());
+    document.getElementById("rate-modal-textarea")?.addEventListener("input", (e) => {
+      document.getElementById("rate-modal-send-button").disabled = !e.target.value.trim();
+    });
+    document.getElementById("rate-modal-backdrop")?.addEventListener("click", (e) => {
+      if (e.target.id === "rate-modal-backdrop") this._closeRateModal();
+    });
+    document.getElementById("rate-modal-textarea")?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        this._submitRate();
+      }
+    });
     document.getElementById("edit-message-cancel-button")?.addEventListener("click", () => this._closeEditModal());
     document.getElementById("edit-message-send-button")?.addEventListener("click", () => this._submitEdit());
     document.getElementById("edit-message-modal-backdrop")?.addEventListener("click", (e) => {
@@ -2884,10 +2899,8 @@ export class BrainClient {
 
     // Rating only makes sense on something she actually said.
     if (role === "glitch" && text) {
-      const { controls, noteForm } = this._buildRateControls(entry);
-      meta.appendChild(controls);
+      meta.appendChild(this._buildRateControls(entry));
       group.appendChild(meta);
-      group.appendChild(noteForm);
     } else {
       group.appendChild(meta);
     }
@@ -2905,16 +2918,17 @@ export class BrainClient {
   // try/catch same as the device-button prefs: losing this is harmless
   // (panel just starts empty next reload), not worth erroring the actual
   // send/reply flow over.
-  // 👍/👎 on one of her replies (history panel). Either one first opens a
-  // small note box -- a bare rating is vague (was it too long? wrong? or was
-  // the good part the topic, the tone, the length?), and the note is what
-  // lets Brain write a useful lesson from it (without one it can only nudge
-  // an existing lesson, see brain/lessons.py's NOTE_REQUIRED_ACTIONS). Send
-  // with the box left empty still records a plain rating. One
-  // rating per reply: once rated, both buttons lock and show which was
-  // picked (saved on the entry, so it survives a reload). Brain always logs
-  // the rating; whether it also *learns* from it depends on the Settings
-  // toggle and role-play (see main.py's _handle_rate_reply).
+  // 👍/👎 on one of her replies (history panel). Either one opens the reason
+  // pop-up (_openRateModal) -- a bare rating is vague (was it too long? wrong?
+  // or was the good part the topic, the tone?), and the reason is what lets
+  // Brain write a lesson from it (without one it can only nudge an existing
+  // lesson, see brain/lessons.py's NOTE_REQUIRED_ACTIONS). This used to be a
+  // small one-line field tucked under the bubble, easy to miss and send empty:
+  // 6 of the first 8 ratings went in with no reason. One rating per reply:
+  // once rated, both buttons lock and show which was picked (saved on the
+  // entry, so it survives a reload). Brain always logs the rating; whether it
+  // also *learns* from it depends on the Settings toggle and role-play (see
+  // main.py's _handle_rate_reply).
   _buildRateControls(entry) {
     const controls = document.createElement("span");
     controls.className = "rate-controls";
@@ -2928,48 +2942,50 @@ export class BrainClient {
     down.title = "Bad reply";
     controls.append(up, down);
 
-    const noteForm = document.createElement("div");
-    noteForm.className = "rate-note";
-    noteForm.hidden = true;
-    const noteInput = document.createElement("input");
-    noteInput.type = "text";
-    noteInput.maxLength = 300;
-    noteInput.autocomplete = "off";
-    let pendingRating = null; // which button opened the box
-    const sendButton = document.createElement("button");
-    sendButton.textContent = "Send";
-    noteForm.append(noteInput, sendButton);
-
     const paint = () => {
       const rated = !!entry.rating;
       up.disabled = down.disabled = rated;
       up.classList.toggle("picked", entry.rating === "up");
       down.classList.toggle("picked", entry.rating === "down");
-      if (rated) noteForm.hidden = true;
     };
-    // Clicking the same button again closes the box; the other one switches it.
-    const openNote = (rating) => {
-      if (!noteForm.hidden && pendingRating === rating) {
-        noteForm.hidden = true;
-        return;
-      }
-      pendingRating = rating;
-      noteInput.placeholder =
-        rating === "up" ? "What did you like? A reason helps her learn (optional)" : "What should she do differently? (optional)";
-      noteForm.hidden = false;
-      noteInput.focus();
-    };
-    up.addEventListener("click", () => openNote("up"));
-    down.addEventListener("click", () => openNote("down"));
-    const submit = () => this._rateReply(entry, pendingRating, noteInput.value.trim());
-    sendButton.addEventListener("click", submit);
-    noteInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") submit();
-    });
+    up.addEventListener("click", () => this._openRateModal(entry, "up"));
+    down.addEventListener("click", () => this._openRateModal(entry, "down"));
 
     paint();
     this._rateControls.set(entry, { paint });
-    return { controls, noteForm };
+    return controls;
+  }
+
+  // The reason pop-up, for both chat modes. A reason is required -- Send stays
+  // disabled until there is one (a bare rating can't teach her anything new);
+  // Cancel rates nothing. Enter sends; Shift+Enter is a new line.
+  _openRateModal(entry, rating) {
+    if (!entry || entry.rating) return;
+    this._rateModalTarget = { entry, rating };
+    const $ = (id) => document.getElementById(id);
+    $("rate-modal-title").textContent = rating === "up" ? "👍 What did you like?" : "👎 What should she do differently?";
+    $("rate-modal-quote").textContent = entry.text;
+    const box = $("rate-modal-textarea");
+    box.value = "";
+    box.placeholder =
+      rating === "up" ? "e.g. the length was just right, or I liked the joke" : "e.g. too long, or don't bring up work at night";
+    $("rate-modal-send-button").disabled = true;
+    $("rate-modal-backdrop").hidden = false;
+    box.focus();
+  }
+
+  _closeRateModal() {
+    this._rateModalTarget = null;
+    const backdrop = document.getElementById("rate-modal-backdrop");
+    if (backdrop) backdrop.hidden = true;
+  }
+
+  _submitRate() {
+    const target = this._rateModalTarget;
+    const reason = document.getElementById("rate-modal-textarea").value.trim();
+    if (!target || !reason) return;
+    this._closeRateModal();
+    this._rateReply(target.entry, target.rating, reason);
   }
 
   _rateReply(entry, rating, note) {
@@ -2994,18 +3010,12 @@ export class BrainClient {
     setTimeout(() => this._setStatus(""), 2500);
   }
 
-  // The over-avatar chat mode's 👍/👎 buttons -- rate her most recent reply.
-  // There's no per-bubble button there (those bubbles ignore pointer events),
-  // and no inline note box, so either rating asks for its reason with a plain
-  // prompt instead (cancelling the prompt cancels the rating).
+  // The over-avatar chat mode's 👍/👎 buttons -- rate her most recent reply,
+  // through the same reason pop-up (it used window.prompt, which the native
+  // app window may not show at all).
   _rateLastReply(rating) {
     const entry = [...this._historyEntries].reverse().find((e) => e.role === "glitch" && e.text);
-    if (!entry || entry.rating) return;
-    const answer = window.prompt(
-      rating === "up" ? "What did you like? A reason helps her learn (optional)" : "What should she do differently? (optional)",
-    );
-    if (answer === null) return;
-    this._rateReply(entry, rating, answer.trim());
+    this._openRateModal(entry, rating);
   }
 
   _persistHistoryEntry(entry) {

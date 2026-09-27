@@ -53,7 +53,7 @@ The main window with the shipped default avatar:
 - **Memory you can review.** Long-term memory through a [Hindsight](https://pypi.org/project/hindsight-client/) server
   (semantic memory), or a simple flat file. In **training mode** she proposes what to remember and *you* approve, edit and
   rate each item before anything is saved.
-- **She learns how you like her to behave.** Rate replies 👍/👎 (with an optional reason) and she distills short behavior
+- **She learns how you like her to behave.** Rate replies 👍/👎 with a reason and she distills short behavior
   rules from your feedback. You choose how much she may change on her own, and you can edit or retire any rule.
 - **Curiosity.** She asks the occasional follow-up question about what you said, or something she's wondered about you, paced so
   it never turns into an interrogation and never repeats. After an hour of quiet she reaches out first, once, until you reply.
@@ -239,10 +239,9 @@ provider. Good for the first weeks, while you're shaping what she remembers.
 
 ### Behavior learning
 
-Rate any reply 👍/👎 and optionally say why. She distills your feedback into short rules ("keep replies short", "don't bring up
-sports") stored in a separate Hindsight bank and added to her prompt on top of her soul (which is never changed). A *how much
-she does on her own* setting decides whether changes need your approval. A bare 👍/👎 can only strengthen or weaken an existing rule; new
-rules need a reason. Needs Hindsight.
+Rate any reply 👍/👎 and say why in the pop-up (a reason is required). She distills your feedback into short rules ("keep replies
+short", "don't bring up sports") stored in a separate Hindsight bank and added to her prompt on top of her soul (which is never
+changed). A *how much she does on her own* setting decides whether changes need your approval. Needs Hindsight.
 
 ### Curiosity
 
