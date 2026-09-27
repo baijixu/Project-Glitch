@@ -1391,3 +1391,59 @@ body.overlay-chat-active #side-actions .overlay-rate-button {
 .sampling-error {
   color: #e07a74;
 }
+
+/* Settings -> Chat Logs: the read-only log viewer. Wider and taller than the
+   other pop-ups -- a day's log can be long -- and scrolls on its own. */
+.chat-log-modal {
+  width: min(760px, calc(100vw - 32px));
+  max-width: none;
+}
+
+.chat-log-body {
+  max-height: min(65vh, 700px);
+  overflow-y: auto;
+  margin-bottom: 14px;
+  padding-right: 6px;
+}
+
+.chat-log-entry {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.chat-log-entry.from-user {
+  border-left: 3px solid #4a7bd8;
+}
+
+.chat-log-entry.from-glitch {
+  border-left: 3px solid #9b6ad8;
+}
+
+.chat-log-meta {
+  font-size: 11px;
+  color: #8a8fa0;
+  margin-bottom: 3px;
+}
+
+.chat-log-text {
+  font-size: 13px;
+  color: #e4e6ee;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chat-log-note {
+  margin: 8px 0 10px;
+  font-size: 12px;
+  font-style: italic;
+  color: #8a8fa0;
+  text-align: center;
+}
+
+.chat-log-body hr {
+  border: none;
+  border-top: 1px solid #3a3f52;
+  margin: 12px 0;
+}

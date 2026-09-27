@@ -815,6 +815,8 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
         await _handle_load_avatar(websocket, data)
     elif msg_type in (protocol.RENAME_AVATAR, protocol.DELETE_AVATAR):
         await _handle_manage_avatar(websocket, msg_type, data)
+    elif msg_type in (protocol.GET_CHAT_LOGS, protocol.GET_CHAT_LOG, protocol.DELETE_CHAT_LOG):
+        await _handle_chat_logs_message(websocket, msg_type, data)
     elif msg_type == protocol.SET_ROLEPLAY_ACTIVE:
         _handle_set_roleplay_active(data, brain)
         await _debug_broadcast(
@@ -1225,6 +1227,31 @@ async def _handle_manage_avatar(websocket: websockets.ServerConnection, msg_type
     except (ValueError, OSError) as exc:
         print(f"[brain] couldn't {'rename' if msg_type == protocol.RENAME_AVATAR else 'delete'} avatar {name!r}: {exc!r}")
         await websocket.send(json.dumps(protocol.avatars(avatars.list_avatars())))
+
+
+async def _handle_chat_logs_message(websocket: websockets.ServerConnection, msg_type: str, data: dict) -> None:
+    """Settings -> Chat Logs: list a mode's days, read one, or delete one. Only
+    her daily logs in brain/chat_logs/ (regular) and chat_logs/roleplay/ -- the
+    file is picked by mode and a plain date, never by a path from the Renderer.
+    A deletion goes to every device, so their lists stay in step.
+    """
+    mode = conversation.ROLEPLAY if data.get("mode") == conversation.ROLEPLAY else conversation.MAIN
+    day = str(data.get("date") or "")
+    if msg_type == protocol.GET_CHAT_LOGS:
+        await websocket.send(json.dumps(protocol.chat_logs(mode, conversation.list_logs(mode))))
+    elif msg_type == protocol.GET_CHAT_LOG:
+        try:
+            content, error = conversation.read_log(mode, day), ""
+        except (ValueError, OSError) as exc:
+            content, error = "", str(exc)
+        await websocket.send(json.dumps(protocol.chat_log_content(mode, day, content, error)))
+    else:
+        try:
+            conversation.delete_log(mode, day)
+            print(f"[brain] deleted the {mode} chat log for {day}")
+        except (ValueError, OSError) as exc:
+            print(f"[brain] couldn't delete the {mode} chat log for {day}: {exc!r}")
+        await _broadcast(protocol.chat_logs(mode, conversation.list_logs(mode)))
 
 
 # ============================================================================
@@ -2325,7 +2352,7 @@ async def _handle_clear_conversation(brain: Brain) -> None:
     global _LAST_CONTEXT_USAGE
     if isinstance(brain.llm, LocalLLM):
         brain.llm.clear_history()
-        conversation.log_marker("New conversation (chat cleared)")
+        conversation.log_marker("New conversation (chat cleared)", mode=_conversation_mode())
     elif isinstance(brain.llm, HarnessLLM) and brain.llm.session_id:
         # The harness keeps the conversation, so a fresh one there means a new
         # session id. (Not marked in her personal chat log -- see _reply_to.)
@@ -2976,6 +3003,14 @@ async def main() -> None:
     # LLM call gets to time out on its own terms instead of the transport
     # silently dying underneath it first.
     print(f"[brain] listening on ws://{host}:{port}")
+    # One-time: older chat logs had role-play mixed in; move it to its own folder
+    # (a copy of each changed file goes to brain/backups/ first).
+    try:
+        split = conversation.split_mixed_logs()
+        if split:
+            print(f"[brain] moved role-play out of {split} older chat log(s) into chat_logs/roleplay/")
+    except OSError as exc:
+        print(f"[brain] couldn't split role-play out of the older chat logs: {exc!r}")
     _spawn(_health_check_loop())
     _spawn(_reach_out_loop(brain))
     server = await _serve_when_free(

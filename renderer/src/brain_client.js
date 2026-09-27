@@ -7,6 +7,7 @@
 import { LessonsUI } from "./lessons_ui.js";
 import { TrainingUI } from "./training_ui.js";
 import { SamplingUI } from "./sampling_ui.js";
+import { ChatLogsUI } from "./chat_logs_ui.js";
 
 const RECONNECT_DELAY_MS = 3000;
 // Fades out 10s after the text finishes streaming in, not 10s from when it
@@ -365,6 +366,10 @@ export class BrainClient {
     });
     // Settings -> LLM -> Sampling (brain/sampling.py), also its own module.
     this._samplingUI = new SamplingUI({ send: (message) => this._send(message) });
+    // Settings -> Chat Logs (brain/conversation.py's daily logs). Its list is
+    // fetched whenever Settings opens, so it's never stale.
+    this._chatLogsUI = new ChatLogsUI({ send: (message) => this._send(message) });
+    document.getElementById("settings-button")?.addEventListener("click", () => this._chatLogsUI.refresh());
     this._rateControls = new WeakMap(); // history entry -> {paint} for its 👍/👎 controls
     this._entryBubbles = new WeakMap(); // history entry -> its bubble in the History panel, for editing
     document.getElementById("overlay-thumbs-up")?.addEventListener("click", () => this._rateLastReply("up"));
@@ -788,6 +793,7 @@ export class BrainClient {
       if (e.key === "Escape" && !this.notesModalBackdropEl?.hidden) this._closeNotesModal();
       if (e.key === "Escape" && !document.getElementById("edit-message-modal-backdrop")?.hidden) this._closeEditModal();
       if (e.key === "Escape" && !document.getElementById("rate-modal-backdrop")?.hidden) this._closeRateModal();
+      if (e.key === "Escape" && this._chatLogsUI?.isOpen()) this._chatLogsUI.close();
     });
 
     this._renderSoulList([], DEFAULT_SOUL_NAME); // shows just "Default" immediately, before any `souls` message arrives
@@ -3377,6 +3383,12 @@ export class BrainClient {
         break;
       case "sampling_state":
         this._samplingUI.handleState(data);
+        break;
+      case "chat_logs":
+        this._chatLogsUI.handleList(data);
+        break;
+      case "chat_log_content":
+        this._chatLogsUI.handleContent(data);
         break;
       case "lessons_state":
         this._lessonsUI.handleState(data);

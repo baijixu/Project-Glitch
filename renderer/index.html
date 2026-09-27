@@ -371,6 +371,22 @@
           </p>
           <button id="open-soul-user-editor-button" class="settings-action-button">Edit Soul &amp; User Files</button>
         </section>
+        <section id="chat-logs-section" class="settings-section">
+          <h3>Chat Logs</h3>
+          <p class="settings-hint">
+            Her daily logs of your conversations, kept on this PC (brain/chat_logs/). Role-play is kept separately.
+            Pick a day to read it, or delete it for good.
+          </p>
+          <select id="chat-logs-mode" class="settings-select">
+            <option value="main">Chat</option>
+            <option value="roleplay">Role-play</option>
+          </select>
+          <select id="chat-logs-day" class="settings-select"></select>
+          <div class="settings-button-row">
+            <button id="chat-logs-read-button" class="settings-action-button">Read</button>
+            <button id="chat-logs-delete-button" class="icon-button danger" title="Delete this day's log">🗑️</button>
+          </div>
+        </section>
         <section id="debug-section" class="settings-section">
           <label class="settings-toggle-row">
             <span>Debugging</span>
@@ -637,6 +653,15 @@
         <div class="modal-actions">
           <button id="edit-message-cancel-button" class="modal-button secondary">Cancel</button>
           <button id="edit-message-send-button" class="modal-button primary">Send</button>
+        </div>
+      </div>
+    </div>
+    <div id="chat-log-modal-backdrop" class="modal-backdrop" hidden>
+      <div id="chat-log-modal" class="modal chat-log-modal" role="dialog" aria-labelledby="chat-log-modal-title">
+        <h2 id="chat-log-modal-title">Chat log</h2>
+        <div id="chat-log-body" class="chat-log-body"></div>
+        <div class="modal-actions">
+          <button id="chat-log-close-button" class="modal-button primary">Close</button>
         </div>
       </div>
     </div>

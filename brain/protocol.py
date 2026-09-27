@@ -26,6 +26,9 @@ DELETE_SOUL = "delete_soul"
 SAVE_AVATAR = "save_avatar"
 LOAD_AVATAR = "load_avatar"
 RENAME_AVATAR = "rename_avatar"
+GET_CHAT_LOGS = "get_chat_logs"
+GET_CHAT_LOG = "get_chat_log"
+DELETE_CHAT_LOG = "delete_chat_log"
 DELETE_AVATAR = "delete_avatar"
 SET_ROLEPLAY_ACTIVE = "set_roleplay_active"
 SET_ROLEPLAY_ENGINE = "set_roleplay_engine"
@@ -89,6 +92,8 @@ PROFILE_CONTENT = "profile_content"
 SOULS = "souls"
 SOUL_CONTENT = "soul_content"
 AVATARS = "avatars"
+CHAT_LOGS = "chat_logs"
+CHAT_LOG_CONTENT = "chat_log_content"
 AVATAR_DATA = "avatar_data"
 ROLEPLAY_STATE = "roleplay_state"
 ROLEPLAY_ENGINE = "roleplay_engine"
@@ -191,6 +196,15 @@ def avatars(avatars: list[dict]) -> dict:
     round trip per entry.
     """
     return {"type": AVATARS, "avatars": avatars}
+
+
+def chat_logs(mode: str, days: list[dict]) -> dict:
+    """The saved chat logs for one mode ("main" or "roleplay"): [{"date", "size"}], newest first."""
+    return {"type": CHAT_LOGS, "mode": mode, "days": days}
+
+
+def chat_log_content(mode: str, date: str, content: str, error: str = "") -> dict:
+    return {"type": CHAT_LOG_CONTENT, "mode": mode, "date": date, "content": content, "error": error}
 
 
 def avatars_changed(avatars: list[dict], renamed: dict | None = None, deleted: str = "") -> dict:
