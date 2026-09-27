@@ -16,7 +16,7 @@ talk to her from your PC, or from your phone over your home network or [Tailscal
 
 The main window with the shipped default avatar:
 
-- **🌸 top left:** chat history (with Resend Last and Clear Chat)
+- **🌸 top left:** chat history (with Resend Last and Clear Chat, and 👍/👎 on her replies)
 - **top right:** the **RP** badge (shown while role-play is on), three status lights (Brain connection, Hermes harness, speech engine), and **⚙️ Settings**
 - **right edge:** 📷 camera, 🖥️ screen capture, 🎤 hold to talk
 - **bottom:** 📎 attach a picture or text file, the message box, and **Send**
@@ -31,6 +31,7 @@ The main window with the shipped default avatar:
 - [Quick start](#quick-start)
 - [First run: getting her talking](#first-run-getting-her-talking)
 - [Configuration](#configuration)
+- [Settings at a glance](#settings-at-a-glance)
 - [Features in depth](#features-in-depth)
 - [Using it from your phone or another PC](#using-it-from-your-phone-or-another-pc)
 - [Security](#security)
@@ -45,24 +46,29 @@ The main window with the shipped default avatar:
 ## What it does
 
 - **Talk to a 3D avatar.** Type or hold-to-talk; she answers in text and (optionally) speech, with lip-sync and mood-driven
-  expressions. Ships with a default VRM model; import your own `.vrm` or a flat `.png`.
+  expressions. Ships with a default VRM model; import, rename and delete your own `.vrm` or flat `.png` avatars.
 - **A personality you own.** Her *soul* (`soul.md`) and what you tell her about yourself (`user.md`) are plain text files
   that only you edit. Nothing she does can change them.
 - **Role-play that can't leak.** Separate role-play souls and user profiles you can switch between. They live in their own
-  files and can never overwrite her real personality or your real details. Memory, lessons and curiosity pause during role-play.
+  files and can never overwrite her real personality or your real details. Memory, lessons and curiosity pause during role-play,
+  and the role-play conversation and its log are kept apart from your real one.
 - **Memory you can review.** Long-term memory through a [Hindsight](https://pypi.org/project/hindsight-client/) server
   (semantic memory), or a simple flat file. In **training mode** she proposes what to remember and *you* approve, edit and
-  rate each item before anything is saved.
+  rate each item before anything is saved, and what you approve is stored exactly as you worded it.
 - **She learns how you like her to behave.** Rate replies 👍/👎 with a reason and she distills short behavior
   rules from your feedback. You choose how much she may change on her own, and you can edit or retire any rule.
 - **Curiosity.** She asks the occasional follow-up question about what you said, or something she's wondered about you, paced so
   it never turns into an interrogation and never repeats. After an hour of quiet she reaches out first, once, until you reply.
+- **Tune how she talks.** Sampling profiles (temperature, top P, min P...) you save and switch between, applied from her next reply.
 - **Vision.** Show her your camera, your screen, or attach a picture or text file (with a vision-capable model).
 - **Web access.** Optional web search through your own [SearXNG](https://docs.searxng.org/) instance, with results labeled
   trusted / unverified / user-uploaded so she doesn't mistake an AI-generated fan upload for the real thing.
-- **Optional Hermes agent.** Hand the conversation to a [Hermes Agent](https://github.com/NousResearch/hermes-agent) harness
-  instead of your local model, and switch back at any time.
+- **Optional Hermes agent.** Hand the conversation to a [Hermes Agent](https://github.com/NousResearch/hermes-agent) harness,
+  her "professional" self with its own soul, memory and tools, and switch back at any time. Nothing personal crosses over.
+- **Your chat logs, readable.** A daily log of your conversations you can read or delete from Settings.
 - **Works from your phone.** Open the page on your phone (camera and mic included) over your LAN or Tailscale.
+- **A debug log that explains itself.** One download shows her whole setup, timings, token counts and every failure, and
+  never your conversation.
 
 ## How it fits together
 
@@ -86,6 +92,8 @@ Two independent programs and one small protocol between them:
 - The **Brain** (`brain/`) is a Python WebSocket server. The Renderer connects *to* it (browsers can't listen for connections).
 - Your browser never talks to the Brain directly. The Vite dev server proxies `/brain-ws` to it, so the Brain can stay bound to
   `localhost` even when you use Glitch from your phone.
+- There is **one Brain and one conversation**, shared by every connected device: settings you change on your phone show on
+  your PC too.
 - The message list is documented in [`protocol.md`](protocol.md); the original design notes are in [`SPEC.md`](SPEC.md).
 
 ## Requirements
@@ -115,7 +123,8 @@ Two independent programs and one small protocol between them:
 
 **Hardware.** The Brain runs on CPU (speech recognition is pinned to CPU on purpose). What you need is set by your LLM:
 a small quantized model runs on a modest GPU; bigger ones need more VRAM. Expect a few GB of downloads on first setup
-(PyTorch, the speech-recognition model, the avatar assets) and a decent amount of RAM.
+(PyTorch, the speech-recognition model, the avatar assets) and a decent amount of RAM. If you run Hindsight, it needs an
+LLM of its own too (see [Memory](#memory)).
 
 ## Quick start
 
@@ -134,7 +143,8 @@ This installs the Brain and Renderer dependencies and creates `config.yaml` and 
 
 **2. Start it**
 
-Windows, one command that opens Brain and Renderer each in its own window:
+Windows, one command that opens Brain and Renderer each in its own window (the Renderer starts 10 seconds after the Brain,
+so the Brain is listening by the time it comes up):
 
 ```bat
 start-glitch.bat
@@ -174,6 +184,8 @@ Everything below is done in the **Settings** panel, no config file editing requi
 4. **Memory (optional).** Set the *Memory backend* to *Hindsight* and fill in your server URL and a bank ID
    (see [Memory](#memory)). The default *Local* backend needs no setup.
 5. **Avatar (optional).** *Settings → Avatar*: import your own `.vrm` or `.png`.
+6. **Role-play off.** Role-play counts as *on* until you've toggled it once, and it pauses memory, lessons and curiosity, so on a
+   fresh install switch it off at the top of Settings.
 
 Then just type, or hold the 🎤 button and speak.
 
@@ -201,13 +213,38 @@ Two small files, both created by the setup script and both **gitignored** (they 
 Everything else (which LLM, which voice, which soul, toggles) is chosen in Settings and stored in small local files
 under `brain/`.
 
+## Settings at a glance
+
+The ⚙️ panel, top to bottom:
+
+| Section | What it's for |
+| --- | --- |
+| **Notes** | A private scratchpad (`brain/notes.md`). She never reads it. |
+| **Quick toggles** | Voice, camera, screen capture, microphone, always-on mic, chat bubbles over the avatar. |
+| **Role-play** | On/off, the engine role-play uses, and your *User RP Persona*. |
+| **Glitch RP Persona** | Her saved role-play souls. |
+| **Remember Me** | Memory on/off, the backend (Local or Hindsight) and its server, Download / Clear Memory. |
+| **Web Access** | Lets her search the web through your SearXNG. |
+| **Curiosity** | Follow-up questions and reaching out after an hour of quiet. |
+| **Memory training** | Review what she wants to remember before it's saved. |
+| **Behavior learning** | The rules she's learned from your ratings, and how much she may change on her own. |
+| **Avatar** | Pick, import, rename or delete avatars. |
+| **Speech Engine** | Her voice: engines, voices, blended Kokoro voices. |
+| **LLM** | Engines, sampling profiles, and the context meter. |
+| **Harness** | Hand the conversation to Hermes (locks everything above while it's on). |
+| **Soul & User Files** | Edit `soul.md` and `user.md` directly. |
+| **Chat Logs** | Read or delete a day's chat or role-play log. |
+| **Debugging** | The debug log and its download. |
+| **Restart Brain** | Restarts the Brain process; her conversation is saved and picked back up. |
+
 ## Features in depth
 
 ### Souls, user info, and role-play
 
 - **`brain/soul.md`**: her personality and example dialogue. **`brain/user.md`**: what you tell her about yourself. Edit them
   in any text editor, or in *Settings → Soul & User Files*. Restart Brain (or save in the editor) after editing `soul.md`;
-  `user.md` needs no restart.
+  `user.md` needs no restart. A fixed line in her prompt keeps the two apart: her looks, clothes and tastes are the ones in her
+  soul, yours are the ones you've told her.
 - **Role-play** uses separate *Glitch RP Persona* and *User RP Persona* entries you can save, name and switch between. They are
   copied into `rp_soul.md` / `rp_user.md` when selected. **No role-play action ever writes `soul.md` or `user.md`.**
 - While role-play is on, her real memory, your `user.md`, learned behavior rules, the clock, and curiosity are all paused, so
@@ -216,9 +253,7 @@ under `brain/`.
   turning role-play on then switches her to it (a dialog lets you turn thinking off, which only works on an Ollama-provider
   engine), and turning it off puts her back on the engine she was using before.
 - The normal conversation and the role-play scene are saved separately, so switching between them doesn't lose either one.
-
-> **First-run note:** role-play is treated as *on* until you've toggled it once. If memory or lessons seem inactive on a
-> fresh install, open Settings and switch role-play off.
+  Their chat logs are kept separately too.
 
 ### Memory
 
@@ -228,20 +263,29 @@ Two providers, chosen in Settings:
 - **Hindsight** (recommended): a semantic memory server. Relevant memories are recalled per message. She keeps her own bank
   (`bank_id`), separate from any Hermes agent's memory.
 
-Search results and picture descriptions are never stored as if they were facts about you.
+Her memories are written in her own voice ("I promised Josh I'd help with his song"). Search results and picture descriptions
+are never stored as if they were facts about you.
+
+**About Hindsight's own model.** Hindsight rewrites what it's given and builds summaries ("observations") with an LLM of its
+own, configured on the Hindsight server. Glitch tells her bank that "I" in her memories means her, which keeps owners straight,
+but a very small model still makes mistakes (a 4B model swapped "my hair" to "the user's hair" and failed about a third of its
+rewrites in testing). A 7–9B model is a much better fit. Facts you approve in memory training skip the rewrite entirely and
+are stored word for word.
 
 ### Memory training
 
 Turn on *Settings → Memory training* and nothing is saved automatically. After a reply she proposes at most one short fact,
 which waits in a review list. For each one you can **edit the wording**, mark it **Core / Normal / Minor**, and **Save** or
-**Reject**. Core facts are always placed in her prompt; the importance is stored as a tag on the memory. It needs the Hindsight
-provider. Good for the first weeks, while you're shaping what she remembers.
+**Reject**. What you save is stored exactly as you worded it. Core facts are always placed in her prompt; the importance is
+stored as a tag on the memory. It needs the Hindsight provider. Good for the first weeks, while you're shaping what she
+remembers.
 
 ### Behavior learning
 
 Rate any reply 👍/👎 and say why in the pop-up (a reason is required). She distills your feedback into short rules ("keep replies
 short", "don't bring up sports") stored in a separate Hindsight bank and added to her prompt on top of her soul (which is never
-changed). A *how much she does on her own* setting decides whether changes need your approval. Needs Hindsight.
+changed). A *how much she does on her own* setting decides whether changes need your approval: *Ask first* (every change waits
+for you), *Small tweaks on her own* (strengthening or weakening a rule is automatic), or *Everything on her own*. Needs Hindsight.
 
 ### Curiosity
 
@@ -260,31 +304,17 @@ shows up in the review list.
 
 - **Speech in:** hold-to-talk, or an always-on mic option, transcribed locally with
   [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (the model downloads on first use).
-- **Speech out:** any OpenAI-style TTS endpoint, with viseme lip-sync and per-mood expressions.
+- **Speech out:** any OpenAI-style TTS endpoint, with viseme lip-sync and per-mood expressions. Browsers (phones especially)
+  block sound until the page has been tapped; Glitch unlocks it on your first tap or key press.
 - **Vision:** 📷 camera, 🖥️ screen capture, 📎 attach a picture or text file. Needs a vision-capable LLM.
 
-### Web access
+### Avatars
 
-Point `brain.web_search.searxng_url` at a SearXNG instance with `search: formats: [html, json]` enabled, then turn on *Web
-Access* in Settings. Results are ranked and labeled by how much to trust them, and her reply text from a search turn is not
-saved to memory.
+*Settings → Avatar*: pick an installed avatar, **Import VRM** or **Import PNG** (a flat image, the camera can't pan around it),
+and ✏️ rename or 🗑️ delete your own. Renaming keeps it active under the new name; deleting the one on screen switches back to
+the built-in Glitch, which can't be renamed or deleted. Every connected device follows.
 
-### Hermes harness
-
-Add a Hermes Agent gateway in the *Harness* section of Settings and toggle it on to route the conversation through it. Hermes uses its own
-memory and skills, not Glitch's.
-
-### Everyday controls
-
-Stop button (cancels a reply in flight), resend last message, ✏️ edit your latest message (she answers the corrected
-version instead), **Clear Chat** (starts her on a fresh conversation; her long-term memory stays), two chat layouts
-(history panel or bubbles over the avatar),
-**Restart Brain** button in Settings (useful from a phone), a notes scratchpad (`brain/notes.md`), and a per-device debug
-log, on by default and downloadable from Settings: a snapshot of Brain's setup when it's turned on (engine, model, context,
-which models are loaded, sampling profile, memory and Hindsight's model, role-play and feature switches, what's waiting for
-review, and any problems since Brain started), connection and timing events with prompt, reply and thinking token counts,
-conversation trims, time spent waiting behind another reply, curiosity's decisions, settings changes, her reaching out, sound
-being blocked by the browser, Renderer errors, and every failure Brain prints. Never conversation content.
+### LLM: sampling profiles and the context meter
 
 **Sampling profiles** under *Settings → LLM* set how she picks her words: temperature, top P, top K, min P,
 presence penalty and repeat penalty, sent with each of her replies (LM Studio, llama.cpp and Ollama all honor them per
@@ -294,10 +324,61 @@ from her next reply. The built-in *Qwen 3.6 Thinking* profile uses Qwen's recomm
 nothing so the server's own settings apply. A blank box also leaves that one to the server. Only her replies use a
 profile; the short background tasks (memory, curiosity and lesson proposals) keep the server's settings.
 
-A **context meter** under *Settings → LLM* shows how much of the model's context her latest reply used (for example
+A **context meter** shows how much of the model's context her latest reply used (for example
 `4,235 / 65,536 tokens (6%)`). She keeps as much of the conversation as fits in about half of the model's context
 (12,000 tokens if the server doesn't report its size); past that, the oldest part is dropped in one go, so the model
 can keep reusing its work on the rest. The context size is read from LM Studio, llama.cpp's `llama-server`, or Ollama.
+
+Replies get an 8,000-token budget and an 8-minute timeout, so a reasoning model has room to think; if it still runs out,
+she answers again without thinking rather than saying nothing.
+
+### Web access
+
+Point `brain.web_search.searxng_url` at a SearXNG instance with `search: formats: [html, json]` enabled, then turn on *Web
+Access* in Settings. Results are ranked and labeled by how much to trust them, and her reply text from a search turn is not
+saved to memory.
+
+### Hermes harness: her professional self
+
+Add a Hermes Agent gateway in the *Harness* section of Settings and toggle it on to route the conversation through it. The idea is
+two separate selves: **Glitch the companion** (her soul, her memory, her chat log) and **Hermes Glitch** (Hermes's own soul,
+memory and tools, for work). While Hermes is in control:
+
+- Glitch sends Hermes only your message (and any picture): not her soul, not `user.md`, not her memories.
+- Nothing is saved to her memory, memory training, curiosity or lessons, and the conversation isn't written to her chat log
+  (Hermes keeps its own session logs).
+- **Hermes keeps the conversation going** from one message to the next, and across Brain restarts, when the harness has an API
+  key saved in Glitch and Hermes has the same key (`API_SERVER_KEY`). Without one, each message starts a new Hermes conversation.
+  **Clear Chat** starts a new Hermes conversation. Resend and ✏️ edit add a new message there rather than replacing the last one.
+
+If Hermes uses Hindsight too, give its bank a retain mission that keeps work only, so personal material stays in her own memory.
+
+### Chat logs
+
+Every exchange with her is written to a daily Markdown file: `brain/chat_logs/2026-09-24.md`, with role-play in
+`brain/chat_logs/roleplay/`. *Settings → Chat Logs* lets you pick Chat or Role-play and a day, then **Read** it in a pop-up
+or 🗑️ **Delete** it. When she reaches out first, that's logged too.
+
+### The debug log
+
+*Settings → Debugging* (on by default, per device) records what's needed to diagnose a problem, and never conversation
+content. **Download Debug Log** gives a text file with:
+
+- **A header:** your device ("Android phone · Chrome 140"), its hardware and window, and local time and timezone (entries are UTC).
+- **A setup snapshot** whenever debugging is turned on: Brain's version and uptime, every connected device and how it connects
+  (this PC, home network, Tailscale), the LLM engine, model, context size and which models are loaded on the server, the sampling
+  profile, speech engine, memory backend and Hindsight's own model, every feature switch, what's waiting for review, and any
+  problems since Brain started.
+- **Every reply:** timing for memory recall, the LLM and speech, with prompt, reply and thinking token counts; when the
+  conversation is trimmed; time spent waiting behind another reply; which models are loaded when a reply is slow.
+- **Events:** settings you change (names and on/off only), role-play toggles and which device made them, curiosity's decisions,
+  her reaching out, sound being blocked by the browser, Renderer errors, and every failure Brain prints.
+
+### Everyday controls
+
+Stop button (cancels a reply in flight), resend last message, ✏️ edit your latest message (she answers the corrected
+version instead), **Clear Chat** (starts her on a fresh conversation; her long-term memory stays), two chat layouts
+(history panel or bubbles over the avatar), and **Restart Brain** in Settings (useful from a phone).
 
 ## Using it from your phone or another PC
 
@@ -315,7 +396,8 @@ If you *do* let the Brain listen on other addresses, set `brain.auth_token` (and
 Glitch is a personal tool, not a hardened service. Know these before exposing it:
 
 - **Anyone who can open the Renderer's page can use Glitch** as you, because the page (which contains the auth token) is served
-  to them. Only expose port 5173 on networks you trust, or only over Tailscale. **Never port-forward it to the internet.**
+  to them. That includes reading your chat logs in Settings. Only expose port 5173 on networks you trust, or only over
+  Tailscale. **Never port-forward it to the internet.**
 - The Brain rejects a wrong or missing token, and locks a device out for a minute after five failed attempts (only that
   device, even when every device connects through the Renderer's proxy).
 - `config.yaml` and `renderer/.env` contain secrets and are gitignored. Backups contain them too, so keep those private.
@@ -326,18 +408,18 @@ Glitch is a personal tool, not a hardened service. Know these before exposing it
 ## Your data, and backing it up
 
 Git only holds the code. Everything personal is **gitignored** and lives on your machine: `brain/soul.md`, `brain/user.md`,
-the role-play files, `brain/souls/`, `brain/profiles/`, notes, lessons, ratings, toggles, saved engines, avatars, custom
-voices, and your configs.
+the role-play files, `brain/souls/`, `brain/profiles/`, notes, lessons, ratings, toggles, saved engines and sampling profiles,
+avatars, custom voices, and your configs.
 
-Two of those are your conversations:
+Your conversations:
 
-- **`brain/conversation.json`**: what she currently remembers of the chat. It's saved after every reply and picked back up
-  when the Brain restarts or you switch LLM engine, so a restart no longer wipes her short-term memory. A role-play
-  conversation is only restored into role-play, and a normal one only into normal chat. Pictures are kept as a
-  `[picture]` note, not the image itself.
-- **`brain/chat_logs/`**: a timestamped log of every exchange with her, one Markdown file per day (`2026-09-24.md`), with
-  role-play kept separately in `chat_logs/roleplay/`. Read or delete any day in *Settings → Chat Logs*. Conversations while a
-  Hermes harness is in control aren't included; Hermes keeps its own session logs.
+- **`brain/conversation.json`** (and `conversation_roleplay.json`): what she currently remembers of the chat. It's saved after
+  every reply and picked back up when the Brain restarts or you switch LLM engine. A role-play conversation is only restored
+  into role-play, and a normal one only into normal chat. Pictures are kept as a `[picture]` note, not the image itself.
+- **`brain/chat_logs/`**: the daily chat logs (role-play in `chat_logs/roleplay/`); read or delete them in
+  *Settings → Chat Logs*.
+- **`brain/backups/`**: memory exports and copies made before Glitch changes something of yours (for example the one-time split
+  of older chat logs that had role-play mixed in).
 
 Back it all up with one command:
 
@@ -360,14 +442,16 @@ brain/                 Python backend (WebSocket server)
   memory.py            memory providers (local / Hindsight), core-fact recall
   training.py          memory-training review queue
   lessons.py           behavior learning
-  curiosity.py         follow-up questions
+  curiosity.py         follow-up questions, saved questions, reaching out
   sampling.py          sampling profiles (temperature, min_p...) for her replies
   souls.py profiles.py soul / user / role-play file handling
+  avatars.py           installed avatars
   llm_engines.py tts_engines.py harness.py   saved engines and harnesses
   web_search.py        SearXNG search and trust labels
   protocol.py          message constructors
 renderer/              Vite + three.js front end
-  src/                 avatar, chat UI, settings panels, Brain client
+  src/                 avatar, chat UI, Brain client, and one module per self-contained
+                       Settings section (lessons, training, sampling, chat logs)
   shell/               optional pywebview native window
   assets/Glitch.vrm    default avatar
 tools/                 backup_local_state.py
@@ -383,16 +467,18 @@ SPEC.md                original design notes
 | --- | --- |
 | Certificate warning in the browser | Expected: self-signed HTTPS. Choose *Advanced → Continue*. Needed for camera and mic. |
 | She only says "No LLM engine is configured yet" | Add and select an LLM engine in *Settings → LLM*. |
-| She never speaks | No speech engine is selected. Add one in *Settings → Speech Engine*, and check the *Voice* toggle. |
+| She never speaks | No speech engine is selected: add one in *Settings → Speech Engine*, and check the *Voice* toggle. On a phone, tap the page once (browsers block sound until you do); the debug log says so if that's it. |
 | Memory, lessons or curiosity seem inactive | Role-play may be on (it pauses them). Toggle it off in Settings. Lessons and memory training also need the Hindsight provider. |
+| Her memories mix up who's who ("your hair" when it's hers) | Hindsight's own model is too small or its bank has no instructions: give the Hindsight server a 7–9B model, and restart Brain so it sets up her bank. Facts saved through memory training are stored word for word. |
+| In Hermes mode she forgets the previous message | Save the harness's API key in Glitch, matching Hermes's `API_SERVER_KEY`; without it every message starts a new Hermes conversation. |
 | Phone can't connect | Both devices on the same network or Tailscale, port 5173 reachable, and Vite running with its default `host: true`. Check the PC's firewall. |
 | Camera or mic won't start on the phone | The page must be HTTPS. Use the `https://` address and accept the warning. |
 | Photos look black | Reload the page and retry, and check the browser's camera permission for the site. |
 | "failed auth" in the Brain log | The Renderer's token doesn't match. Set `VITE_BRAIN_AUTH_TOKEN` to the same value as `brain.auth_token`, then restart the dev server. |
 | Edited `soul.md` but nothing changed | The soul is read at startup: restart Brain (Settings → Restart Brain) or save it in the Settings editor. |
-| Replies are slow, or read as if she didn't think them through | Replies get an 8,000-token budget and an 8-minute timeout. If a reasoning model spends the whole budget thinking, she answers again without thinking rather than saying nothing. If it happens often, cap reasoning in your LLM server. |
+| Replies are slow, or read as if she didn't think them through | Download the debug log: each reply shows its prompt, reply and thinking tokens, and slow replies show which models were loaded (a model being swapped in is a common cause). If thinking runs out, she answers again without it; if that happens often, cap reasoning in your LLM server or try a calmer sampling profile. |
 | Linux: native window fails | Install `python3-gi` and `gir1.2-webkit2-4.1`, or just use the browser. |
-| Something else | Turn on the debug log in Settings, or run `uv run main.py` and read the Brain's console. |
+| Something else | Turn on the debug log in Settings, reproduce the problem, and download it; or run `uv run main.py` and read the Brain's console. |
 
 ## Credits
 
