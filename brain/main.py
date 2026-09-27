@@ -2265,7 +2265,12 @@ async def _reply_to(
     # back to 0", which is exactly right after a mood-carrying reply.
     await websocket.send(json.dumps(protocol.set_expression(mood, 1.0)))
     await websocket.send(json.dumps(protocol.speak_text(reply_text)))
-    conversation.log_exchange(text, reply_text, roleplay=profiles.read_roleplay_active(), picture=bool(image_b64))
+    # Only her own conversations go in her chat log. With a harness (Hermes) in
+    # control she's working under a different soul and memory -- that side keeps
+    # its own session logs, and personal and professional are kept apart on
+    # purpose. NoneLLM's placeholder isn't a conversation either.
+    if isinstance(brain.llm, LocalLLM):
+        conversation.log_exchange(text, reply_text, roleplay=profiles.read_roleplay_active(), picture=bool(image_b64))
     _spawn(_send_context_usage(brain))
 
     # Fire-and-forget: must never slow down or affect the reply the user

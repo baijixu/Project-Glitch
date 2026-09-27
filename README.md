@@ -326,7 +326,8 @@ Two of those are your conversations:
   when the Brain restarts or you switch LLM engine, so a restart no longer wipes her short-term memory. A role-play
   conversation is only restored into role-play, and a normal one only into normal chat. Pictures are kept as a
   `[picture]` note, not the image itself.
-- **`brain/chat_logs/`**: a timestamped log of every exchange, one Markdown file per day (`2026-09-24.md`), for you to read.
+- **`brain/chat_logs/`**: a timestamped log of every exchange with her, one Markdown file per day (`2026-09-24.md`), for you
+  to read. Conversations while a Hermes harness is in control aren't included; Hermes keeps its own session logs.
 
 Back it all up with one command:
 
