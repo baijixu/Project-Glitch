@@ -1498,7 +1498,14 @@ def _build_harness_llm(name: str) -> HarnessLLM | None:
         print(f"[brain] couldn't activate harness {name!r}: no endpoint saved")
         return None
     print(f"[brain] using harness {name!r} at {config['endpoint']!r}")
-    return HarnessLLM(endpoint=config["endpoint"], model=config.get("model"), api_key=config.get("api_key"))
+    # Continue the same conversation across messages (and Brain restarts). Hermes
+    # refuses a session id without an API key, so none is sent without one.
+    session = harness.session_id(name) if config.get("api_key") else None
+    if session is None:
+        print(f"[brain] harness {name!r} has no API key -- each message will start a new conversation there")
+    llm = HarnessLLM(endpoint=config["endpoint"], model=config.get("model"), api_key=config.get("api_key"), session_id=session)
+    llm.harness_name = name
+    return llm
 
 
 async def _handle_set_harness_active(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
@@ -2092,7 +2099,11 @@ async def _handle_clear_conversation(brain: Brain) -> None:
     global _LAST_CONTEXT_USAGE
     if isinstance(brain.llm, LocalLLM):
         brain.llm.clear_history()
-    conversation.log_marker("New conversation (chat cleared)")
+        conversation.log_marker("New conversation (chat cleared)")
+    elif isinstance(brain.llm, HarnessLLM) and brain.llm.session_id:
+        # The harness keeps the conversation, so a fresh one there means a new
+        # session id. (Not marked in her personal chat log -- see _reply_to.)
+        brain.llm.session_id = harness.new_session_id(getattr(brain.llm, "harness_name", ""))
     _LAST_CONTEXT_USAGE = None
     print("[brain] conversation cleared")
     await _broadcast(protocol.conversation_cleared())

@@ -24,12 +24,15 @@ which profile/soul/engine is active.
 """
 
 import json
+import uuid
 from pathlib import Path
 
 from names import sanitize_name
 
 ACTIVE_HARNESS_PATH = Path(__file__).parent / "active_harness.txt"
 SELECTED_HARNESS_PATH = Path(__file__).parent / "selected_harness.txt"
+# The conversation each harness is in, by harness name (see session_id()).
+SESSIONS_PATH = Path(__file__).parent / "harness_sessions.json"
 HARNESSES_DIR = Path(__file__).parent / "harnesses"
 
 # Reserved -- means "not plugged into any harness, using her own profile/
@@ -106,5 +109,32 @@ def read_selected_harness_name() -> str:
     return ""
 
 
+# -- Conversation continuity ---------------------------------------------------
+# Glitch sends a harness only the newest message; the harness keeps the
+# conversation. Hermes needs to be told which conversation a message belongs to
+# (its X-Hermes-Session-Id header) -- without one it started a brand-new session
+# for every message (seen in its log: history=0, a new session id per turn), so
+# she forgot what was said a message ago. One id per harness, kept on disk so a
+# Brain restart continues the same conversation; Clear Chat starts a new one.
 
 
+def _read_sessions() -> dict:
+    try:
+        data = json.loads(SESSIONS_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def new_session_id(name: str) -> str:
+    """Starts a fresh conversation with the named harness and returns its id."""
+    sessions = _read_sessions()
+    sessions[name] = f"glitch-{uuid.uuid4().hex}"
+    SESSIONS_PATH.write_text(json.dumps(sessions), encoding="utf-8")
+    return sessions[name]
+
+
+def session_id(name: str) -> str:
+    """The conversation Glitch is in with the named harness (a new one if none yet)."""
+    current = _read_sessions().get(name)
+    return current if isinstance(current, str) and current else new_session_id(name)

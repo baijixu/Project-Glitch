@@ -1186,11 +1186,20 @@ class HarnessLLM:
     tag already does otherwise.
     """
 
-    def __init__(self, endpoint: str, model: str | None = None, api_key: str | None = None) -> None:
+    def __init__(
+        self, endpoint: str, model: str | None = None, api_key: str | None = None, session_id: str | None = None
+    ) -> None:
         self._client = OpenAI(
             base_url=endpoint, api_key=api_key or "not-needed", timeout=REQUEST_TIMEOUT_SEC, max_retries=0
         )
         self._model = model or ""  # see LocalLLM.__init__'s comment -- None serializes to a literal JSON null
+        # Which conversation this is (brain/harness.py's session_id). Sent as
+        # Hermes's X-Hermes-Session-Id so it continues the same conversation
+        # instead of starting a new one for every message; a harness that
+        # doesn't know the header just ignores it. Hermes only accepts it with an
+        # API key set, so main.py passes None when there isn't one.
+        self.session_id = session_id
+        self.harness_name = ""  # which saved harness this is, for starting a new session (set by main.py)
 
     def reply(
         self,
@@ -1220,7 +1229,10 @@ class HarnessLLM:
                 {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_b64}"}},
             ]
         response = self._client.chat.completions.create(
-            model=self._model, messages=[{"role": "user", "content": content}], max_tokens=MAX_REPLY_TOKENS
+            model=self._model,
+            messages=[{"role": "user", "content": content}],
+            max_tokens=MAX_REPLY_TOKENS,
+            extra_headers={"X-Hermes-Session-Id": self.session_id} if self.session_id else None,
         )
         raw_reply = _reply_content(response.choices[0].message)
         # _extract_mood returns (mood, text) -- swapped here to match this
