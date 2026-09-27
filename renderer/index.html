@@ -330,13 +330,22 @@
             </div>
             <div id="context-meter" class="context-meter">
               <div class="context-meter-label">
-                <span>Context</span>
+                <span>Conversation</span>
+                <span id="context-meter-conversation-text">after her next reply</span>
+              </div>
+              <div class="context-meter-track"><div id="context-meter-conversation-fill" class="context-meter-fill"></div></div>
+              <div class="context-meter-label">
+                <span>Total context</span>
                 <span id="context-meter-text">after her next reply</span>
               </div>
               <div class="context-meter-track"><div id="context-meter-fill" class="context-meter-fill"></div></div>
               <p id="context-meter-hint" class="settings-hint">
-                How much of the model's memory her latest reply used: her soul, notes and the conversation so far.
-                She keeps the conversation up to about half of this; past that, the oldest part is dropped.
+                <b>Conversation</b>: how much of your chat she's holding on to, out of what she keeps (about half the
+                model's context). Past 100%, your next message drops the oldest ~40% -- that's when she starts forgetting
+                how the conversation began.
+                <b>Total context</b>: everything the model read and wrote for her latest reply -- soul, notes, memories,
+                the conversation, her thinking and the reply -- out of its full context. Replies tend to get less sharp as
+                this grows.
               </p>
             </div>
           </section>

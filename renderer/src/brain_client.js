@@ -1921,20 +1921,39 @@ export class BrainClient {
   // transient heads-up, not part of the conversation record.
   // Settings' context meter (brain's context_usage message). Numbers only ever go in
   // through textContent / style.width.
+  // Two bars: the conversation against what she keeps (100% = the oldest part
+  // goes with the next message), and the whole latest reply against the model's
+  // context.
   _renderContextUsage(data) {
-    const textEl = document.getElementById("context-meter-text");
-    const fillEl = document.getElementById("context-meter-fill");
-    if (!textEl || !fillEl) return;
+    const conversation = Number(data.conversation) || 0;
+    const keep = Number(data.keep) || 0;
+    if (keep > 0) {
+      // The conversation's count is the estimate the trim uses, hence the "~".
+      const pct = Math.round((conversation / keep) * 100);
+      this._setContextBar("context-meter-conversation", pct,
+        `~${conversation.toLocaleString()} / ${keep.toLocaleString()} kept (${pct}%)${pct > 100 ? " -- trims next message" : ""}`,
+        pct > 100 ? "high" : pct >= 80 ? "mid" : "low");
+    } else {
+      this._setContextBar("context-meter-conversation", 0, "after her next reply", "low");
+    }
     const used = Number(data.used) || 0;
     const window_ = Number(data.window) || 0;
     if (window_ > 0) {
-      const pct = Math.min(100, Math.round((used / window_) * 100));
-      textEl.textContent = `${used.toLocaleString()} / ${window_.toLocaleString()} tokens (${pct}%)`;
-      fillEl.style.width = `${pct}%`;
-      fillEl.dataset.level = pct >= 85 ? "high" : pct >= 60 ? "mid" : "low";
+      const pct = Math.round((used / window_) * 100);
+      this._setContextBar("context-meter", pct, `${used.toLocaleString()} / ${window_.toLocaleString()} tokens (${pct}%)`,
+        pct >= 85 ? "high" : pct >= 60 ? "mid" : "low");
     } else {
-      textEl.textContent = `${used.toLocaleString()} tokens (the server doesn't report its limit)`;
-      fillEl.style.width = "0%";
+      this._setContextBar("context-meter", 0, `${used.toLocaleString()} tokens (the server doesn't report its limit)`, "low");
+    }
+  }
+
+  _setContextBar(id, pct, text, level) {
+    const textEl = document.getElementById(`${id}-text`);
+    const fillEl = document.getElementById(`${id}-fill`);
+    if (textEl) textEl.textContent = text;
+    if (fillEl) {
+      fillEl.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+      fillEl.dataset.level = level;
     }
   }
 
@@ -3158,10 +3177,7 @@ export class BrainClient {
   }
 
   _clearHistory() {
-    const meterText = document.getElementById("context-meter-text");
-    if (meterText) meterText.textContent = "after her next reply";
-    const meterFill = document.getElementById("context-meter-fill");
-    if (meterFill) meterFill.style.width = "0%";
+    for (const id of ["context-meter", "context-meter-conversation"]) this._setContextBar(id, 0, "after her next reply", "low");
     this._historyEntries = [];
     if (this.historyListEl) this.historyListEl.innerHTML = "";
     if (this.bubbleOverlayEl) this.bubbleOverlayEl.innerHTML = "";

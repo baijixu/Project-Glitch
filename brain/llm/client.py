@@ -947,6 +947,11 @@ class LocalLLM:
         self._history.clear()
         self._history_changed()
 
+    def history_tokens(self) -> int:
+        """The running conversation's size, counted the way _trim_history counts
+        it -- so at history_budget() the oldest part is about to be dropped."""
+        return sum(_estimate_tokens(m) for m in self._history)
+
     def history_budget(self) -> int:
         """How many tokens of conversation she keeps -- see HISTORY_CONTEXT_FRACTION."""
         try:

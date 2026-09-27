@@ -2697,9 +2697,10 @@ async def _send_context_usage(brain: Brain) -> None:
         return  # the server didn't report token counts
     try:
         window = await asyncio.to_thread(brain.llm.context_window)
+        keep = await asyncio.to_thread(brain.llm.history_budget)  # context_window is cached by now
     except Exception:
-        window = None
-    _LAST_CONTEXT_USAGE = protocol.context_usage(used, window)
+        window = keep = None
+    _LAST_CONTEXT_USAGE = protocol.context_usage(used, window, brain.llm.history_tokens(), keep)
     await _broadcast(_LAST_CONTEXT_USAGE)
 
 

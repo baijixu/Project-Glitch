@@ -324,10 +324,13 @@ from her next reply. The built-in *Qwen 3.6 Thinking* profile uses Qwen's recomm
 nothing so the server's own settings apply. A blank box also leaves that one to the server. Only her replies use a
 profile; the short background tasks (memory, curiosity and lesson proposals) keep the server's settings.
 
-A **context meter** shows how much of the model's context her latest reply used (for example
-`4,235 / 65,536 tokens (6%)`). She keeps as much of the conversation as fits in about half of the model's context
-(12,000 tokens if the server doesn't report its size); past that, the oldest part is dropped in one go, so the model
-can keep reusing its work on the rest. The context size is read from LM Studio, llama.cpp's `llama-server`, or Ollama.
+A **context meter** shows two bars. *Conversation* is how much of the chat she's holding on to, out of what she keeps
+(for example `~24,120 / 32,768 kept (74%)`): she keeps as much of the conversation as fits in about half of the model's
+context (12,000 tokens if the server doesn't report its size). Past 100%, the next message drops the oldest ~40% in one
+go, so the model can keep reusing its work on the rest; that's when she starts forgetting how the conversation began.
+*Total context* is everything the model read and wrote for her latest reply (soul, notes, memories, the conversation,
+her thinking and the reply) out of its full context, for example `29,850 / 65,536 tokens (46%)`. The context size is
+read from LM Studio, llama.cpp's `llama-server`, or Ollama.
 
 Replies get an 8,000-token budget and an 8-minute timeout, so a reasoning model has room to think; if it still runs out,
 she answers again without thinking rather than saying nothing.

@@ -263,12 +263,14 @@ def conversation_cleared() -> dict:
     return {"type": CONVERSATION_CLEARED}
 
 
-def context_usage(used: int, window: int | None) -> dict:
+def context_usage(used: int, window: int | None, conversation: int | None = None, keep: int | None = None) -> dict:
     """How full her context is, for the Settings meter: `used` tokens after the
     latest reply (prompt + reply), out of the model's `window` (None if the server
-    doesn't say). Sent after each reply, and on `ready` if there's been one.
+    doesn't say); and the running `conversation` (estimated tokens) out of the
+    `keep` she holds on to before the oldest part is dropped. Sent after each
+    reply, and on `ready` if there's been one.
     """
-    return {"type": CONTEXT_USAGE, "used": used, "window": window}
+    return {"type": CONTEXT_USAGE, "used": used, "window": window, "conversation": conversation, "keep": keep}
 
 
 def curiosity_state(active: bool) -> dict:

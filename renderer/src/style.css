@@ -1251,6 +1251,10 @@ body.overlay-chat-active #overlay-edit-button {
   text-align: right;
 }
 
+.context-meter-track + .context-meter-label {
+  margin-top: 10px;
+}
+
 .context-meter-track {
   height: 8px;
   border-radius: 4px;
