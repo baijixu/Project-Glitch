@@ -804,7 +804,25 @@ export class BrainClient {
     });
 
     this._renderAvatarList([]); // shows the always-available "Glitch" option immediately, before any `avatars` message arrives
-    this.avatarSelectEl?.addEventListener("change", () => this._loadAvatarByName(this.avatarSelectEl.value));
+    this.avatarSelectEl?.addEventListener("change", () => {
+      this._loadAvatarByName(this.avatarSelectEl.value);
+      this._updateAvatarEditControls();
+    });
+    // ✏️/🗑️ for saved avatars (not the built-in Glitch) -- see _renameAvatar/_deleteAvatar.
+    this.renameAvatarButtonEl = document.getElementById("rename-avatar-button");
+    this.deleteAvatarButtonEl = document.getElementById("delete-avatar-button");
+    this.renameAvatarButtonEl?.addEventListener("click", () => this._openRenameAvatarModal());
+    this.deleteAvatarButtonEl?.addEventListener("click", () => this._deleteAvatar());
+    document.getElementById("rename-avatar-cancel-button")?.addEventListener("click", () => this._closeRenameAvatarModal());
+    document.getElementById("rename-avatar-save-button")?.addEventListener("click", () => this._renameAvatar());
+    document.getElementById("rename-avatar-input")?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") this._renameAvatar();
+      if (e.key === "Escape") this._closeRenameAvatarModal();
+    });
+    document.getElementById("rename-avatar-modal-backdrop")?.addEventListener("click", (e) => {
+      if (e.target.id === "rename-avatar-modal-backdrop") this._closeRenameAvatarModal();
+    });
+    this._updateAvatarEditControls(); // the built-in Glitch is selected at startup
     this.importAvatarButtonEl?.addEventListener("click", () => this.avatarFileInputEl?.click());
     this.avatarFileInputEl?.addEventListener("change", () => {
       const file = this.avatarFileInputEl.files?.[0];
@@ -2167,6 +2185,7 @@ export class BrainClient {
     this._updateSoulEditControls();
     this._updateTtsEngineEditControls();
     this._updateLlmEngineEditControls();
+    this._updateAvatarEditControls();
     this._samplingUI?.setLocked(this._harnessActive);
     this._renderHarnessLight(); // active may have just flipped -- green overrides whatever reachability last said
   }
@@ -2409,6 +2428,50 @@ export class BrainClient {
   _renderAvatarList(avatars) {
     this._customAvatars = avatars;
     _renderDropdown(this.avatarSelectEl, ["Glitch", ...avatars.map((a) => a.name)], this._activeAvatarName);
+    this._updateAvatarEditControls();
+  }
+
+  // Rename/delete only apply to a saved avatar -- the built-in Glitch ships
+  // with the app. Also re-derived after the harness lock lifts (see
+  // _renderHarnessState), which re-enables every control in the section.
+  _updateAvatarEditControls() {
+    const builtIn = !this.avatarSelectEl?.value || this.avatarSelectEl.value === "Glitch";
+    for (const el of [this.renameAvatarButtonEl, this.deleteAvatarButtonEl]) {
+      if (el) el.disabled = builtIn || this._harnessActive;
+    }
+  }
+
+  _openRenameAvatarModal() {
+    const name = this.avatarSelectEl?.value;
+    if (!name || name === "Glitch") return;
+    this._renamingAvatar = name;
+    const input = document.getElementById("rename-avatar-input");
+    input.value = name;
+    document.getElementById("rename-avatar-modal-backdrop").hidden = false;
+    input.focus();
+    input.select();
+  }
+
+  _closeRenameAvatarModal() {
+    this._renamingAvatar = null;
+    document.getElementById("rename-avatar-modal-backdrop").hidden = true;
+  }
+
+  // Brain answers every device with the new list (an `avatars` message with
+  // `renamed`), which also updates the name on whichever device is showing it.
+  _renameAvatar() {
+    const from = this._renamingAvatar;
+    const to = document.getElementById("rename-avatar-input").value.trim();
+    this._closeRenameAvatarModal();
+    if (!from || !to || to === from) return;
+    this._send({ type: "rename_avatar", name: from, new_name: to });
+  }
+
+  _deleteAvatar() {
+    const name = this.avatarSelectEl?.value;
+    if (!name || name === "Glitch") return;
+    if (!window.confirm(`Delete the avatar "${name}"? This can't be undone.`)) return;
+    this._send({ type: "delete_avatar", name });
   }
 
   _loadAvatarByName(name) {
@@ -3327,6 +3390,15 @@ export class BrainClient {
         }
         break;
       case "avatars":
+        // After a rename/delete on any device: follow the new name, or go back
+        // to the built-in Glitch if the avatar on screen was deleted.
+        if (data.renamed && data.renamed.from === this._activeAvatarName) {
+          this._activeAvatarName = data.renamed.to;
+        } else if (data.deleted && data.deleted === this._activeAvatarName) {
+          this._onAvatarSwap?.("/Glitch.vrm", "vrm");
+          this._logDebug("avatar", `'${data.deleted}' was deleted -- back to 'Glitch'`);
+          this._activeAvatarName = "Glitch";
+        }
         this._renderAvatarList(data.avatars || []);
         break;
       case "avatar_data":

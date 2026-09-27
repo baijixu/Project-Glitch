@@ -257,6 +257,10 @@
               image -- the camera can't be panned around it.
             </p>
             <select id="avatar-select" class="settings-select"></select>
+            <div class="settings-button-row">
+              <button id="rename-avatar-button" class="icon-button" title="Rename avatar">✏️</button>
+              <button id="delete-avatar-button" class="icon-button danger" title="Delete avatar">🗑️</button>
+            </div>
             <button id="import-avatar-button" class="settings-action-button">Import VRM</button>
             <input id="avatar-file-input" type="file" accept=".vrm" hidden />
             <button id="import-avatar-png-button" class="settings-action-button">Import PNG</button>
@@ -633,6 +637,16 @@
         <div class="modal-actions">
           <button id="edit-message-cancel-button" class="modal-button secondary">Cancel</button>
           <button id="edit-message-send-button" class="modal-button primary">Send</button>
+        </div>
+      </div>
+    </div>
+    <div id="rename-avatar-modal-backdrop" class="modal-backdrop" hidden>
+      <div id="rename-avatar-modal" class="modal" role="dialog" aria-labelledby="rename-avatar-modal-title">
+        <h2 id="rename-avatar-modal-title">Rename avatar</h2>
+        <input id="rename-avatar-input" type="text" maxlength="60" autocomplete="off" />
+        <div class="modal-actions">
+          <button id="rename-avatar-cancel-button" class="modal-button secondary">Cancel</button>
+          <button id="rename-avatar-save-button" class="modal-button primary">Save</button>
         </div>
       </div>
     </div>

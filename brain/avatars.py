@@ -95,3 +95,48 @@ def read_active_avatar() -> str | None:
     if ACTIVE_AVATAR_PATH.exists():
         return ACTIVE_AVATAR_PATH.read_text(encoding="utf-8").strip() or None
     return None
+
+
+def _file_for(name: str) -> Path | None:
+    for kind in AVATAR_KINDS:
+        path = AVATARS_DIR / f"{name}.{kind}"
+        if path.exists():
+            return path
+    return None
+
+
+def rename_avatar(old_name: str, new_name: str) -> str:
+    """Renames a saved avatar's file and returns the name as saved. The shipped
+    default can't be renamed, and a name already in use is refused rather than
+    overwritten. If it was the active avatar, the new name becomes active.
+    """
+    old = sanitize_name(old_name, kind="avatar")
+    new = sanitize_name(new_name, kind="avatar")
+    if DEFAULT_AVATAR_NAME in (old, new):
+        raise ValueError(f"{DEFAULT_AVATAR_NAME!r} is the built-in avatar and can't be renamed or replaced")
+    source = _file_for(old)
+    if source is None:
+        raise ValueError(f"no avatar named {old_name!r}")
+    if new == old:
+        return new
+    if _file_for(new) is not None and new.lower() != old.lower():
+        raise ValueError(f"there's already an avatar called {new!r}")
+    source.rename(source.with_name(f"{new}{source.suffix}"))
+    if read_active_avatar() == old:
+        set_active_avatar(new)
+    return new
+
+
+def delete_avatar(name: str) -> None:
+    """Deletes a saved avatar's file. The shipped default can't be deleted. If it
+    was the active avatar, the default becomes active again.
+    """
+    safe = sanitize_name(name, kind="avatar")
+    if safe == DEFAULT_AVATAR_NAME:
+        raise ValueError(f"{DEFAULT_AVATAR_NAME!r} is the built-in avatar and can't be deleted")
+    path = _file_for(safe)
+    if path is None:
+        raise ValueError(f"no avatar named {name!r}")
+    path.unlink()
+    if read_active_avatar() == safe:
+        set_active_avatar(DEFAULT_AVATAR_NAME)

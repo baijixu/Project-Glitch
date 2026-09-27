@@ -25,6 +25,8 @@ GET_SOUL = "get_soul"
 DELETE_SOUL = "delete_soul"
 SAVE_AVATAR = "save_avatar"
 LOAD_AVATAR = "load_avatar"
+RENAME_AVATAR = "rename_avatar"
+DELETE_AVATAR = "delete_avatar"
 SET_ROLEPLAY_ACTIVE = "set_roleplay_active"
 SET_ROLEPLAY_ENGINE = "set_roleplay_engine"
 SAVE_TTS_ENGINE = "save_tts_engine"
@@ -189,6 +191,14 @@ def avatars(avatars: list[dict]) -> dict:
     round trip per entry.
     """
     return {"type": AVATARS, "avatars": avatars}
+
+
+def avatars_changed(avatars: list[dict], renamed: dict | None = None, deleted: str = "") -> dict:
+    """The avatar list after a rename or delete, to every device. `renamed` is
+    {"from", "to"} (a device showing it just updates the name, no reload);
+    `deleted` is the removed name (a device showing it goes back to the
+    built-in "Glitch")."""
+    return {"type": AVATARS, "avatars": avatars, "renamed": renamed, "deleted": deleted}
 
 
 def avatar_data(name: str, data_b64: str, kind: str) -> dict:

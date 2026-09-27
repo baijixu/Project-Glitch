@@ -702,6 +702,8 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
         await _handle_save_avatar(websocket, data)
     elif msg_type == protocol.LOAD_AVATAR:
         await _handle_load_avatar(websocket, data)
+    elif msg_type in (protocol.RENAME_AVATAR, protocol.DELETE_AVATAR):
+        await _handle_manage_avatar(websocket, msg_type, data)
     elif msg_type == protocol.SET_ROLEPLAY_ACTIVE:
         _handle_set_roleplay_active(data, brain)
         await _broadcast(protocol.roleplay_state(profiles.read_roleplay_active()))
@@ -1080,6 +1082,30 @@ async def _handle_load_avatar(websocket: websockets.ServerConnection, data: dict
     print(f"[brain] activated avatar {name!r} ({kind}), sending {len(avatar_bytes)} bytes")
     data_b64 = base64.b64encode(avatar_bytes).decode("ascii")
     await websocket.send(json.dumps(protocol.avatar_data(name, data_b64, kind)))
+
+
+async def _handle_manage_avatar(websocket: websockets.ServerConnection, msg_type: str, data: dict) -> None:
+    """Rename or delete a saved avatar (Settings -> Avatar's ✏️/🗑️). Every device
+    gets the new list; one that was showing the avatar updates its name (rename)
+    or goes back to the built-in Glitch (delete). A refused change (the built-in
+    avatar, a name already taken) just re-sends the unchanged list to the asker.
+    """
+    name = str(data.get("name") or "")
+    try:
+        if msg_type == protocol.RENAME_AVATAR:
+            new_name = str(data.get("new_name") or "")
+            if _fields_too_long(new_name):
+                raise ValueError("that name is too long")
+            saved = avatars.rename_avatar(name, new_name)
+            print(f"[brain] renamed avatar {name!r} to {saved!r}")
+            await _broadcast(protocol.avatars_changed(avatars.list_avatars(), renamed={"from": name, "to": saved}))
+        else:
+            avatars.delete_avatar(name)
+            print(f"[brain] deleted avatar {name!r}")
+            await _broadcast(protocol.avatars_changed(avatars.list_avatars(), deleted=name))
+    except (ValueError, OSError) as exc:
+        print(f"[brain] couldn't {'rename' if msg_type == protocol.RENAME_AVATAR else 'delete'} avatar {name!r}: {exc!r}")
+        await websocket.send(json.dumps(protocol.avatars(avatars.list_avatars())))
 
 
 # ============================================================================
