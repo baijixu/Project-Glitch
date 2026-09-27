@@ -109,6 +109,37 @@ RETAIN_MISSION = (
     "what an AI is or can do in general; small talk; or temporary states and debugging chatter."
 )
 
+# Hindsight also writes "observations": its own summaries of the stored facts,
+# made by its model (a 4B one on this setup) and recalled alongside them. With
+# no instruction for that step it read her "I"/"my" as the human's -- a word-
+# for-word "green feels like home because of my hair" came back as "the user
+# associates green with home due to their hair", and "I helped Josh" as "Josh
+# helped". With this set, owners came out right in 5 of 5 runs on throwaway
+# banks. Set by ensure_bank() the same way as RETAIN_MISSION.
+OBSERVATIONS_MISSION = (
+    "Every fact in this bank is written by Glitch, an AI companion, in her own voice: 'I', 'me' and 'my' "
+    "always mean Glitch, never the human. The human is the person she talks to, called by their name. "
+    "When you summarize, keep Glitch's voice ('I' = Glitch) and keep who owns what exactly as the facts "
+    "say: Glitch's looks, clothes, pictures and feelings stay Glitch's; the human's stay the human's."
+)
+
+# Facts approved in memory training (retain_fact) are stored word for word.
+# Normally Hindsight rewrites whatever it's given with its own model, and for
+# these short first-person facts that rewrite swapped owners: approved "Josh
+# likes the denim shorts in my autumn picture" was stored as "Josh prefers denim
+# shorts", "green feels like home because of my hair" as the user's hair, and
+# names got tagged "(user)" or "user's friend". Rewording the context didn't
+# fix it (tried on throwaway banks; it also made the rewrite fail outright
+# about a third of the time). The user already approved the exact wording, so
+# there's nothing left to extract: this named strategy uses Hindsight's
+# "chunks" mode, which stores the text as-is and never calls a model -- tags,
+# recall and the core-only recall all work the same (checked live).
+APPROVED_STRATEGY = "glitch-approved"
+_APPROVED_STRATEGY_CONFIG = {"retain_extraction_mode": "chunks"}
+# Only used if the server can't take the strategy (an older Hindsight), when the
+# fact goes through the normal rewrite -- then at least say whose voice it is.
+APPROVED_FACT_CONTEXT = "Glitch's own memory, in her voice: 'I' and 'my' mean Glitch (the AI), not the human"
+
 # Earlier versions of the default above. A bank still carrying one of these
 # was never customized, so ensure_bank() upgrades it to the current default --
 # anything else there was written by hand and is left alone.
@@ -116,6 +147,9 @@ _PREVIOUS_DEFAULT_MISSIONS = (_MISSION_V1, _MISSION_V2, _MISSION_V2_ROLES)
 
 _client: Hindsight | None = None
 _bank_id = ""
+# The bank APPROVED_STRATEGY was last set up on (see _ensure_approved_strategy),
+# so it's checked once per bank rather than before every approval.
+_approved_strategy_bank: str | None = None
 
 
 # -- Provider choice (Settings panel's Memory backend dropdown) -------------
@@ -143,9 +177,10 @@ def set_provider(provider: str) -> None:
 
 
 def configure(api_url: str, bank_id: str, api_key: str | None = None) -> None:
-    global _client, _bank_id
+    global _client, _bank_id, _approved_strategy_bank
     _client = Hindsight(base_url=api_url, api_key=api_key or None)
     _bank_id = bank_id
+    _approved_strategy_bank = None
 
 
 def read_hindsight_config() -> dict:
@@ -198,18 +233,21 @@ async def ensure_bank() -> None:
 async def _apply_default_retain_mission() -> None:
     """Sets RETAIN_MISSION on the bank unless it already has a retain_mission
     of someone's own -- one that is neither empty, nor the current default,
-    nor an earlier default of ours (those get upgraded). Best-effort: a
+    nor an earlier default of ours (those get upgraded). Same for
+    OBSERVATIONS_MISSION (set only when the bank has none). Best-effort: a
     server that has bank-config writes disabled
     (HINDSIGHT_API_ENABLE_BANK_CONFIG_API=false) just keeps its own extraction
     behavior -- that must never stop the bank from being usable.
     """
     try:
         config = await _client.aget_bank_config(_bank_id)
-        current = (config.get("overrides") or {}).get("retain_mission")
-        if current and current != RETAIN_MISSION and current not in _PREVIOUS_DEFAULT_MISSIONS:
-            return  # written by hand -- not ours to change
-        if current != RETAIN_MISSION:
-            await _client.aupdate_bank_config(_bank_id, retain_mission=RETAIN_MISSION)
+        overrides = config.get("overrides") or {}
+        current = overrides.get("retain_mission")
+        if not (current and current != RETAIN_MISSION and current not in _PREVIOUS_DEFAULT_MISSIONS):
+            if current != RETAIN_MISSION:  # (otherwise written by hand -- not ours to change)
+                await _client.aupdate_bank_config(_bank_id, retain_mission=RETAIN_MISSION)
+        if not overrides.get("observations_mission"):
+            await _client.aupdate_bank_config(_bank_id, observations_mission=OBSERVATIONS_MISSION)
     except Exception as exc:
         print(f"[memory] couldn't set the default retain mission on bank {_bank_id!r}: {exc!r}")
 
@@ -232,16 +270,39 @@ async def retain_exchange(user_text: str, reply_text: str) -> None:
 
 async def retain_fact(text: str, importance: str) -> None:
     """Retains one fact the user reviewed and approved (brain/training.py),
-    tagged with its importance so core facts can be recalled every turn.
+    word for word (see APPROVED_STRATEGY), tagged with its importance so core
+    facts can be recalled every turn. Raises if it couldn't be saved at all --
+    the caller keeps the proposal queued so nothing approved is lost.
     """
     if _client is None:
         raise RuntimeError("no Hindsight server configured")
-    await _client.aretain(
-        _bank_id,
-        content=text,
-        context="A fact the user reviewed and approved",
-        tags=[training.importance_tag(importance)],
-    )
+    tags = [training.importance_tag(importance)]
+    try:
+        await _ensure_approved_strategy()
+        await _client.aretain_batch(
+            _bank_id,
+            items=[{"content": text, "context": APPROVED_FACT_CONTEXT, "tags": tags, "strategy": APPROVED_STRATEGY}],
+        )
+        return
+    except Exception as exc:
+        print(f"[memory] couldn't store an approved fact word for word, letting Hindsight rewrite it: {exc!r}")
+    await _client.aretain(_bank_id, content=text, context=APPROVED_FACT_CONTEXT, tags=tags)
+
+
+async def _ensure_approved_strategy() -> None:
+    """Adds APPROVED_STRATEGY to the bank's retain strategies if it isn't there,
+    keeping any other strategies the bank has. Raises on failure (retain_fact
+    then falls back to a normal retain).
+    """
+    global _approved_strategy_bank
+    if _approved_strategy_bank == _bank_id:
+        return
+    config = await _client.aget_bank_config(_bank_id)
+    strategies = dict((config.get("overrides") or {}).get("retain_strategies") or {})
+    if strategies.get(APPROVED_STRATEGY) != _APPROVED_STRATEGY_CONFIG:
+        strategies[APPROVED_STRATEGY] = dict(_APPROVED_STRATEGY_CONFIG)
+        await _client.aupdate_bank_config(_bank_id, retain_strategies=strategies)
+    _approved_strategy_bank = _bank_id
 
 
 async def recall_core() -> list[str]:
@@ -298,9 +359,11 @@ async def _read_hindsight_entries() -> list[str]:
 
 
 async def _clear_hindsight() -> None:
+    global _approved_strategy_bank
     if _client is None:
         return
     await _client.adelete_bank(_bank_id)
+    _approved_strategy_bank = None  # the recreated bank has no strategies yet
     await _client.acreate_bank(_bank_id)
     # A recreated bank starts with no retain_mission -- without this, everything
     # retained until the next Brain restart (which re-applies it via ensure_bank)
