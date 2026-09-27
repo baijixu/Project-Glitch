@@ -103,22 +103,16 @@ from voice import FasterWhisperSTT, NoneTTS, RemoteTTS
 # NoneLLM rather than crashing on a missing endpoint, see its own comment.
 _DEFAULT_LLM_CONFIG: dict = {}
 
-# The saved LLM engine (llm_engines.py) the Renderer's role-play confirm
-# modal switches to and enables/disables thinking on -- fixed, not
-# user-configurable: this is a code-level behavior (see
-# _switch_to_roleplay_engine), not an open-ended list the settings UI lets
-# someone create on the fly (unlike harnesses, see harness.py, which used
-# to work this same fixed way but no longer does). Must be an "ollama"
-# provider engine (see OllamaLLM's docstring) for the "disable thinking"
-# half of that promise to actually mean anything -- an "openai" provider
-# engine of this name would still switch to it, just without a working
-# think toggle.
-ROLEPLAY_LLM_ENGINE_NAME = "Ollama"
+# Which engine role-play uses is a setting now (llm_engines.read_roleplay_engine):
+# by default she stays on whatever engine is active. Picking one -- typically an
+# Ollama-provider engine, the one kind that can reliably turn thinking off --
+# makes role-play switch to it, with thinking as the confirm dialog chose.
 
-# The LLM engine she was on when role-play was turned on, so turning it off can
-# put her back there (see _remember_engine_before_roleplay). Before this,
-# turning role-play off switched her to ROLEPLAY_LLM_ENGINE_NAME and left her
-# there for good -- off LM Studio, and on an engine that may not even be running.
+# When role-play did switch engines: the engine she was on before (first line)
+# and the one role-play switched to (second line), so turning it off can put her
+# back and turn thinking on again there. Before, turning role-play off left her on
+# the role-play engine for good -- off LM Studio, on an engine that may not even
+# be running.
 ROLEPLAY_PREVIOUS_ENGINE_PATH = Path(__file__).parent / "roleplay_previous_engine.txt"
 
 # config.yaml's brain.harness block, captured once at startup -- {"hermes":
@@ -712,6 +706,12 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
         _handle_set_roleplay_active(data, brain)
         await _broadcast(protocol.roleplay_state(profiles.read_roleplay_active()))
         await _broadcast(protocol.llm_engines(llm_engines.list_engines(), llm_engines.read_active_engine_name()))
+    elif msg_type == protocol.SET_ROLEPLAY_ENGINE:
+        try:
+            llm_engines.set_roleplay_engine(str(data.get("name") or ""))
+        except (ValueError, OSError) as exc:
+            print(f"[brain] couldn't set the role-play engine: {exc!r}")
+        await _broadcast(protocol.roleplay_engine(llm_engines.read_roleplay_engine()))
     elif msg_type == protocol.SET_VOICE_ACTIVE:
         voice_settings.set_voice_active(bool(data.get("active")))
     elif msg_type == protocol.SET_WEB_SEARCH_ACTIVE:
@@ -807,6 +807,7 @@ async def _handle_ready(websocket: websockets.ServerConnection, data: dict) -> N
     await websocket.send(json.dumps(protocol.souls(souls.list_souls(), souls.read_active_soul_name())))
     await websocket.send(json.dumps(protocol.avatars(avatars.list_avatars())))
     await websocket.send(json.dumps(protocol.roleplay_state(profiles.read_roleplay_active())))
+    await websocket.send(json.dumps(protocol.roleplay_engine(llm_engines.read_roleplay_engine())))
     await websocket.send(json.dumps(protocol.voice_state(voice_settings.read_voice_active())))
     await websocket.send(json.dumps(protocol.web_search_state(web_search.read_active())))
     await websocket.send(json.dumps(protocol.curiosity_state(curiosity.read_active())))
@@ -1927,35 +1928,31 @@ def _handle_load_profile(data: dict, brain: Brain) -> None:
 
 
 def _handle_set_roleplay_active(data: dict, brain: Brain) -> None:
-    """The role-play toggle. On: remembers her current LLM engine, switches to
-    ROLEPLAY_LLM_ENGINE_NAME (with thinking as the Renderer's confirm modal
-    chose), and resumes the last role-play scene. Off: puts her back on the
-    engine she had before, and brings the normal conversation back. The two
-    conversations are saved separately (brain/conversation.py), so neither
-    wipes the other.
+    """The role-play toggle. On: if a role-play engine is set (Settings), remembers
+    her current engine and switches to it, with thinking as the Renderer's confirm
+    dialog chose -- otherwise she stays on her current engine -- and resumes the
+    last role-play scene. Off: puts her back on the engine she had before, if role-
+    play switched, and brings the normal conversation back. The two conversations
+    are saved separately (brain/conversation.py), so neither wipes the other.
     """
     active = bool(data.get("active"))
     was_active = profiles.read_roleplay_active()
     profiles.set_roleplay_active(active)
     if active:
-        # think is always sent by the Renderer's role-play toggle (see
-        # brain_client.js's _setRoleplayActive) -- the `is not None` check
-        # is just defensive in case some future caller omits it, in which
-        # case leave whatever LLM engine is already active alone rather
-        # than assuming a switch was wanted.
+        # The Renderer sends think only when a role-play engine is set (from its
+        # confirm dialog). No engine set, or no think: she stays where she is.
         think = data.get("think")
-        if think is not None:
+        target = llm_engines.read_roleplay_engine()
+        if target and think is not None:
             if not was_active:
-                _remember_engine_before_roleplay()
-            _switch_to_roleplay_engine(bool(think), brain)
+                _remember_engine_before_roleplay(target)
+            _switch_to_roleplay_engine(target, bool(think), brain)
         content = profiles.read_active_profile()
         _apply_conversation_mode(brain, persona=content)
         print(f"[brain] role-play activated{' with the selected profile' if content else ' (no profile selected yet)'}")
     else:
-        # Turns thinking back on in ROLEPLAY_LLM_ENGINE_NAME's saved settings
-        # (the fast no-think mode is only for role-play) and puts her back on
-        # the engine she was using before role-play was turned on. Stays on
-        # the current engine if there's no record of one or it's gone.
+        # If role-play switched engines: thinking back on there (the no-think
+        # mode is only for role-play) and back to the engine she had before.
         _restore_engine_after_roleplay(brain)
         _apply_conversation_mode(brain, persona="")  # the flag is already off, so this is her main soul
         print("[brain] role-play deactivated -- back to her main soul and her normal conversation")
@@ -1975,37 +1972,38 @@ def _apply_conversation_mode(brain: Brain, persona: str) -> None:
         brain.llm.restore_history(conversation.load_state(_conversation_mode()))
 
 
-def _remember_engine_before_roleplay() -> None:
+def _remember_engine_before_roleplay(roleplay_engine: str) -> None:
     current = llm_engines.read_active_engine_name()
-    if current == ROLEPLAY_LLM_ENGINE_NAME:
-        return  # already on it: nothing different to go back to
+    previous = "" if current == roleplay_engine else current  # already on it: nothing different to go back to
     try:
-        ROLEPLAY_PREVIOUS_ENGINE_PATH.write_text(current, encoding="utf-8")
+        ROLEPLAY_PREVIOUS_ENGINE_PATH.write_text(f"{previous}\n{roleplay_engine}", encoding="utf-8")
     except OSError as exc:
         print(f"[brain] couldn't remember the LLM engine before role-play: {exc!r}")
 
 
 def _restore_engine_after_roleplay(brain: Brain) -> None:
-    """Turns thinking back on in ROLEPLAY_LLM_ENGINE_NAME's saved settings (the
-    fast no-think mode is only for role-play), then puts her back on the engine
-    she was using before role-play. If there's no record of one -- role-play was
-    turned on before this was remembered -- she stays on whatever is active,
-    rebuilt if that's the role-play engine so thinking actually comes back on.
+    """If role-play switched engines (see _remember_engine_before_roleplay):
+    turns thinking back on in the role-play engine's saved settings (the no-think
+    mode is only for role-play) and puts her back on the engine she was using
+    before. With no record -- role-play kept her current engine -- nothing
+    changes. (An older one-line record has only the previous engine.)
     """
     try:
-        engine = llm_engines.read_engine(ROLEPLAY_LLM_ENGINE_NAME)
+        lines = ROLEPLAY_PREVIOUS_ENGINE_PATH.read_text(encoding="utf-8").splitlines()
+        ROLEPLAY_PREVIOUS_ENGINE_PATH.unlink()
+    except OSError:
+        return
+    previous = lines[0].strip() if lines else ""
+    roleplay_engine = lines[1].strip() if len(lines) > 1 else ""
+    try:
+        engine = llm_engines.read_engine(roleplay_engine) if roleplay_engine else None
     except (ValueError, OSError):
         engine = None
     if engine is not None:
         llm_engines.save_engine(
-            ROLEPLAY_LLM_ENGINE_NAME, engine["endpoint"], engine.get("model", ""), engine.get("api_key", ""),
+            roleplay_engine, engine["endpoint"], engine.get("model", ""), engine.get("api_key", ""),
             provider=engine.get("provider", "openai"), think=True,
         )
-    try:
-        previous = ROLEPLAY_PREVIOUS_ENGINE_PATH.read_text(encoding="utf-8").strip()
-        ROLEPLAY_PREVIOUS_ENGINE_PATH.unlink()
-    except OSError:
-        previous = ""
     if previous and previous != llm_engines.NONE_NAME:
         try:
             llm_engines.read_engine(previous)
@@ -2013,7 +2011,7 @@ def _restore_engine_after_roleplay(brain: Brain) -> None:
             print(f"[brain] the engine used before role-play ({previous!r}) is gone -- staying where she is")
             previous = ""
     target = previous or llm_engines.read_active_engine_name()
-    if not previous and target != ROLEPLAY_LLM_ENGINE_NAME:
+    if not previous and target != roleplay_engine:
         return  # nothing to switch back to, and nothing to rebuild
     if isinstance(brain.llm, HarnessLLM):
         llm_engines.set_active_engine_name(target)  # a harness is in charge; applied when it's turned off
@@ -2027,27 +2025,20 @@ def _restore_engine_after_roleplay(brain: Brain) -> None:
     print(f"[brain] role-play off -- back on LLM engine {target!r}")
 
 
-def _switch_to_roleplay_engine(think: bool, brain: Brain) -> None:
-    """Updates the saved ROLEPLAY_LLM_ENGINE_NAME LLM engine's think flag
-    (preserving its other fields -- endpoint/model/api_key/provider) and
-    switches to it. This is what the Renderer's "role-play requires Ollama"
-    confirm modal actually promises: a reasoning-heavy persona needs a
-    backend that can genuinely turn thinking off (see OllamaLLM's
-    docstring for why LM Studio's best-effort budget cap isn't that).
-
-    Silently no-ops, leaving whatever LLM engine was already active alone,
-    if no engine named ROLEPLAY_LLM_ENGINE_NAME exists -- the confirm modal
-    already told the user Ollama is required before this was ever called,
-    so a missing engine here means they back out of actually setting one
-    up, not something worth breaking the whole role-play toggle over.
+def _switch_to_roleplay_engine(name: str, think: bool, brain: Brain) -> None:
+    """Updates the chosen role-play engine's think flag (keeping its other
+    fields) and switches to it. think only takes effect on an Ollama-provider
+    engine -- the one kind that can reliably turn thinking off (see OllamaLLM's
+    docstring). Leaves her on her current engine if it can't be read or built,
+    rather than breaking the role-play toggle over it.
     """
     try:
-        engine = llm_engines.read_engine(ROLEPLAY_LLM_ENGINE_NAME)
+        engine = llm_engines.read_engine(name)
     except (ValueError, OSError) as exc:
-        print(f"[brain] role-play wanted the {ROLEPLAY_LLM_ENGINE_NAME!r} LLM engine but couldn't read it: {exc!r}")
+        print(f"[brain] role-play wanted the {name!r} LLM engine but couldn't read it: {exc!r}")
         return
     llm_engines.save_engine(
-        ROLEPLAY_LLM_ENGINE_NAME,
+        name,
         engine["endpoint"],
         engine.get("model", ""),
         engine.get("api_key", ""),
@@ -2055,12 +2046,12 @@ def _switch_to_roleplay_engine(think: bool, brain: Brain) -> None:
         think=think,
     )
     try:
-        brain.llm = _build_llm(ROLEPLAY_LLM_ENGINE_NAME)
+        brain.llm = _build_llm(name)
     except Exception as exc:
-        print(f"[brain] couldn't switch to {ROLEPLAY_LLM_ENGINE_NAME!r} for role-play: {exc!r}")
+        print(f"[brain] couldn't switch to {name!r} for role-play: {exc!r}")
         return
-    llm_engines.set_active_engine_name(ROLEPLAY_LLM_ENGINE_NAME)
-    print(f"[brain] role-play switched LLM engine to {ROLEPLAY_LLM_ENGINE_NAME!r} (think={think})")
+    llm_engines.set_active_engine_name(name)
+    print(f"[brain] role-play switched LLM engine to {name!r} (think={think})")
 
 
 # ============================================================================

@@ -25,6 +25,9 @@ from names import sanitize_name
 
 LLM_ENGINES_DIR = Path(__file__).parent / "llm_engines"
 ACTIVE_ENGINE_NAME_PATH = Path(__file__).parent / "active_llm_engine_name.txt"
+# Which engine role-play switches to (Settings -> Role-play), or none to keep
+# the current one -- see read_roleplay_engine.
+ROLEPLAY_ENGINE_PATH = Path(__file__).parent / "roleplay_llm_engine.txt"
 
 NONE_NAME = "None"
 
@@ -95,3 +98,23 @@ def read_active_engine_name() -> str:
     if ACTIVE_ENGINE_NAME_PATH.exists():
         return ACTIVE_ENGINE_NAME_PATH.read_text(encoding="utf-8").strip() or NONE_NAME
     return NONE_NAME
+
+
+def read_roleplay_engine() -> str:
+    """The saved engine role-play switches to, or "" to stay on whatever engine
+    is active (the default). An engine that's since been deleted counts as "".
+    Role-play used to always switch to an engine named "Ollama", which for
+    anyone not running Ollama meant every first role-play reply failed.
+    """
+    try:
+        name = ROLEPLAY_ENGINE_PATH.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+    return name if name in list_engines() else ""
+
+
+def set_roleplay_engine(name: str) -> None:
+    """name is a saved engine, or "" to keep the current engine in role-play."""
+    if name and name not in list_engines():
+        raise ValueError(f"there's no saved LLM engine called {name!r}")
+    ROLEPLAY_ENGINE_PATH.write_text(name, encoding="utf-8")

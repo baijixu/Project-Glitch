@@ -26,6 +26,7 @@ DELETE_SOUL = "delete_soul"
 SAVE_AVATAR = "save_avatar"
 LOAD_AVATAR = "load_avatar"
 SET_ROLEPLAY_ACTIVE = "set_roleplay_active"
+SET_ROLEPLAY_ENGINE = "set_roleplay_engine"
 SAVE_TTS_ENGINE = "save_tts_engine"
 LOAD_TTS_ENGINE = "load_tts_engine"
 GET_TTS_ENGINE = "get_tts_engine"
@@ -88,6 +89,7 @@ SOUL_CONTENT = "soul_content"
 AVATARS = "avatars"
 AVATAR_DATA = "avatar_data"
 ROLEPLAY_STATE = "roleplay_state"
+ROLEPLAY_ENGINE = "roleplay_engine"
 VOICE_STATE = "voice_state"
 WEB_SEARCH_STATE = "web_search_state"
 CURIOSITY_STATE = "curiosity_state"
@@ -195,6 +197,11 @@ def avatar_data(name: str, data_b64: str, kind: str) -> dict:
 
 def roleplay_state(active: bool) -> dict:
     return {"type": ROLEPLAY_STATE, "active": active}
+
+
+def roleplay_engine(name: str) -> dict:
+    """The engine role-play switches to, or "" to stay on the current one."""
+    return {"type": ROLEPLAY_ENGINE, "name": name}
 
 
 def voice_state(active: bool) -> dict:

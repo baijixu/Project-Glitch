@@ -212,10 +212,9 @@ under `brain/`.
   copied into `rp_soul.md` / `rp_user.md` when selected. **No role-play action ever writes `soul.md` or `user.md`.**
 - While role-play is on, her real memory, your `user.md`, learned behavior rules, the clock, and curiosity are all paused, so
   a scene never leaks into real life and vice versa.
-- **Role-play runs on a saved LLM engine named exactly `Ollama`.** Turning role-play on switches her to it (the confirm dialog
-  lets you choose whether thinking stays on), and turning it off puts her back on the engine she was using before. Make it an
-  Ollama-provider engine, since that's the one that can reliably switch thinking off. Without an engine of that name she stays
-  on her current engine.
+- **Role-play stays on her current LLM engine** by default. To give it its own, pick one under *Role-play LLM engine*:
+  turning role-play on then switches her to it (a dialog lets you turn thinking off, which only works on an Ollama-provider
+  engine), and turning it off puts her back on the engine she was using before.
 - The normal conversation and the role-play scene are saved separately, so switching between them doesn't lose either one.
 
 > **First-run note:** role-play is treated as *on* until you've toggled it once. If memory or lessons seem inactive on a

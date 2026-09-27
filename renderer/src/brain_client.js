@@ -744,9 +744,16 @@ export class BrainClient {
       // has no such side effect, so it still applies
       // immediately below.
       this.roleplayToggleInputEl.checked = this._roleplayActive;
-      if (turningOn) this._openRoleplayConfirmModal();
-      else this._setRoleplayActive(false);
+      // The confirm dialog is only for switching engines -- with "Keep current
+      // engine" (the default) role-play just turns on.
+      if (turningOn && this._roleplayEngine) this._openRoleplayConfirmModal();
+      else this._setRoleplayActive(turningOn);
     });
+    this.roleplayEngineSelectEl = document.getElementById("roleplay-engine-select");
+    this._roleplayEngine = ""; // "" = keep the current engine (brain/llm_engines.py's read_roleplay_engine)
+    this.roleplayEngineSelectEl?.addEventListener("change", () =>
+      this._send({ type: "set_roleplay_engine", name: this.roleplayEngineSelectEl.value }),
+    );
     this.roleplayConfirmCancelButtonEl?.addEventListener("click", () => this._closeRoleplayConfirmModal());
     this.roleplayConfirmModalBackdropEl?.addEventListener("click", (e) => {
       if (e.target === this.roleplayConfirmModalBackdropEl) this._closeRoleplayConfirmModal();
@@ -1939,20 +1946,35 @@ export class BrainClient {
   _setRoleplayActive(active, think) {
     this._roleplayActive = active;
     this._renderRoleplayToggle();
-    this._send({ type: "set_roleplay_active", active, think: !!think });
-    // Optimistic, same reasoning as _loadLlmEngine -- Brain doesn't echo
-    // back an llm_engines update after either switch, so without this the
-    // Settings LLM Engine dropdown would keep showing whatever was active
-    // before, even though the switch already happened server-side.
-    // "Ollama" is deliberately hardcoded, not a guess -- it must match
-    // main.py's own ROLEPLAY_LLM_ENGINE_NAME exactly, since that's the one
-    // fixed engine role-play always switches to (see that constant's own
-    // comment for why it's fixed rather than user-configurable).
-    this._activeLlmEngineName = "Ollama";
-    this._renderLlmEngineList(this._llmEngineNames, this._activeLlmEngineName);
+    // think only when switching to a role-play engine (from the confirm dialog);
+    // without it Brain keeps her on her current engine. Brain answers with an
+    // llm_engines broadcast, so the LLM dropdown follows any switch.
+    const message = { type: "set_roleplay_active", active };
+    if (think !== undefined) message.think = !!think;
+    this._send(message);
+  }
+
+  // Settings -> Role-play LLM engine: "Keep current engine" ("") or any saved engine.
+  _renderRoleplayEngineSelect() {
+    const el = this.roleplayEngineSelectEl;
+    if (!el) return;
+    el.replaceChildren();
+    const keep = document.createElement("option");
+    keep.value = "";
+    keep.textContent = "Keep current engine";
+    el.appendChild(keep);
+    for (const name of this._llmEngineNames) {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      el.appendChild(option);
+    }
+    el.value = this._llmEngineNames.includes(this._roleplayEngine) ? this._roleplayEngine : "";
   }
 
   _openRoleplayConfirmModal() {
+    const nameEl = document.getElementById("roleplay-confirm-engine-name");
+    if (nameEl) nameEl.textContent = this._roleplayEngine;
     if (this.roleplayConfirmThinkToggleEl) this.roleplayConfirmThinkToggleEl.checked = false;
     if (this.roleplayConfirmModalBackdropEl) this.roleplayConfirmModalBackdropEl.hidden = false;
   }
@@ -2556,6 +2578,7 @@ export class BrainClient {
     this._activeLlmEngineName = active;
     _renderDropdown(this.llmEngineSelectEl, [NONE_LLM_ENGINE_NAME, ...names], active);
     this._updateLlmEngineEditControls();
+    this._renderRoleplayEngineSelect(); // same engine list
   }
 
   _loadLlmEngine(name) {
@@ -3199,6 +3222,10 @@ export class BrainClient {
       case "roleplay_state":
         this._roleplayActive = !!data.active;
         this._renderRoleplayToggle();
+        break;
+      case "roleplay_engine":
+        this._roleplayEngine = data.name || "";
+        this._renderRoleplayEngineSelect();
         break;
       case "voice_state":
         if (this.voiceToggleInputEl) this.voiceToggleInputEl.checked = !!data.active;

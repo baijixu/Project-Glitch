@@ -104,6 +104,12 @@
                 <span class="settings-toggle-track"></span>
               </span>
             </label>
+            <label for="roleplay-engine-select">Role-play LLM engine</label>
+            <select id="roleplay-engine-select" class="settings-select"></select>
+            <p class="settings-hint">
+              "Keep current engine" leaves her on the engine she's already using. Pick one to switch to it
+              while role-play is on, and back when it's off (an Ollama engine can also turn thinking off).
+            </p>
             <div id="profile-options">
               <h3>User RP Persona</h3>
               <p class="settings-hint">Pick a saved profile to role-play with Glitch, or create a new one.</p>
@@ -582,11 +588,11 @@
     </div>
     <div id="roleplay-confirm-modal-backdrop" class="modal-backdrop" hidden>
       <div id="roleplay-confirm-modal" class="modal" role="dialog" aria-labelledby="roleplay-confirm-modal-title">
-        <h2 id="roleplay-confirm-modal-title">Role-play Requires Ollama</h2>
+        <h2 id="roleplay-confirm-modal-title">Switch Engine for Role-play</h2>
         <p class="settings-hint">
-          A role-play persona gives her a lot more to reason through than her default soul does, which can mean long
-          waits or empty replies on a reasoning model. Turning role-play on switches her to the saved "Ollama" LLM
-          engine, which can reliably disable thinking entirely -- unlike LM Studio's best-effort token budget.
+          Turning role-play on switches her to the "<span id="roleplay-confirm-engine-name"></span>" LLM engine
+          (your choice in Settings), and back to her current one when role-play is off. Thinking can be turned
+          off for faster replies -- that only works on an Ollama engine.
         </p>
         <label id="roleplay-confirm-think-row" class="settings-toggle-row">
           <span>Enable Thinking</span>
