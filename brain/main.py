@@ -44,16 +44,20 @@ LocalLLM) first.
 """
 
 import asyncio
+import collections
 import errno
+import ipaddress
 import base64
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
 import tempfile
 import time
 import urllib.parse
+import urllib.request
 from pathlib import Path
 
 import websockets
@@ -197,6 +201,29 @@ _DEBUG_CONNECTIONS: set[websockets.ServerConnection] = set()
 # one happened to ask. Added/removed in handle_renderer, same lifecycle
 # as _DEBUG_CONNECTIONS.
 _RENDERER_CONNECTIONS: set[websockets.ServerConnection] = set()
+
+# What each connected device says it is ("Android phone · Chrome 140", sent in
+# its `ready`), for the debug log: the setup snapshot lists every connected
+# device, and Brain-wide events say which device caused them. Removed when the
+# connection closes.
+_DEVICE_NAMES: dict[websockets.ServerConnection, str] = {}
+MAX_DEVICE_NAME_CHARS = 120
+
+
+def _device_label(websocket: websockets.ServerConnection) -> str:
+    """"Android phone · Chrome 140 via Tailscale (100.101.2.3)" -- the device's own
+    description plus how it reached Brain, from its address (see _auth_ip)."""
+    name = _DEVICE_NAMES.get(websocket, "unknown device")
+    ip = _auth_ip(websocket)
+    try:
+        address = ipaddress.ip_address(ip)
+    except ValueError:
+        return f"{name} ({ip})"
+    if address.is_loopback:
+        return f"{name} via this PC"
+    if address in ipaddress.ip_network("100.64.0.0/10"):
+        return f"{name} via Tailscale ({ip})"
+    return f"{name} via {'home network' if address.is_private else 'the internet'} ({ip})"
 
 # Failed-auth counter per source IP, see AUTH_MAX_FAILURES/AUTH_LOCKOUT_SEC
 # above. Maps ip -> (failure_count, locked_until monotonic timestamp).
@@ -386,6 +413,85 @@ async def _debug_log(websocket: websockets.ServerConnection, category: str, mess
         pass
 
 
+async def _debug_broadcast(category: str, message: str, ms: float | None = None) -> None:
+    """_debug_log for things no one device asked for -- she reached out, role-play
+    was toggled, a background save failed -- sent to every device that's
+    debugging. Same rules: never conversation content, never raises.
+    """
+    for websocket in list(_DEBUG_CONNECTIONS):
+        await _debug_log(websocket, category, message, ms)
+
+
+# Console lines worth a debug-log entry: failures and warnings, from any module
+# ("[memory] couldn't ...", "[llm] ... failed", "WARNING: ..."). Everything else
+# stays console-only -- including "[brain] user said: ..." and her mood lines,
+# which carry conversation content.
+_CONSOLE_PROBLEM = re.compile(r"couldn't|could not|failed|error|warning|timed out|refused|unreachable", re.I)
+_CONSOLE_PREFIX = re.compile(r"^\[(\w+)\]\s*")
+# Console lines that quote what was said -- never copied, whatever words they contain.
+_CONSOLE_CONTENT_MARKERS = ("user said", "mood:", "reaching out with")
+# The latest problems, kept whether or not a device is debugging: many happen
+# at startup (Hindsight unreachable, a bad engine), before any device connects,
+# and would otherwise never reach a log. The setup snapshot lists them.
+_RECENT_PROBLEMS: collections.deque = collections.deque(maxlen=30)
+
+
+class _ConsoleToDebugLog:
+    """Wraps sys.stdout so a problem printed anywhere in Brain also reaches the
+    debug log (_debug_broadcast). Before this, a failed memory save, a failed
+    lesson or a failed reach-out only showed in Brain's console window, and a
+    downloaded debug log said nothing about it. Prints from worker threads are
+    handed to the event loop, since sending is loop-only.
+    """
+
+    def __init__(self, stream, loop: asyncio.AbstractEventLoop) -> None:
+        self._stream = stream
+        self._loop = loop
+        self._partial = ""
+
+    def write(self, text: str) -> int:
+        written = self._stream.write(text)
+        self._partial += text
+        *lines, self._partial = self._partial.split("\n")
+        for line in lines:
+            if _CONSOLE_PROBLEM.search(line) and not any(m in line for m in _CONSOLE_CONTENT_MARKERS):
+                match = _CONSOLE_PREFIX.match(line)
+                category = match.group(1) if match else "brain"
+                message = line[match.end():] if match else line
+                _RECENT_PROBLEMS.append((time.time(), category, message.strip()))
+                if not _DEBUG_CONNECTIONS:
+                    continue
+                try:
+                    self._loop.call_soon_threadsafe(
+                        lambda c=category, m=message: _spawn(_debug_broadcast(c, f"console: {m.strip()}"))
+                    )
+                except RuntimeError:
+                    pass  # the loop is closing
+        return written
+
+    def flush(self) -> None:
+        self._stream.flush()
+
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
+
+
+def _brain_version() -> str:
+    """The git commit Brain is running, for the debug log's snapshot -- "unknown"
+    outside a git checkout."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=Path(__file__).parent, capture_output=True, text=True, timeout=5
+        )
+        return result.stdout.strip() or "unknown"
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+
+
+_BRAIN_VERSION = _brain_version()
+_BRAIN_STARTED_AT = time.time()
+
+
 async def _send_harness_state(websocket: websockets.ServerConnection) -> None:
     """Sends harness_state to one device (a newly connected one, _handle_ready).
     After a change, every device gets it instead: _broadcast(_harness_state_message()).
@@ -493,6 +599,7 @@ async def handle_renderer(websocket: websockets.ServerConnection, brain: Brain, 
         ping_task.cancel()
         _DEBUG_CONNECTIONS.discard(websocket)
         _RENDERER_CONNECTIONS.discard(websocket)
+        _DEVICE_NAMES.pop(websocket, None)
         print("[brain] renderer disconnected")
 
 
@@ -576,7 +683,11 @@ async def _run_reply_message(websocket: websockets.ServerConnection, raw: str, b
     Waits its turn behind any reply already in progress (_reply_lock).
     """
     try:
+        queued_at = time.monotonic()
         async with _reply_lock():
+            waited = time.monotonic() - queued_at
+            if waited > 0.5:  # another reply (or her reaching out) was still going
+                await _debug_log(websocket, "brain", f"waited {waited:.1f}s for another reply to finish first", waited * 1000)
             await _handle_message(websocket, raw, brain)
     except ConnectionClosed:
         pass
@@ -706,6 +817,11 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
         await _handle_manage_avatar(websocket, msg_type, data)
     elif msg_type == protocol.SET_ROLEPLAY_ACTIVE:
         _handle_set_roleplay_active(data, brain)
+        await _debug_broadcast(
+            "roleplay",
+            f"role-play {'on' if profiles.read_roleplay_active() else 'off'} (from {_DEVICE_NAMES.get(websocket, 'unknown device')}), "
+            f"LLM engine now {llm_engines.read_active_engine_name()!r}",
+        )
         await _broadcast(protocol.roleplay_state(profiles.read_roleplay_active()))
         await _broadcast(protocol.llm_engines(llm_engines.list_engines(), llm_engines.read_active_engine_name()))
     elif msg_type == protocol.SET_ROLEPLAY_ENGINE:
@@ -790,7 +906,7 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
     elif msg_type == protocol.DELETE_HARNESS:
         await _handle_delete_harness(websocket, data, brain)
     elif msg_type == protocol.SET_DEBUG_ACTIVE:
-        _handle_set_debug_active(websocket, data)
+        await _handle_set_debug_active(websocket, data, brain)
     elif msg_type == protocol.DEBUG_PING:
         await websocket.send(json.dumps(protocol.debug_pong(data.get("ts"))))
     elif msg_type == protocol.RESTART_BRAIN:
@@ -804,7 +920,10 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
 # ============================================================================
 
 async def _handle_ready(websocket: websockets.ServerConnection, data: dict) -> None:
-    print(f"[brain] renderer ready, model={data.get('model')!r}")
+    device = data.get("device")
+    if isinstance(device, str) and device.strip():
+        _DEVICE_NAMES[websocket] = device.strip()[:MAX_DEVICE_NAME_CHARS]
+    print(f"[brain] renderer ready: {_device_label(websocket)}")
     await websocket.send(json.dumps(protocol.profiles(profiles.list_profiles(), profiles.read_active_profile_name())))
     await websocket.send(json.dumps(protocol.souls(souls.list_souls(), souls.read_active_soul_name())))
     await websocket.send(json.dumps(protocol.avatars(avatars.list_avatars())))
@@ -1833,16 +1952,106 @@ async def _handle_save_hindsight_config(data: dict) -> None:
     await _broadcast_lessons_state()
 
 
-def _handle_set_debug_active(websocket: websockets.ServerConnection, data: dict) -> None:
-    """Adds/removes this one connection from _DEBUG_CONNECTIONS -- purely
-    local bookkeeping, no reply needed (the Renderer already knows its
-    own toggle state; it's Brain's future debug_event sends that need to
-    know, not this client).
+async def _handle_set_debug_active(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    """Adds/removes this one connection from _DEBUG_CONNECTIONS. Turning it on
+    also sends a snapshot of how Brain is set up (_debug_snapshot), so a
+    downloaded log says which engine, model, settings and features were in play
+    without anyone having to ask.
     """
     if bool(data.get("active")):
         _DEBUG_CONNECTIONS.add(websocket)
+        for line in await _debug_snapshot(brain, websocket):
+            await _debug_log(websocket, "setup", line)
     else:
         _DEBUG_CONNECTIONS.discard(websocket)
+
+
+async def _debug_snapshot(brain: Brain, current: websockets.ServerConnection | None = None) -> list[str]:
+    """How Brain is set up right now -- settings and names only, no content.
+    `current` is the device asking, marked as "This device" in the list."""
+    def on(flag: bool) -> str:
+        return "on" if flag else "off"
+
+    llm = brain.llm
+    lines = [f"Brain {_BRAIN_VERSION}, up {int((time.time() - _BRAIN_STARTED_AT) / 60)} min"]
+    for connection in sorted(_RENDERER_CONNECTIONS, key=lambda c: c is not current):
+        lines.append(f"{'This device' if connection is current else 'Also connected'}: {_device_label(connection)}")
+    if isinstance(llm, HarnessLLM):
+        session = (llm.session_id or "none")[:14]
+        lines.append(f"LLM: harness {getattr(llm, 'harness_name', '')!r} (session {session}...)")
+    elif isinstance(llm, LocalLLM):
+        engine = llm_engines.read_active_engine_name()
+        kind = "Ollama" if isinstance(llm, OllamaLLM) else "OpenAI-compatible"
+        window = await asyncio.to_thread(llm.context_window)
+        lines.append(
+            f"LLM: engine {engine!r} ({kind}), model {llm._model or '(server default)'!r}, "
+            f"context {window or 'unknown'}, keeps ~{llm.history_budget()} tokens of chat, "
+            f"{len(llm._history)} messages in the conversation now"
+        )
+        lines.append(f"Sampling profile: {sampling.read_active_name()!r} {sampling.active_values() or '(server settings)'}")
+    else:
+        lines.append("LLM: none configured")
+    lines.append(f"Speech engine: {tts_engines.read_active_engine_name()!r}, voice {on(voice_settings.read_voice_active())}")
+    provider = memory.read_provider()
+    bank = f", bank {memory.hindsight_bank_id()!r}" if provider == memory.HINDSIGHT_PROVIDER else ""
+    lines.append(
+        f"Memory: {on(memory.read_memory_active())} ({provider}{bank}), training {on(training.read_active())}, "
+        f"lessons {on(lessons.read_active())} ({lessons.read_autonomy()})"
+    )
+    lines.append(
+        f"Role-play {on(profiles.read_roleplay_active())} (engine {llm_engines.read_roleplay_engine() or 'keep current'!r}), "
+        f"curiosity {on(curiosity.read_active())}, web search {on(web_search.read_active())}"
+    )
+    try:
+        lesson_count = str(len(await asyncio.wait_for(lessons.active_lessons(), timeout=5))) if lessons.available() else "n/a"
+    except Exception:
+        lesson_count = "unknown"
+    questions = curiosity.counts()
+    lines.append(
+        f"Waiting for review: {len(training.read_pending())} memories, {len(lessons.read_pending())} lesson changes; "
+        f"active lessons: {lesson_count}; her saved questions: {questions['open']} open, {questions['done']} asked or dropped"
+    )
+    if isinstance(llm, LocalLLM):
+        lines.append(f"Loaded on her LLM server: {await asyncio.to_thread(_loaded_models, llm)}")
+    if provider == memory.HINDSIGHT_PROVIDER:
+        lines.append(f"Hindsight's own model (rewrites and summaries): {await asyncio.to_thread(_hindsight_model)}")
+    if _RECENT_PROBLEMS:
+        lines.append(f"Problems since Brain started ({len(_RECENT_PROBLEMS)}, newest last):")
+        for at, category, message in list(_RECENT_PROBLEMS)[-10:]:
+            lines.append(f"  {time.strftime('%H:%M:%S', time.localtime(at))} [{category}] {message}")
+    return lines
+
+
+def _loaded_models(llm: LocalLLM) -> str:
+    """Which models her LLM server has in memory right now -- a slow reply is
+    often a model being swapped in. LM Studio (/api/v0/models) and Ollama
+    (/api/ps) can say; anything else is "unknown". Never raises.
+    """
+    try:
+        if isinstance(llm, OllamaLLM):
+            response = llm._http.get("/api/ps", timeout=3)
+            names = [m.get("name") for m in response.json().get("models", [])]
+        else:
+            base = str(llm._client.base_url).rstrip("/").removesuffix("/v1")
+            with urllib.request.urlopen(f"{base}/api/v0/models", timeout=3) as response:
+                data = json.load(response).get("data", [])
+            names = [m.get("id") for m in data if m.get("state") == "loaded"]
+        return ", ".join(n for n in names if n) or "nothing loaded"
+    except Exception:
+        return "unknown"
+
+
+def _hindsight_model() -> str:
+    """The model Hindsight used for its latest rewrite or summary (from its own
+    request log), or "unknown". Never raises."""
+    try:
+        api_url = (memory.read_hindsight_config().get("api_url") or "").rstrip("/")
+        bank = memory.hindsight_bank_id()
+        with urllib.request.urlopen(f"{api_url}/v1/default/banks/{bank}/llm-requests?limit=1", timeout=3) as response:
+            items = json.load(response).get("items") or []
+        return f"{items[0].get('model')} (latest call: {items[0].get('operation')})" if items else "no calls yet"
+    except Exception:
+        return "unknown"
 
 
 async def _handle_restart_brain(websocket: websockets.ServerConnection) -> None:
@@ -2215,7 +2424,8 @@ async def _reply_to(
                 await _debug_log(websocket, "memory", f"recall failed: {exc!r}", (time.monotonic() - recall_start) * 1000)
             else:
                 brain.llm.set_memory(relevant)
-                await _debug_log(websocket, "memory", "recall ok", (time.monotonic() - recall_start) * 1000)
+                found = sum(1 for line in relevant.splitlines() if line.startswith("- "))
+                await _debug_log(websocket, "memory", f"recall ok: {found} memories", (time.monotonic() - recall_start) * 1000)
         else:
             # Role-play active, or memory turned off -- clears whatever a
             # previous turn set so it can't linger into this one (e.g.
@@ -2250,6 +2460,8 @@ async def _reply_to(
         recent = [m["content"] for m in brain.llm._history if m.get("role") == "assistant" and isinstance(m.get("content"), str)]
         brain.llm.set_curiosity(curiosity.start_turn(recent[-curiosity.QUESTION_COOLDOWN_REPLIES:]) if curious else "")
     answered = curiosity.answered_question() if curious else ""  # her question this message answers, for memory
+    for event in curiosity.take_events():
+        await _debug_log(websocket, "curiosity", event)
 
     llm_start = time.monotonic()
     try:
@@ -2268,7 +2480,28 @@ async def _reply_to(
     # Never logs reply_text itself -- timing/outcome only, per the
     # Debugging feature's whole point (connection/timing/errors, not
     # conversation content).
-    await _debug_log(websocket, "llm", "LLM reply received", (time.monotonic() - llm_start) * 1000)
+    # Sizes and settings only -- how big the prompt was, how long the reply was,
+    # which sampling profile -- so a slow or odd reply can be told apart.
+    details = ""
+    usage = getattr(brain.llm, "last_usage", None) or {}
+    llm_ms = (time.monotonic() - llm_start) * 1000
+    if isinstance(brain.llm, LocalLLM):
+        thinking = f", {usage['reasoning']} of them thinking" if usage.get("reasoning") else ""
+        details = (
+            f" ({usage.get('prompt', '?')} prompt + {usage.get('completion', '?')} reply tokens{thinking}, "
+            f"{len(brain.llm._history)} messages, profile {sampling.read_active_name()!r})"
+        )
+    await _debug_log(websocket, "llm", f"LLM reply received{details}", llm_ms)
+    trim = getattr(brain.llm, "last_trim", None)
+    if trim:
+        await _debug_log(
+            websocket, "llm",
+            f"conversation trimmed: dropped the oldest {trim['dropped']} messages, kept {trim['kept']} "
+            f"(budget ~{trim['budget']} tokens)",
+        )
+    if llm_ms > SLOW_REPLY_MS and isinstance(brain.llm, LocalLLM):
+        loaded = await asyncio.to_thread(_loaded_models, brain.llm)
+        await _debug_log(websocket, "llm", f"slow reply -- loaded on her LLM server now: {loaded}")
     if getattr(brain.llm, "last_reply_fell_back", False):
         await _debug_log(websocket, "llm", "ran out of thinking room -- answered again with thinking off")
 
@@ -2317,6 +2550,8 @@ async def _reply_to(
     _spawn(_maybe_retain_memory(websocket, text, "" if omit_reply else reply_text, brain, asked=answered))
     if curious:
         curiosity.end_turn(reply_text)
+        for event in curiosity.take_events():
+            await _debug_log(websocket, "curiosity", event)
         # "*" in the user's message means they're playing out an action/scene -- not a source of real questions
         if text and "*" not in text and not omit_reply and curiosity.should_propose():
             _spawn(_maybe_propose_question(websocket, text, reply_text, brain))
@@ -2401,6 +2636,7 @@ async def _handle_resolve_memory_proposal(data: dict) -> None:
         if not fact or len(fact) > training.MAX_FACT_CHARS:
             error = f"a memory needs 1-{training.MAX_FACT_CHARS} characters"
         else:
+            saving_since = time.monotonic()
             try:
                 await memory.retain_fact(fact, importance)
             except Exception as exc:
@@ -2408,6 +2644,9 @@ async def _handle_resolve_memory_proposal(data: dict) -> None:
                 error = "couldn't save it to Hindsight -- it's still in the list"
             else:
                 training.remove_pending(proposal_id)
+                await _debug_broadcast(
+                    "training", f"approved memory saved ({importance}, {len(fact)} chars)", (time.monotonic() - saving_since) * 1000
+                )
     else:
         training.remove_pending(proposal_id)
     await _broadcast(_training_state_message(error))
@@ -2457,11 +2696,15 @@ async def _maybe_propose_question(
     question = curiosity.parse_question(raw)
     if question and curiosity.add_question(question):
         await _debug_log(websocket, "curiosity", "new question kept", (time.monotonic() - start) * 1000)
+    elif question:
+        for event in curiosity.take_events():  # why it wasn't kept (a repeat, list full...)
+            await _debug_log(websocket, "curiosity", event, (time.monotonic() - start) * 1000)
     else:
         await _debug_log(websocket, "curiosity", "nothing to be curious about", (time.monotonic() - start) * 1000)
 
 
 REACH_OUT_CHECK_SEC = 60  # how often the reach-out loop looks at the clock
+SLOW_REPLY_MS = 60_000  # a reply slower than this gets a "which models are loaded" check in the debug log
 
 
 async def _reach_out_loop(brain: Brain) -> None:
@@ -2503,7 +2746,13 @@ async def _reach_out(brain: Brain) -> None:
     finally:
         curiosity.mark_reached_out(question["id"] if question else None)
     if not text:
+        await _debug_broadcast("curiosity", "tried to reach out after an hour of quiet, but the model said nothing")
         return
+    await _debug_broadcast(
+        "curiosity",
+        f"reached out after an hour of quiet ({'with a saved question' if question else 'a check-in'}, {len(text)} chars, "
+        f"to {len(_RENDERER_CONNECTIONS)} device(s))",
+    )
     await _broadcast(protocol.set_expression(mood, 1.0))
     await _broadcast(protocol.speak_text(text))
     conversation.log_reach_out(text)
@@ -2600,6 +2849,7 @@ async def _maybe_retain_memory(
 # ============================================================================
 
 async def main() -> None:
+    sys.stdout = _ConsoleToDebugLog(sys.stdout, asyncio.get_running_loop())
     config = load_config()
     brain_cfg = config["brain"]
     host = brain_cfg.get("host", "localhost")

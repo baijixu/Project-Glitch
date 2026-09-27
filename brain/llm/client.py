@@ -454,6 +454,9 @@ class LocalLLM:
         self.last_reply_used_web_search = False
         # Bumped by cancel_reply() -- see reply()'s check against it.
         self._reply_generation = 0
+        # What the latest reply()'s _trim_history dropped, if anything -- for the
+        # debug log, so "she forgot" can be told apart from "it was trimmed away".
+        self.last_trim: dict | None = None
 
     def cancel_reply(self) -> None:
         """Marks whatever reply() call is currently in flight as abandoned
@@ -525,6 +528,10 @@ class LocalLLM:
             "usage": {
                 "prompt": getattr(usage, "prompt_tokens", None),
                 "completion": getattr(usage, "completion_tokens", None),
+                # How much of the reply went to thinking (LM Studio reports it;
+                # the debug log shows it, so a slow reply that was mostly
+                # thinking can be told apart from a long answer).
+                "reasoning": getattr(getattr(usage, "completion_tokens_details", None), "reasoning_tokens", None),
             },
         }
 
@@ -831,6 +838,7 @@ class LocalLLM:
                 {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_b64}"}},
             ]
         self._history.append({"role": "user", "content": content})
+        self.last_trim = None
         self._trim_history()
         messages = self._request_messages()
         tools = [WEB_SEARCH_TOOL] if web_search_enabled else None
@@ -967,6 +975,8 @@ class LocalLLM:
         while cut < len(self._history) - 1 and self._history[cut].get("role") != "user":
             cut += 1
         del self._history[:cut]
+        if cut:
+            self.last_trim = {"dropped": cut, "kept": len(self._history), "budget": budget}
 
     def restore_history(self, messages: list[dict]) -> None:
         """Puts back a saved conversation (brain/conversation.py) -- at startup, or

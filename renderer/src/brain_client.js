@@ -991,7 +991,9 @@ export class BrainClient {
       // configured (see main.py's _authenticate) -- sending it
       // unconditionally is harmless when Brain has no token to check
       // against, so there's no need to branch on whether authToken is set.
-      this._send({ type: "ready", model: "Glitch.vrm", token: this.authToken });
+      // `device` is a plain description (see _deviceSummary) so Brain's debug log
+      // can say which device is connected and which one did what.
+      this._send({ type: "ready", model: "Glitch.vrm", token: this.authToken, device: _deviceSummary() });
       // A fresh socket means Brain has no record of this connection's
       // debug preference anymore (it's per-connection state, see
       // main.py's _DEBUG_CONNECTIONS) -- re-declare it so debug_events
@@ -1866,6 +1868,8 @@ export class BrainClient {
   _send(message) {
     if (this.socket?.readyState === WebSocket.OPEN) {
       this.socket.send(JSON.stringify(message));
+      const described = _describeSettingChange(message);
+      if (described) this._logDebug("settings", described);
     }
   }
 
@@ -3207,6 +3211,23 @@ export class BrainClient {
   }
 
   async _playAudio(audioB64) {
+    // Browsers (phones especially) start audio "suspended" until the page has
+    // been tapped, and a suspended context plays nothing, silently -- which
+    // looks exactly like "she never speaks". Resume it, and say so in the log.
+    if (this.audioContext.state !== "running") {
+      const before = this.audioContext.state;
+      try {
+        await this.audioContext.resume();
+      } catch {
+        // stays suspended; logged below
+      }
+      this._logDebug(
+        "audio",
+        this.audioContext.state === "running"
+          ? `audio was ${before} -- resumed`
+          : `can't play her voice: audio is ${this.audioContext.state} (the browser wants a tap on the page first)`,
+      );
+    }
     const audioBuffer = await this.audioContext.decodeAudioData(_base64ToArrayBuffer(audioB64));
     const source = this.audioContext.createBufferSource();
     source.buffer = audioBuffer;
@@ -3559,10 +3580,20 @@ export class BrainClient {
   // (downloads whatever was captured before it was turned off) or if the
   // log is empty (downloads a near-empty file, harmless).
   _downloadDebugLog() {
+    // Times below are UTC; the local time and zone are here so they can be
+    // matched against her chat log (brain/chat_logs/, local time).
+    const now = new Date();
+    const offsetMin = -now.getTimezoneOffset();
+    const offset = `UTC${offsetMin >= 0 ? "+" : "-"}${String(Math.floor(Math.abs(offsetMin) / 60)).padStart(2, "0")}:${String(Math.abs(offsetMin) % 60).padStart(2, "0")}`;
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || "unknown zone";
     const header = [
-      `Glitch debug log -- exported ${new Date().toISOString()}`,
+      `Glitch debug log -- exported ${now.toISOString()} (local ${now.toLocaleString()}, ${zone}, ${offset})`,
+      `Device: ${_deviceSummary()}`,
+      `Hardware: ${_deviceHardware()}`,
+      `Window: ${window.innerWidth}x${window.innerHeight}, touch ${navigator.maxTouchPoints > 0 ? "yes" : "no"}, opened at ${location.protocol}//${location.host}`,
+      `Browser details: ${navigator.userAgent}`,
       `Connection state at export: ${this._connectionState}`,
-      `${this._debugLog.length} entr${this._debugLog.length === 1 ? "y" : "ies"}`,
+      `${this._debugLog.length} entr${this._debugLog.length === 1 ? "y" : "ies"} (times are UTC; [setup] lines describe Brain's settings when debugging was turned on)`,
       "",
     ];
     const lines = this._debugLog.map((entry) => {
@@ -3587,7 +3618,7 @@ export class BrainClient {
   // _setSettingsRestarting) since every setting in it reads from the
   // Brain that's about to disappear and come back fresh.
   _restartBrain() {
-    if (!window.confirm("Restart Glitch's Brain? This ends her current conversation history and takes a few seconds -- she'll reconnect automatically.")) {
+    if (!window.confirm("Restart Glitch's Brain? It takes a few seconds and she'll reconnect automatically -- her conversation is saved and picked back up.")) {
       return;
     }
     this._logDebug("brain", "restart requested");
@@ -3614,6 +3645,65 @@ export class BrainClient {
 // already guarantees a non-empty names list itself, via its own reserved
 // "Default"/"Glitch" first entry, so there's no empty-list case to
 // special-case here).
+// A plain description of this device for the debug log and Brain's list of
+// connected devices, e.g. "Android phone · Chrome 140" or "Windows PC · Chrome
+// 152 · app window". Worked out from the browser's own identification string,
+// so it's a best guess -- the raw string is in the log header too.
+function _deviceSummary() {
+  const ua = navigator.userAgent || "";
+  let system = "unknown system";
+  if (/iPhone/.test(ua)) system = "iPhone";
+  else if (/iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) system = "iPad";
+  else if (/Android/.test(ua)) system = /Mobile/.test(ua) ? "Android phone" : "Android tablet";
+  else if (/Windows/.test(ua)) system = "Windows PC";
+  else if (/Macintosh|Mac OS X/.test(ua)) system = "Mac";
+  else if (/CrOS/.test(ua)) system = "Chromebook";
+  else if (/Linux/.test(ua)) system = "Linux PC";
+  const browsers = [
+    ["Edge", /Edg\/(\d+)/],
+    ["Opera", /OPR\/(\d+)/],
+    ["Samsung Internet", /SamsungBrowser\/(\d+)/],
+    ["Firefox", /(?:Firefox|FxiOS)\/(\d+)/],
+    ["Chrome", /(?:Chrome|CriOS)\/(\d+)/],
+    ["Safari", /Version\/(\d+).*Safari/],
+  ];
+  const match = browsers.map(([name, re]) => [name, ua.match(re)]).find(([, m]) => m);
+  const browser = match ? `${match[0]} ${match[1][1]}` : "unknown browser";
+  const appWindow = window.pywebview ? " · app window" : "";
+  return `${system} · ${browser}${appWindow}`;
+}
+
+// The hardware details a browser will tell -- screen, cores, memory, network.
+function _deviceHardware() {
+  const parts = [`screen ${screen.width}x${screen.height} at ${window.devicePixelRatio || 1}x`];
+  if (navigator.hardwareConcurrency) parts.push(`${navigator.hardwareConcurrency} CPU threads`);
+  if (navigator.deviceMemory) parts.push(`~${navigator.deviceMemory} GB memory`);
+  if (navigator.connection?.effectiveType) parts.push(`network ${navigator.connection.effectiveType}`);
+  parts.push(`language ${navigator.language}`);
+  return parts.join(", ");
+}
+
+// What a Settings action this device sent looks like in the debug log --
+// the kind of change and its name or on/off value, never content (no chat
+// text, notes, soul or profile text, typed reasons, API keys). null for
+// anything that isn't a settings change (chat itself is logged elsewhere).
+const _LOGGED_SETTING_PREFIXES = ["set_", "load_", "save_", "delete_", "rename_", "clear_", "resolve_"];
+function _describeSettingChange(message) {
+  const type = message?.type || "";
+  if (type === "set_debug_active" || type === "save_notes") return null;
+  if (type === "rate_reply") return `rate_reply: ${message.rating} (reason ${(message.note || "").length} chars)`;
+  if (type === "restart_brain") return "restart_brain";
+  if (!_LOGGED_SETTING_PREFIXES.some((prefix) => type.startsWith(prefix))) return null;
+  const parts = [];
+  if (typeof message.active === "boolean") parts.push(message.active ? "on" : "off");
+  if (typeof message.think === "boolean") parts.push(`think ${message.think ? "on" : "off"}`);
+  for (const key of ["name", "new_name", "provider", "level", "value"]) {
+    if (typeof message[key] === "string" && message[key]) parts.push(`${key} ${JSON.stringify(message[key])}`);
+  }
+  if (typeof message.approve === "boolean") parts.push(message.approve ? "approved" : "rejected");
+  return parts.length ? `${type}: ${parts.join(", ")}` : type;
+}
+
 function _renderDropdown(selectEl, names, activeName) {
   if (!selectEl) return;
   selectEl.replaceChildren();

@@ -280,7 +280,11 @@ Stop button (cancels a reply in flight), resend last message, ✏️ edit your l
 version instead), **Clear Chat** (starts her on a fresh conversation; her long-term memory stays), two chat layouts
 (history panel or bubbles over the avatar),
 **Restart Brain** button in Settings (useful from a phone), a notes scratchpad (`brain/notes.md`), and a per-device debug
-log of connection and timing events (never conversation content), on by default and downloadable from Settings.
+log, on by default and downloadable from Settings: a snapshot of Brain's setup when it's turned on (engine, model, context,
+which models are loaded, sampling profile, memory and Hindsight's model, role-play and feature switches, what's waiting for
+review, and any problems since Brain started), connection and timing events with prompt, reply and thinking token counts,
+conversation trims, time spent waiting behind another reply, curiosity's decisions, settings changes, her reaching out, sound
+being blocked by the browser, Renderer errors, and every failure Brain prints. Never conversation content.
 
 **Sampling profiles** under *Settings → LLM* set how she picks her words: temperature, top P, top K, min P,
 presence penalty and repeat penalty, sent with each of her replies (LM Studio, llama.cpp and Ollama all honor them per

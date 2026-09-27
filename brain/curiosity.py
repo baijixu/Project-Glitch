@@ -77,6 +77,21 @@ NO_QUESTION_GUIDANCE = (
 OPEN, ASKED, CLOSED = "open", "asked", "closed"
 
 _offered_id: str | None = None  # the question nudged into THIS turn's prompt, if any
+_events: list[str] = []  # what curiosity decided this turn, for the debug log (take_events)
+
+
+def take_events() -> list[str]:
+    """What curiosity decided since the last call -- no question text, just the
+    decisions -- for main.py's debug log. Cleared by reading."""
+    events = list(_events)
+    _events.clear()
+    return events
+
+
+def counts() -> dict:
+    """How many questions are saved, for the debug log's setup snapshot."""
+    questions = _read()
+    return {"open": sum(q["status"] == OPEN for q in questions), "done": sum(q["status"] != OPEN for q in questions)}
 _answered: str = ""  # the question his current message is answering, if she asked one (answered_question)
 
 
@@ -165,11 +180,14 @@ def add_question(text: str) -> bool:
     """False when it's a repeat, too long, or the open list is full."""
     text = text.strip()
     if not text or len(text) > MAX_QUESTION_CHARS:
+        _events.append("new question not kept: empty or too long")
         return False
     questions = _read()
     if sum(1 for q in questions if q["status"] == OPEN) >= MAX_OPEN:
+        _events.append("new question not kept: list is full")
         return False
     if any(_same_topic(text, q["text"]) for q in questions):
+        _events.append("new question not kept: she's asked or saved that before")
         return False
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     questions.append({"id": now + f"-{len(questions)}", "text": text, "status": OPEN, "offers": 0, "created": now})
@@ -238,13 +256,17 @@ def start_turn(recent_replies: list[str] | tuple = ()) -> str:
         if q["status"] == ASKED:
             _answered = q["text"]  # his message is the answer (see answered_question)
             _mark(q["id"], status=CLOSED)  # text kept so it isn't proposed again
+    if _answered:
+        _events.append("this message answers her question -- passed to memory with it")
     if any("?" in reply for reply in list(recent_replies)[-QUESTION_COOLDOWN_REPLIES:]):
+        _events.append("no question this turn: she asked one recently")
         return NO_QUESTION_GUIDANCE
     block = GUIDANCE
     if pacing["turns_since_offer"] >= OFFER_EVERY_TURNS:
         pool = open_questions()
         if pool:
             _offered_id = pool[0]["id"]
+            _events.append(f"offered a saved question ({len(pool)} saved)")
             block += (
                 f"\nIf the conversation gives you a natural opening, you could ask: \"{pool[0]['text']}\" "
                 "-- work it in casually, skip it if it doesn't fit, and don't announce it."
@@ -266,13 +288,16 @@ def end_turn(reply_text: str) -> None:
         if q["id"] != question_id:
             continue
         if _asked_it(q["text"], reply_text):
+            _events.append("she asked the saved question")
             q["status"] = ASKED
             pacing = _pacing()
             pacing["turns_since_offer"] = 0
             _save_pacing(pacing)
         else:
             q["offers"] = q.get("offers", 0) + 1
+            _events.append(f"she didn't ask the saved question (miss {q['offers']} of {MAX_OFFERS_UNUSED})")
             if q["offers"] >= MAX_OFFERS_UNUSED:
+                _events.append("saved question dropped after too many misses")
                 q["status"] = CLOSED
     _write(questions)
 

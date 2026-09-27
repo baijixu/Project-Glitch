@@ -451,6 +451,25 @@ brain = new BrainClient({
 brain.connect();
 window.__brain = brain; // for console-driven verification while building
 
+// Page-wide errors into the debug log (when it's on), so a Renderer crash
+// shows up in a downloaded log instead of only in the browser's console.
+// Message and location only.
+window.addEventListener("error", (event) => {
+  const where = event.filename ? ` at ${event.filename.split("/").pop()}:${event.lineno}` : "";
+  brain._logDebug("client", `error: ${event.message}${where}`);
+});
+// The first tap or key press unlocks sound (see BrainClient._playAudio), so her
+// first reply isn't silent on a browser that starts audio suspended.
+const unlockAudio = () => {
+  if (brain.audioContext?.state === "suspended") brain.audioContext.resume().catch(() => {});
+};
+window.addEventListener("pointerdown", unlockAudio, { once: true, capture: true });
+window.addEventListener("keydown", unlockAudio, { once: true, capture: true });
+window.addEventListener("unhandledrejection", (event) => {
+  const reason = event.reason instanceof Error ? event.reason.message : String(event.reason);
+  brain._logDebug("client", `unhandled promise rejection: ${reason.slice(0, 200)}`);
+});
+
 // Only one of the two slide-out panels should be open at a time -- they'd
 // otherwise physically overlap in the same corner of the screen.
 function togglePanel(panelEl, otherPanelEl) {
