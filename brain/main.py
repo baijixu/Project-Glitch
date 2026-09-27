@@ -80,6 +80,7 @@ import memory
 import notes
 import profiles
 import protocol
+import sampling
 import souls
 import training
 import tts_engines
@@ -722,6 +723,8 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
         await _handle_resolve_memory_proposal(data)
     elif msg_type == protocol.SET_CURIOSITY_ACTIVE:
         curiosity.set_active(bool(data.get("active")))
+    elif msg_type in (protocol.SET_SAMPLING_PROFILE, protocol.SAVE_SAMPLING_PROFILE, protocol.DELETE_SAMPLING_PROFILE):
+        await _handle_sampling_message(websocket, msg_type, data)
     elif msg_type == protocol.SET_MEMORY_ACTIVE:
         memory.set_memory_active(bool(data.get("active")))
     elif msg_type == protocol.CLEAR_MEMORY:
@@ -807,6 +810,7 @@ async def _handle_ready(websocket: websockets.ServerConnection, data: dict) -> N
     await websocket.send(json.dumps(protocol.voice_state(voice_settings.read_voice_active())))
     await websocket.send(json.dumps(protocol.web_search_state(web_search.read_active())))
     await websocket.send(json.dumps(protocol.curiosity_state(curiosity.read_active())))
+    await websocket.send(json.dumps(_sampling_state_message()))
     if _LAST_CONTEXT_USAGE:
         await websocket.send(json.dumps(_LAST_CONTEXT_USAGE))
     await websocket.send(json.dumps(_training_state_message()))
@@ -1597,6 +1601,35 @@ async def _handle_delete_harness(websocket: websockets.ServerConnection, data: d
     await _broadcast(_harness_state_message())
 
 
+def _sampling_state_message(error: str = "") -> dict:
+    return protocol.sampling_state(
+        sampling.read_active_name(), sampling.list_profiles(), list(sampling.BUILTIN_NAMES), error
+    )
+
+
+async def _handle_sampling_message(websocket: websockets.ServerConnection, msg_type: str, data: dict) -> None:
+    """Pick, save or delete a sampling profile (Settings -> LLM). A refused
+    change (a bad number, a built-in name) goes back only to the device that
+    asked, with the reason; a real change goes to every device.
+    """
+    name = data.get("name")
+    try:
+        if not isinstance(name, str):
+            raise ValueError("a sampling profile needs a name")
+        if msg_type == protocol.SET_SAMPLING_PROFILE:
+            sampling.set_active(name)
+        elif msg_type == protocol.SAVE_SAMPLING_PROFILE:
+            values = data.get("values")
+            sampling.save_profile(name, values if isinstance(values, dict) else {})
+        else:
+            sampling.delete_profile(name)
+    except (ValueError, OSError) as exc:
+        await websocket.send(json.dumps(_sampling_state_message(str(exc))))
+        return
+    print(f"[brain] sampling profile now {sampling.read_active_name()!r}: {sampling.active_values()}")
+    await _broadcast(_sampling_state_message())
+
+
 # ============================================================================
 # Behavior learning (lessons)
 # ============================================================================
@@ -2163,6 +2196,10 @@ async def _reply_to(
 
     if isinstance(brain.llm, LocalLLM):
         brain.llm.set_user_info(_effective_user_info())
+        # Her sampling profile (brain/sampling.py) -- read every turn, so a switch
+        # in Settings applies to the very next reply. Kept on during role-play:
+        # it's how she generates, not something about the real user.
+        brain.llm.set_sampling(sampling.active_values())
 
     # Learned behavior rules (brain/lessons.py) -- like memory, off during
     # role-play and cleared rather than skipped so a stale block can't linger

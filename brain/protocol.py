@@ -53,6 +53,9 @@ RETIRE_LESSON = "retire_lesson"
 DELETE_LESSON = "delete_lesson"
 RESOLVE_LESSON_PROPOSAL = "resolve_lesson_proposal"
 SET_CURIOSITY_ACTIVE = "set_curiosity_active"
+SET_SAMPLING_PROFILE = "set_sampling_profile"
+SAVE_SAMPLING_PROFILE = "save_sampling_profile"
+DELETE_SAMPLING_PROFILE = "delete_sampling_profile"
 SET_TRAINING_ACTIVE = "set_training_active"
 RESOLVE_MEMORY_PROPOSAL = "resolve_memory_proposal"
 SET_MEMORY_ACTIVE = "set_memory_active"
@@ -88,6 +91,7 @@ ROLEPLAY_STATE = "roleplay_state"
 VOICE_STATE = "voice_state"
 WEB_SEARCH_STATE = "web_search_state"
 CURIOSITY_STATE = "curiosity_state"
+SAMPLING_STATE = "sampling_state"
 CONTEXT_USAGE = "context_usage"
 CONVERSATION_CLEARED = "conversation_cleared"
 TRAINING_STATE = "training_state"
@@ -241,6 +245,15 @@ def curiosity_state(active: bool) -> dict:
     on. Sent on `ready`, same pattern as voice_state.
     """
     return {"type": CURIOSITY_STATE, "active": active}
+
+
+def sampling_state(active: str, profiles: dict, builtin: list[str], error: str = "") -> dict:
+    """Her sampling profiles (brain/sampling.py): every profile's settings by
+    name, which one her replies use, and which are built in (can't be saved
+    over or deleted). Sent on `ready` and to every device after a change;
+    `error` only goes to the device whose save/delete was refused.
+    """
+    return {"type": SAMPLING_STATE, "active": active, "profiles": profiles, "builtin": builtin, "error": error}
 
 
 def memory_state(active: bool) -> dict:

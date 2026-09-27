@@ -44,6 +44,13 @@
     <aside id="settings-panel" class="slide-panel">
       <h2>Settings</h2>
       <div id="settings-content">
+        <section id="notes-section" class="settings-section">
+          <p class="settings-hint">
+            A free-form scratchpad for your own ideas and todos -- never read by Glitch or sent
+            anywhere. Saved to a plain text file (brain/notes.md).
+          </p>
+          <button id="open-notes-button" class="settings-action-button">Notes</button>
+        </section>
         <section id="quick-toggles-section" class="settings-section">
           <label class="settings-toggle-row">
             <span>Voice</span>
@@ -270,6 +277,47 @@
               <button id="new-llm-engine-button" class="icon-button" title="New LLM engine">➕</button>
               <button id="delete-llm-engine-button" class="icon-button danger" title="Delete LLM engine">🗑️</button>
             </div>
+            <div id="sampling-panel" class="sampling-panel">
+              <h4 class="lessons-subhead">Sampling</h4>
+              <p class="settings-hint">
+                How she picks her words, sent with each of her replies (from the next one on). A blank box uses
+                the LLM server's own setting. Tune the boxes, then save them as a profile. Hover a setting for what it does.
+              </p>
+              <select id="sampling-select" class="settings-select"></select>
+              <div class="sampling-grid">
+                <label class="sampling-field" title="How adventurous her word choice is. Higher = more varied and surprising, lower = steadier.">
+                  <span>Temperature</span>
+                  <input id="sampling-temperature" data-key="temperature" type="number" step="0.05" min="0" max="2" inputmode="decimal" placeholder="server" class="settings-text-input" />
+                </label>
+                <label class="sampling-field" title="Only picks from the likeliest words that add up to this share. Lower = safer.">
+                  <span>Top P</span>
+                  <input id="sampling-top_p" data-key="top_p" type="number" step="0.01" min="0" max="1" inputmode="decimal" placeholder="server" class="settings-text-input" />
+                </label>
+                <label class="sampling-field" title="Only picks from this many of the likeliest words. 0 = no limit.">
+                  <span>Top K</span>
+                  <input id="sampling-top_k" data-key="top_k" type="number" step="1" min="0" max="200" inputmode="decimal" placeholder="server" class="settings-text-input" />
+                </label>
+                <label class="sampling-field" title="Drops words far less likely than the best one. A little (0.05) keeps high temperatures coherent.">
+                  <span>Min P</span>
+                  <input id="sampling-min_p" data-key="min_p" type="number" step="0.01" min="0" max="1" inputmode="decimal" placeholder="server" class="settings-text-input" />
+                </label>
+                <label class="sampling-field" title="Pushes her toward new words and ideas instead of circling back to the same ones.">
+                  <span>Presence Penalty</span>
+                  <input id="sampling-presence_penalty" data-key="presence_penalty" type="number" step="0.1" min="-2" max="2" inputmode="decimal" placeholder="server" class="settings-text-input" />
+                </label>
+                <label class="sampling-field" title="Discourages repeating recent words. 1 = off.">
+                  <span>Repeat Penalty</span>
+                  <input id="sampling-repeat_penalty" data-key="repeat_penalty" type="number" step="0.01" min="0.5" max="2" inputmode="decimal" placeholder="server" class="settings-text-input" />
+                </label>
+              </div>
+              <p id="sampling-dirty" class="settings-hint" hidden>Unsaved changes -- save them as a profile to use them.</p>
+              <input id="sampling-name" type="text" autocomplete="off" placeholder="Profile name" class="settings-text-input" />
+              <div class="settings-button-row">
+                <button id="sampling-save-button" class="settings-action-button">Save Profile</button>
+                <button id="sampling-delete-button" class="icon-button danger" title="Delete profile">🗑️</button>
+              </div>
+              <p id="sampling-error" class="settings-hint sampling-error" hidden></p>
+            </div>
             <div id="context-meter" class="context-meter">
               <div class="context-meter-label">
                 <span>Context</span>
@@ -313,13 +361,6 @@
           </p>
           <button id="open-soul-user-editor-button" class="settings-action-button">Edit Soul &amp; User Files</button>
         </section>
-        <section id="notes-section" class="settings-section">
-          <p class="settings-hint">
-            A free-form scratchpad for your own ideas and todos -- never read by Glitch or sent
-            anywhere. Saved to a plain text file (brain/notes.md).
-          </p>
-          <button id="open-notes-button" class="settings-action-button">Notes</button>
-        </section>
         <section id="debug-section" class="settings-section">
           <label class="settings-toggle-row">
             <span>Debugging</span>
@@ -338,7 +379,7 @@
         <section id="restart-section" class="settings-section">
           <p class="settings-hint">
             Restarts Glitch's Brain process -- reloads config.yaml and every engine/soul/profile
-            from disk, and reconnects automatically. Ends her current conversation history.
+            from disk, and reconnects automatically. Her conversation is saved and picked back up.
           </p>
           <button id="restart-brain-button" class="settings-action-button danger">Restart Brain</button>
         </section>

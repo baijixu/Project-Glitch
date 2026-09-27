@@ -87,6 +87,8 @@ brain/lessons_retired.json
 brain/lessons_pending.json
 brain/lessons_candidates.json
 brain/curiosity_active.txt
+brain/sampling_profiles.json
+brain/sampling_profiles.tmp
 brain/curiosity_questions.json
 brain/training_active.txt
 brain/training_queue.json

@@ -6,6 +6,7 @@
 
 import { LessonsUI } from "./lessons_ui.js";
 import { TrainingUI } from "./training_ui.js";
+import { SamplingUI } from "./sampling_ui.js";
 
 const RECONNECT_DELAY_MS = 3000;
 // Fades out 10s after the text finishes streaming in, not 10s from when it
@@ -362,6 +363,8 @@ export class BrainClient {
       send: (message) => this._send(message),
       onNewProposals: (fact) => this._showMemoryToast(fact, "🧠 Memory proposed (review in Settings): "),
     });
+    // Settings -> LLM -> Sampling (brain/sampling.py), also its own module.
+    this._samplingUI = new SamplingUI({ send: (message) => this._send(message) });
     this._rateControls = new WeakMap(); // history entry -> {paint} for its 👍/👎 controls
     this._entryBubbles = new WeakMap(); // history entry -> its bubble in the History panel, for editing
     document.getElementById("overlay-thumbs-up")?.addEventListener("click", () => this._rateLastReply("up"));
@@ -2127,6 +2130,7 @@ export class BrainClient {
     this._updateSoulEditControls();
     this._updateTtsEngineEditControls();
     this._updateLlmEngineEditControls();
+    this._samplingUI?.setLocked(this._harnessActive);
     this._renderHarnessLight(); // active may have just flipped -- green overrides whatever reachability last said
   }
 
@@ -3249,6 +3253,9 @@ export class BrainClient {
         break;
       case "training_state":
         this._trainingUI.handleState(data);
+        break;
+      case "sampling_state":
+        this._samplingUI.handleState(data);
         break;
       case "lessons_state":
         this._lessonsUI.handleState(data);

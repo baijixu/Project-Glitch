@@ -277,6 +277,14 @@ version instead), **Clear Chat** (starts her on a fresh conversation; her long-t
 **Restart Brain** button in Settings (useful from a phone), a notes scratchpad (`brain/notes.md`), and a per-device debug
 log of connection and timing events (never conversation content), on by default and downloadable from Settings.
 
+**Sampling profiles** under *Settings → LLM* set how she picks her words: temperature, top P, top K, min P,
+presence penalty and repeat penalty, sent with each of her replies (LM Studio, llama.cpp and Ollama all honor them per
+request, over their own saved settings). Tune the boxes and save them as a named profile; picking a profile applies it
+from her next reply. The built-in *Qwen 3.6 Thinking* profile uses Qwen's recommended thinking-mode settings
+(temperature 1.0, top P 0.95, top K 20, min P 0, presence penalty 1.5, repeat penalty 1.0), and *Server defaults* sends
+nothing so the server's own settings apply. A blank box also leaves that one to the server. Only her replies use a
+profile; the short background tasks (memory, curiosity and lesson proposals) keep the server's settings.
+
 A **context meter** under *Settings → LLM* shows how much of the model's context her latest reply used (for example
 `4,235 / 65,536 tokens (6%)`). She keeps as much of the conversation as fits in about half of the model's context
 (12,000 tokens if the server doesn't report its size); past that, the oldest part is dropped in one go, so the model
@@ -342,6 +350,7 @@ brain/                 Python backend (WebSocket server)
   training.py          memory-training review queue
   lessons.py           behavior learning
   curiosity.py         follow-up questions
+  sampling.py          sampling profiles (temperature, min_p...) for her replies
   souls.py profiles.py soul / user / role-play file handling
   llm_engines.py tts_engines.py harness.py   saved engines and harnesses
   web_search.py        SearXNG search and trust labels

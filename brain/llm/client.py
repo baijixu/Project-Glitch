@@ -198,6 +198,12 @@ CONTEXT_WINDOW_TIMEOUT_SEC = 3
 # and well inside the 65k context the live model is loaded with.
 MAX_REPLY_TOKENS = 8000
 
+# Sampling settings (brain/sampling.py) that the OpenAI client takes as named
+# arguments; the rest (top_k, min_p, repeat_penalty) aren't in the OpenAI API,
+# so they go in extra_body -- LM Studio and llama-server read them from there
+# (checked live: LM Studio maps each one to its own setting and validates it).
+_OPENAI_SAMPLING_ARGS = ("temperature", "top_p", "presence_penalty")
+
 # OllamaLLM-only, and only when think=true (role-play deliberately runs
 # with think=false specifically to avoid needing this at all -- see
 # OllamaLLM's own docstring). num_predict is one shared budget covering
@@ -437,6 +443,9 @@ class LocalLLM:
         self._lessons = ""
         self._curiosity = ""
         self._user_info = ""
+        # Sampling settings for her replies only (brain/sampling.py), set by
+        # main.py before each reply. Empty = the server's own settings.
+        self._sampling: dict = {}
         # Whether the most recent reply() ran a web search -- read by main.py's
         # _reply_to right after reply() returns, so what a search returned
         # isn't saved as a memory of the user (see _maybe_retain_memory).
@@ -461,7 +470,12 @@ class LocalLLM:
         self._reply_generation += 1
 
     def _complete_raw(
-        self, messages: list[dict], max_tokens: int, tools: list[dict] | None, no_thinking: bool = False
+        self,
+        messages: list[dict],
+        max_tokens: int,
+        tools: list[dict] | None,
+        no_thinking: bool = False,
+        sampling: dict | None = None,
     ) -> dict:
         """Runs exactly one chat completion and returns
         {"content": str, "tool_calls": [{"id", "name", "arguments": dict}],
@@ -478,6 +492,11 @@ class LocalLLM:
         kwargs = {"model": self._model, "messages": messages, "max_tokens": max_tokens}
         if tools:
             kwargs["tools"] = tools
+        if sampling:
+            kwargs.update({k: v for k, v in sampling.items() if k in _OPENAI_SAMPLING_ARGS})
+            extra = {k: v for k, v in sampling.items() if k not in _OPENAI_SAMPLING_ARGS}
+            if extra:
+                kwargs["extra_body"] = extra
         if no_thinking and getattr(self, "_reasoning_effort_supported", True):
             # See _complete's no_thinking. A server that rejects the parameter gets
             # the call again without it, and is never sent it again.
@@ -514,6 +533,7 @@ class LocalLLM:
         tools: list[dict] | None = None,
         no_thinking: bool = False,
         usage: dict | None = None,
+        sampling: dict | None = None,
     ) -> str:
         """Runs _complete_raw once, or -- while `tools` is given and the
         model actually asks to use one -- repeatedly: appends the
@@ -530,10 +550,13 @@ class LocalLLM:
         her replies. Measured on the live Qwen model: a memory proposal spent its
         whole 2000-token budget thinking and returned nothing after ~93 s; with
         thinking off it answered correctly in ~2 s.
+
+        sampling is her sampling profile (brain/sampling.py) -- passed only by
+        reply(), so the background calls keep the server's own settings.
         """
         working = list(messages)
         for _ in range(MAX_TOOL_ITERATIONS):
-            result = self._complete_raw(working, max_tokens, tools, no_thinking=no_thinking)
+            result = self._complete_raw(working, max_tokens, tools, no_thinking=no_thinking, sampling=sampling)
             if usage is not None:  # the last call's numbers are the conversation's current size
                 usage.update({k: v for k, v in (result.get("usage") or {}).items() if v is not None})
             if not result["tool_calls"]:
@@ -617,6 +640,14 @@ class LocalLLM:
         Set fresh every turn by main.py's _reply_to, and "" during role-play.
         """
         self._curiosity = curiosity_block.strip()
+
+    def set_sampling(self, values: dict) -> None:
+        """Sets the sampling settings for her replies (brain/sampling.py's
+        active profile). Set fresh every turn by main.py's _reply_to, so a
+        profile switched in Settings applies from the very next reply. Doesn't
+        touch _history: these change how words are picked, not the prompt.
+        """
+        self._sampling = dict(values or {})
 
     def propose_memory(self, user_text: str, reply_text: str, known: str) -> str:
         """Training mode (brain/training.py): asks the model for at most one fact from
@@ -798,7 +829,7 @@ class LocalLLM:
         self.last_reply_used_web_search = False
         usage: dict = {}
         self.last_reply_fell_back = False
-        raw_reply = self._complete(messages, MAX_REPLY_TOKENS, tools, usage=usage)
+        raw_reply = self._complete(messages, MAX_REPLY_TOKENS, tools, usage=usage, sampling=self._sampling)
         if generation != self._reply_generation:
             self._history_changed()  # the user's own turn stays (see cancel_reply)
             return "", "neutral"  # cancelled via cancel_reply() while in flight -- discarded, never reaches _history
@@ -809,7 +840,9 @@ class LocalLLM:
             # live: 8,000 tokens, 7 minutes, nothing). Rather than nothing, answer
             # once more with thinking off. Her normal replies still think.
             self.last_reply_fell_back = True
-            raw_reply = self._complete(messages, MAX_REPLY_TOKENS, tools, no_thinking=True, usage=usage)
+            raw_reply = self._complete(
+                messages, MAX_REPLY_TOKENS, tools, no_thinking=True, usage=usage, sampling=self._sampling
+            )
             if generation != self._reply_generation:
                 self._history_changed()
                 return "", "neutral"
@@ -1076,7 +1109,12 @@ class OllamaLLM(LocalLLM):
         return window
 
     def _complete_raw(
-        self, messages: list[dict], max_tokens: int, tools: list[dict] | None, no_thinking: bool = False
+        self,
+        messages: list[dict],
+        max_tokens: int,
+        tools: list[dict] | None,
+        no_thinking: bool = False,
+        sampling: dict | None = None,
     ) -> dict:
         think = self._think and not no_thinking
         # See MAX_REPLY_TOKENS_THINKING's own comment -- the caller passes
@@ -1096,6 +1134,10 @@ class OllamaLLM(LocalLLM):
             # rather than top-level like the OpenAI-compatible API.
             "options": {"num_predict": max_tokens},
         }
+        if sampling:
+            # Ollama's option names match brain/sampling.py's keys exactly
+            # (temperature, top_p, top_k, min_p, presence_penalty, repeat_penalty).
+            payload["options"].update(sampling)
         if tools:
             # Same OpenAI-shaped tool definitions as the LocalLLM path --
             # Ollama's native /api/chat accepts them verbatim, confirmed

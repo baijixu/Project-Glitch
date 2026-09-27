@@ -1368,3 +1368,38 @@ body.overlay-chat-active #overlay-edit-button {
 body.overlay-chat-active #side-actions .overlay-rate-button {
   display: flex;
 }
+
+/* Settings -> LLM -> Sampling: the six boxes sit two to a row, each with its
+   name above it (hover for what it does -- see the title on each label). */
+.sampling-panel {
+  margin-top: 4px;
+}
+
+.sampling-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 10px;
+  margin-bottom: 10px;
+}
+
+.sampling-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #b8bccb;
+  cursor: help;
+}
+
+.sampling-field .settings-text-input {
+  margin-bottom: 0;
+  padding: 6px 10px;
+}
+
+.sampling-panel .settings-button-row .settings-action-button {
+  flex: 1 1 auto;
+}
+
+.sampling-error {
+  color: #e07a74;
+}
