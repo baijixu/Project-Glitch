@@ -263,7 +263,7 @@ Two providers, chosen in Settings:
 - **Hindsight** (recommended): a semantic memory server. Relevant memories are recalled per message. She keeps her own bank
   (`bank_id`), separate from any Hermes agent's memory.
 
-Her memories are written in her own voice ("I promised Josh I'd help with his song"). Search results and picture descriptions
+Her memories are written in her own voice ("I promised Sam I'd help with their song"). Search results and picture descriptions
 are never stored as if they were facts about you.
 
 **About Hindsight's own model.** Hindsight rewrites what it's given and builds summaries ("observations") with an LLM of its

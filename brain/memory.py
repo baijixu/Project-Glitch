@@ -113,7 +113,7 @@ RETAIN_MISSION = (
 # made by its model (a 4B one on this setup) and recalled alongside them. With
 # no instruction for that step it read her "I"/"my" as the human's -- a word-
 # for-word "green feels like home because of my hair" came back as "the user
-# associates green with home due to their hair", and "I helped Josh" as "Josh
+# associates green with home due to their hair", and "I helped Sam" as "Sam
 # helped". With this set, owners came out right in 5 of 5 runs on throwaway
 # banks. Set by ensure_bank() the same way as RETAIN_MISSION.
 OBSERVATIONS_MISSION = (
@@ -125,9 +125,9 @@ OBSERVATIONS_MISSION = (
 
 # Facts approved in memory training (retain_fact) are stored word for word.
 # Normally Hindsight rewrites whatever it's given with its own model, and for
-# these short first-person facts that rewrite swapped owners: approved "Josh
-# likes the denim shorts in my autumn picture" was stored as "Josh prefers denim
-# shorts", "green feels like home because of my hair" as the user's hair, and
+# these short first-person facts that rewrite swapped owners: approved "Sam
+# likes the jacket in my winter picture" was stored as "Sam prefers that
+# jacket", "green feels like home because of my hair" as the user's hair, and
 # names got tagged "(user)" or "user's friend". Rewording the context didn't
 # fix it (tried on throwaway banks; it also made the rewrite fail outright
 # about a third of the time). The user already approved the exact wording, so
