@@ -39,11 +39,12 @@ PICTURE_NOTE = "[picture]"
 def _storable(message: dict) -> dict:
     """A history message with any image replaced by PICTURE_NOTE."""
     content = message.get("content")
+    when = {"at": message["at"]} if isinstance(message.get("at"), str) else {}  # when it was said (llm/client.py)
     if not isinstance(content, list):
-        return {"role": message.get("role"), "content": content}
+        return {"role": message.get("role"), "content": content, **when}
     text = "\n".join(part.get("text", "") for part in content if part.get("type") == "text").strip()
     has_image = any(part.get("type") == "image_url" for part in content)
-    return {"role": message.get("role"), "content": f"{text} {PICTURE_NOTE}".strip() if has_image else text}
+    return {"role": message.get("role"), "content": f"{text} {PICTURE_NOTE}".strip() if has_image else text, **when}
 
 
 def _path(mode: str):
@@ -71,7 +72,7 @@ def load_state(mode: str) -> list[dict]:
     if not isinstance(data, dict) or data.get("mode") != mode or not isinstance(data.get("messages"), list):
         return []
     return [
-        {"role": m["role"], "content": m["content"]}
+        {"role": m["role"], "content": m["content"], **({"at": m["at"]} if isinstance(m.get("at"), str) else {})}
         for m in data["messages"]
         if isinstance(m, dict)
         and m.get("role") in ("user", "assistant")

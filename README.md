@@ -62,6 +62,7 @@ The main window with the shipped default avatar:
   expressions. Ships with a default VRM model; import, rename and delete your own `.vrm` or flat `.png` avatars.
 - **A personality you own.** Her *soul* (`soul.md`) and what you tell her about yourself (`user.md`) are plain text files
   that only you edit. Nothing she does can change them.
+- **She knows what time it is, and how long you've been gone.** See [Time](#time).
 - **Role-play that can't leak.** Separate role-play souls and user profiles you can switch between. They live in their own
   files and can never overwrite her real personality or your real details. Memory, lessons and curiosity pause during role-play,
   and the role-play conversation and its log are kept apart from your real one.
@@ -313,6 +314,14 @@ short", "don't bring up sports") stored in a separate Hindsight bank and added t
 changed). A *how much she does on her own* setting decides whether changes need your approval: *Ask first* (every change waits
 for you), *Small tweaks on her own* (strengthening or weakening a rule is automatic), or *Everything on her own*. Needs a
 Hindsight memory backend.
+
+### Time
+
+A model has no clock, so each of your messages reaches her with a line you don't see: the current date, time and timezone, and how
+long ago the previous message was ("about 3 hours ago, on Saturday 26 September, 10:40 PM"). Each message in her conversation
+also remembers when it was said. After a break of an hour or more, your next message is kept with a short marker in front,
+`[2 days later -- Tuesday 29 September, 9:10 AM]`, so she can still see where the breaks were later in the conversation.
+Shorter gaps get no marker. None of this happens during role-play, where time is the scene's.
 
 ### Curiosity
 

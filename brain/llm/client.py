@@ -74,6 +74,62 @@ TURN_NOTES_HEADER = (
 _MOOD_TAG = re.compile(r"\[mood:\s*(\w+)\]\s*$", re.IGNORECASE)
 
 
+# The passage of time. Each message in her history carries when it was said
+# ("at", an ISO time -- never sent to the model, see _for_model), so she can be
+# told how long it's been. After a break of at least GAP_MARKER_SEC, the user's
+# message is stored with a short marker in front ("[2 days later -- Monday 29
+# September, 9:10 AM]") that stays in the conversation, so later on she can
+# still see where the breaks were. Short gaps get no marker -- the chat
+# doesn't fill up with timestamps. Neither is added during role-play (its
+# time is the scene's, not the real world's).
+GAP_MARKER_SEC = 3600
+_GAP_MARKER = re.compile(r"^\[[^\]\n]* later -- [^\]\n]*\]\n")
+
+
+def _now() -> datetime:
+    return datetime.now().astimezone()
+
+
+def _when(moment: datetime) -> str:
+    """"Monday 29 September, 9:10 AM"."""
+    clock = f"{moment.hour % 12 or 12}:{moment.minute:02d} {'AM' if moment.hour < 12 else 'PM'}"
+    return f"{moment:%A} {moment.day} {moment:%B}, {clock}"
+
+
+def _how_long(seconds: float) -> str:
+    """A rough, human length of time: "5 minutes", "about 3 hours", "2 days"."""
+    minutes = max(int(seconds // 60), 1)
+    if minutes < 60:
+        return f"{minutes} minute{'s' if minutes != 1 else ''}"
+    hours = round(seconds / 3600)
+    if hours < 24:
+        return f"about {hours} hour{'s' if hours != 1 else ''}"
+    days = round(seconds / 86400)
+    if days < 14:
+        return f"{days} day{'s' if days != 1 else ''}"
+    weeks = round(days / 7)
+    if weeks < 9:
+        return f"about {weeks} weeks"
+    return f"about {round(days / 30)} months"
+
+
+def _message_time(message: dict) -> datetime | None:
+    try:
+        return datetime.fromisoformat(message["at"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _for_model(message: dict) -> dict:
+    """A history message as the model gets it -- without the "at" time."""
+    return {k: v for k, v in message.items() if k != "at"}
+
+
+def strip_gap_marker(text: str) -> str:
+    """The user's own words, without the marker _mark_gap put in front."""
+    return _GAP_MARKER.sub("", text, count=1)
+
+
 def _current_time_line(now: datetime | None = None) -> str:
     """The current date/time in this machine's own timezone, for her prompt --
     a model has no clock of its own, so without this she can't say what time
@@ -784,13 +840,39 @@ class LocalLLM:
             parts.append(self._curiosity)
         if not self._persona:
             parts.append(_current_time_line())
+            if since := self._since_last_message():
+                parts.append(since)
         return "\n\n".join(parts)
+
+    def _since_last_message(self) -> str:
+        """How long ago the previous message in this conversation was (before
+        the newest one), or "" if there isn't one or it was under a minute ago."""
+        earlier = [m for m in self._history[:-1] if _message_time(m)]
+        if not earlier:
+            return ""
+        then = _message_time(earlier[-1])
+        seconds = (_now() - then).total_seconds()
+        if seconds < 60:
+            return ""
+        who = "they" if earlier[-1].get("role") == "user" else "you"
+        return f"The previous message in this conversation ({who} sent it) was {_how_long(seconds)} ago, on {_when(then)}."
+
+    def _mark_gap(self, content, now: datetime):
+        """Puts the "[... later -- when]" marker in front of the user's message
+        after a long enough break (see GAP_MARKER_SEC)."""
+        times = [t for m in self._history if (t := _message_time(m))]
+        if self._persona or not times or (now - times[-1]).total_seconds() < GAP_MARKER_SEC:
+            return content
+        marker = f"[{_how_long((now - times[-1]).total_seconds())} later -- {_when(now)}]\n"
+        if isinstance(content, list):
+            return [{**part, "text": marker + part.get("text", "")} if part.get("type") == "text" else part for part in content]
+        return marker + content
 
     def _request_messages(self) -> list[dict]:
         """System prompt + history, with this turn's notes attached to the newest
         user message -- a copy, so _history itself stays exactly what was said.
         """
-        messages = [{"role": "system", "content": self._system_prompt()}, *self._history]
+        messages = [{"role": "system", "content": self._system_prompt()}, *map(_for_model, self._history)]
         notes = self._turn_notes()
         if notes and messages[-1].get("role") == "user":
             wrapped = f"<notes>\n{TURN_NOTES_HEADER}\n\n{notes}\n</notes>\n\n"
@@ -837,7 +919,8 @@ class LocalLLM:
                 {"type": "text", "text": user_text or "What do you see?"},
                 {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_b64}"}},
             ]
-        self._history.append({"role": "user", "content": content})
+        now = _now()
+        self._history.append({"role": "user", "content": self._mark_gap(content, now), "at": now.isoformat(timespec="seconds")})
         self.last_trim = None
         self._trim_history()
         messages = self._request_messages()
@@ -873,7 +956,7 @@ class LocalLLM:
         # Stored cleaned, not with the tag -- keeps the tag from cluttering
         # future turns' context for no benefit (the system prompt alone is
         # enough to keep the model tagging consistently turn to turn).
-        self._history.append({"role": "assistant", "content": reply_text})
+        self._history.append({"role": "assistant", "content": reply_text, "at": _now().isoformat(timespec="seconds")})
         self._history_changed()
         self.last_usage = dict(usage)
         return reply_text, mood
@@ -920,11 +1003,11 @@ class LocalLLM:
         )
         note = (
             f"<notes>\n{TURN_NOTES_HEADER}\n\n"
-            "He hasn't said anything in over an hour. Reach out to him first -- once, briefly, in your own "
+            "They haven't said anything in over an hour. Reach out to them first -- once, briefly, in your own "
             f"voice, the way a friend might text. {hint}Don't mention these notes or that an app told you to.\n\n"
             f"{_current_time_line()}\n</notes>"
         )
-        messages = [{"role": "system", "content": self._system_prompt()}, *self._history, {"role": "user", "content": note}]
+        messages = [{"role": "system", "content": self._system_prompt()}, *map(_for_model, self._history), {"role": "user", "content": note}]
         generation = self._reply_generation
         usage: dict = {}
         raw_reply = self._complete(messages, MAX_REPLY_TOKENS, usage=usage, sampling=self._sampling)
@@ -935,7 +1018,7 @@ class LocalLLM:
             )
         if generation != self._reply_generation or not text.strip():
             return "", mood  # cleared or cancelled meanwhile, or nothing to say
-        self._history.append({"role": "assistant", "content": text})
+        self._history.append({"role": "assistant", "content": text, "at": _now().isoformat(timespec="seconds")})
         self._history_changed()
         return text, mood
 
@@ -1045,8 +1128,8 @@ class LocalLLM:
         self._history_changed()
         content = user_message.get("content")
         if isinstance(content, list):
-            return "\n".join(part.get("text", "") for part in content if part.get("type") == "text")
-        return content
+            return strip_gap_marker("\n".join(part.get("text", "") for part in content if part.get("type") == "text"))
+        return strip_gap_marker(content) if isinstance(content, str) else content
 
     def maybe_extract_memory(self, user_text: str, reply_text: str, existing_entries: list[str]) -> str | None:
         """The "local" memory provider's own extraction step (memory.py) --
