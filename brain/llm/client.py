@@ -835,7 +835,10 @@ class LocalLLM:
         """
         parts = []
         if self._memory:
-            parts.append(f"What you remember from past conversations (your own memories -- \"I\" in them is you):\n{self._memory}")
+            parts.append(
+                "What you remember from past conversations (your own memories -- \"I\" in them is you; "
+                f"\"learned ...\" is when you learned it, so things may have moved on since):\n{self._memory}"
+            )
         if self._curiosity:
             parts.append(self._curiosity)
         if not self._persona:

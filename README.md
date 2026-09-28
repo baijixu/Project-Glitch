@@ -323,6 +323,10 @@ also remembers when it was said. After a break of an hour or more, your next mes
 `[2 days later -- Tuesday 29 September, 9:10 AM]`, so she can still see where the breaks were later in the conversation.
 Shorter gaps get no marker. None of this happens during role-play, where time is the scene's.
 
+Her memories are dated too: each recalled memory ends with when she learned it, "(learned 3 days ago)", from the date the
+memory server saved it (Hindsight or Mem0), so she can tell that "moving next month" was said a month ago. The local file
+keeps no dates.
+
 ### Curiosity
 
 Three parts, all toggled by *Curiosity* in Settings and paused during role-play and while a harness is in control:

@@ -27,6 +27,7 @@ brain.llm block, not a crash.
 
 import asyncio
 import json
+from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -409,11 +410,52 @@ async def _ensure_approved_strategy() -> None:
     _approved_strategy_bank = _bank_id
 
 
+# -- How old a memory is -------------------------------------------------------
+# A recalled memory gets "(learned 3 days ago)" after it, from when the server
+# says it was saved (Hindsight's mentioned_at, Mem0's updated_at/created_at), so
+# she can tell that "moving next month" was said a month ago. By calendar day in
+# this machine's timezone. No date known (the local file, an older server): the
+# memory goes in as it is.
+
+
+def _age(when, now: datetime | None = None) -> str:
+    try:
+        then = datetime.fromisoformat(str(when).replace("Z", "+00:00")).astimezone()
+    except (TypeError, ValueError):
+        return ""
+    now = now or datetime.now().astimezone()
+    days = (now.date() - then.date()).days
+    if days < 0:
+        return ""
+    if days == 0:
+        return "today"
+    if days == 1:
+        return "yesterday"
+    if days < 14:
+        return f"{days} days ago"
+    if days < 60:
+        return f"about {round(days / 7)} weeks ago"
+    if days < 365:
+        return f"about {round(days / 30)} months ago"
+    years = round(days / 365)
+    return f"about {years} year{'s' if years != 1 else ''} ago"
+
+
+def _dated(text: str, when) -> str:
+    age = _age(when) if when else ""
+    return f"{text} (learned {age})" if age else text
+
+
 async def recall_core() -> list[str]:
     """The facts the user marked "core" -- always in her prompt, whatever the
     conversation is about. Best-effort: [] on any failure, so a hiccup here never
     costs the ordinary recall.
     """
+    return [text for text, _ in await _recall_core_items()]
+
+
+async def _recall_core_items() -> list[tuple[str, str | None]]:
+    """recall_core's facts with when each was saved: [(text, mentioned_at)]."""
     if _client is None:
         return []
     try:
@@ -427,21 +469,27 @@ async def recall_core() -> list[str]:
     except Exception as exc:
         print(f"[memory] core recall failed: {exc!r}")
         return []
-    return [result.text for result in response.results]
+    return [(result.text, getattr(result, "mentioned_at", None)) for result in response.results]
 
 
 async def recall_relevant(query: str) -> str:
     """Whatever's actually relevant to `query` right now, joined into the
     same "- fact" block shape LocalLLM.set_memory already expects -- the
-    user's "core" facts first (see brain/training.py), then the rest.
+    user's "core" facts first (see brain/training.py), then the rest, each with
+    how long ago it was learned.
     """
     if _client is None:
         return ""
     response, core = await asyncio.gather(
-        _client.arecall(_bank_id, query=query, max_tokens=RECALL_MAX_TOKENS), recall_core()
+        _client.arecall(_bank_id, query=query, max_tokens=RECALL_MAX_TOKENS), _recall_core_items()
     )
-    lines = list(core)
-    lines += [result.text for result in response.results if result.text not in core]
+    core_texts = {text for text, _ in core}
+    lines = [_dated(text, when) for text, when in core]
+    lines += [
+        _dated(result.text, getattr(result, "mentioned_at", None))
+        for result in response.results
+        if result.text not in core_texts
+    ]
     return "\n".join(f"- {line}" for line in lines)
 
 
@@ -533,9 +581,10 @@ async def _mem0_retain_fact(text: str, importance: str) -> None:
 async def _mem0_recall(query: str) -> str:
     """Core facts first (every turn, whatever the topic), then what's relevant."""
     relevant, everything = await asyncio.gather(_mem0.search(query), _mem0.list())
-    lines = [item["memory"] for item in everything if _mem0_is_core(item)]
-    lines += [item["memory"] for item in relevant if item["memory"] not in lines]
-    return "\n".join(f"- {line}" for line in lines)
+    core = [item for item in everything if _mem0_is_core(item)]
+    core_texts = {item["memory"] for item in core}
+    chosen = core + [item for item in relevant if item["memory"] not in core_texts]
+    return "\n".join(f"- {_dated(item['memory'], item.get('updated_at') or item.get('created_at'))}" for item in chosen)
 
 
 # -- Unified entry points (main.py calls these, provider-agnostic) ----------
