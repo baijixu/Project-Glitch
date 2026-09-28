@@ -5,6 +5,19 @@ a personality you write yourself, and a memory of you that you control. It runs 
 against whatever LLM you point it at (LM Studio, llama.cpp, Ollama, or any OpenAI-compatible server), and you can
 talk to her from your PC, or from your phone over your home network or [Tailscale](https://tailscale.com).
 
+- **Fully local.** Your LLM, your speech, your memory server, with no cloud AI service involved. Built and used day to day
+  with a 35B mixture-of-experts model on a 12 GB GPU.
+- **A memory you control.** Long-term recall through [Hindsight](#memory), and with
+  [memory training](#memory-training) on, she proposes each memory and you edit, approve or reject it before she keeps it.
+- **She learns from your 👍/👎.** Rate a reply, say why, and she turns it into a short behavior rule, which can wait for
+  your approval ([behavior learning](#behavior-learning)).
+- **She speaks first, sometimes.** After an hour of quiet she may ask you something she's been curious about, once, and
+  never the same question twice ([curiosity](#curiosity)).
+- **Role-play and work, kept apart.** A [role-play mode](#souls-user-info-and-role-play) with its own personas and chat
+  logs that never touches her real memory, and a
+  [harness mode](#hermes-harness-her-professional-self) where she drives Hermes Agent with a separate work persona and
+  memory, so personal and professional never mix.
+
 > **Status:** a personal project under active development, shared as-is. It runs as a development
 > setup (a Python backend plus a Vite dev server), not a packaged installer. It has been developed and
 > tested on **Windows**; the macOS/Linux scripts exist but have had much less testing. Expect rough edges,
