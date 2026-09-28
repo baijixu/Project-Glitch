@@ -7,7 +7,7 @@ talk to her from your PC, or from your phone over your home network or [Tailscal
 
 - **Fully local.** Your LLM, your speech, your memory server, with no cloud AI service involved. Built and used day to day
   with a 35B mixture-of-experts model on a 12 GB GPU.
-- **A memory you control.** Long-term recall through [Hindsight](#memory), and with
+- **A memory you control.** Long-term recall through your own [Hindsight or Mem0 server](#memory), and with
   [memory training](#memory-training) on, she proposes each memory and you edit, approve or reject it before she keeps it.
 - **She learns from your 👍/👎.** Rate a reply, say why, and she turns it into a short behavior rule, which can wait for
   your approval ([behavior learning](#behavior-learning)).
@@ -65,8 +65,9 @@ The main window with the shipped default avatar:
 - **Role-play that can't leak.** Separate role-play souls and user profiles you can switch between. They live in their own
   files and can never overwrite her real personality or your real details. Memory, lessons and curiosity pause during role-play,
   and the role-play conversation and its log are kept apart from your real one.
-- **Memory you can review.** Long-term memory through a [Hindsight](https://pypi.org/project/hindsight-client/) server
-  (semantic memory), or a simple flat file. In **training mode** she proposes what to remember and *you* approve, edit and
+- **Memory you can review.** Long-term memory through a memory server you run
+  ([Hindsight](https://pypi.org/project/hindsight-client/) or [Mem0](https://docs.mem0.ai/open-source/features/rest-api)),
+  or a simple flat file. In **training mode** she proposes what to remember and *you* approve, edit and
   rate each item before anything is saved, and what you approve is stored exactly as you worded it.
 - **She learns how you like her to behave.** Rate replies 👍/👎 with a reason and she distills short behavior
   rules from your feedback. You choose how much she may change on her own, and you can edit or retire any rule.
@@ -128,7 +129,7 @@ Two independent programs and one small protocol between them:
 | --- | --- |
 | A text-to-speech server with an OpenAI-style `/v1/audio/speech` endpoint, e.g. [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI) (Docker Compose file included) | Her voice and lip-sync |
 | Docker | The bundled Kokoro service (`docker compose up -d`) |
-| A [Hindsight](https://pypi.org/project/hindsight-client/) memory server | Semantic long-term memory, memory training, and behavior learning |
+| A memory server: [Hindsight](https://pypi.org/project/hindsight-client/) or [Mem0](https://docs.mem0.ai/open-source/features/rest-api) | Semantic long-term memory and memory training (behavior learning needs Hindsight) |
 | A [SearXNG](https://docs.searxng.org/) instance with JSON output enabled | Web access |
 | A vision-capable model | Camera, screen and picture understanding |
 | An agent harness with an OpenAI-compatible endpoint, e.g. [Hermes Agent](https://github.com/NousResearch/hermes-agent) or [OpenClaw](https://docs.openclaw.ai/) | The harness mode |
@@ -195,8 +196,8 @@ Everything below is done in the **Settings** panel, no config file editing requi
 3. **Voice (optional).** Start the bundled speech server with `docker compose up -d`, then *Settings → Speech Engine* and add an
    engine with endpoint `http://localhost:8880/v1`. Any server with the OpenAI `/v1/audio/speech` shape works. You can pick
    a voice, and if you use the bundled Kokoro service you can blend your own custom voices.
-4. **Memory (optional).** Set the *Memory backend* to *Hindsight* and fill in your server URL and a bank ID
-   (see [Memory](#memory)). The default *Local* backend needs no setup.
+4. **Memory (optional).** Under *Memory backend*, press ➕ to add your Hindsight or Mem0 server (URL, API key, bank or
+   user id), then pick it (see [Memory](#memory)). The built-in *Local file* needs no setup.
 5. **Avatar (optional).** *Settings → Avatar*: import your own `.vrm` or `.png`.
 6. **Role-play off.** Role-play counts as *on* until you've toggled it once, and it pauses memory, lessons and curiosity, so on a
    fresh install switch it off at the top of Settings.
@@ -214,7 +215,7 @@ Two small files, both created by the setup script and both **gitignored** (they 
 | `brain.host` / `brain.port` | Where the Brain's WebSocket listens. Default `localhost:8765`. Keep it `localhost` unless you know why not. |
 | `brain.auth_token` | Shared secret between Brain and Renderer. **Required if the Brain listens on anything other than localhost.** |
 | `brain.llm` | Optional one-time seed for the first LLM engine (you can also do this in Settings). |
-| `brain.hindsight` | Hindsight server `api_url` and `bank_id`. |
+| `brain.hindsight` | Optional one-time seed: a Hindsight server's `api_url` and `bank_id`, saved as the first memory backend. |
 | `brain.web_search` | `searxng_url`, plus optional `trusted_domains` you consider reliable. |
 | `brain.harness` | Optional harness seed (Hermes and OpenClaw examples included). |
 
@@ -237,7 +238,7 @@ The ⚙️ panel, top to bottom:
 | **Quick toggles** | Voice, camera, screen capture, microphone, always-on mic, chat bubbles over the avatar. |
 | **Role-play** | On/off, the engine role-play uses, and your *User RP Persona*. |
 | **Glitch RP Persona** | Her saved role-play souls. |
-| **Remember Me** | Memory on/off, the backend (Local or Hindsight) and its server, Download / Clear Memory. |
+| **Remember Me** | Memory on/off, the memory backend (the Local file, or saved Hindsight / Mem0 servers), Download / Clear Memory. |
 | **Web Access** | Lets her search the web through your SearXNG. |
 | **Curiosity** | Follow-up questions and reaching out after an hour of quiet. |
 | **Memory training** | Review what she wants to remember before it's saved. |
@@ -271,11 +272,22 @@ The ⚙️ panel, top to bottom:
 
 ### Memory
 
-Two providers, chosen in Settings:
+Pick her *Memory backend* in Settings:
 
-- **Local** flat file: nothing to set up. She keeps a short list of durable facts.
-- **Hindsight** (recommended): a semantic memory server. Relevant memories are recalled per message. She keeps her own bank
-  (`bank_id`), separate from any harness's own memory.
+- **Local file** (built in): nothing to set up. She keeps a short list of durable facts.
+- **A memory server you run** (recommended). Add as many as you like with ➕ (a name, the type, its URL, an API key if it
+  needs one, and the bank or user id her memories go under), then pick one. ✏️ edits and 🗑️ deletes a saved connection;
+  the memories on the server stay there. Relevant memories are recalled per message, and she keeps her own bank or user id,
+  separate from any harness's own memory.
+
+| Type | What to enter | Notes |
+| --- | --- | --- |
+| [Hindsight](https://pypi.org/project/hindsight-client/) | URL like `http://localhost:8899`, a bank ID | Everything works: memory training, behavior learning, and her own-voice missions set on the bank. |
+| [Mem0](https://docs.mem0.ai/open-source/features/rest-api) (self-hosted server) | URL like `http://localhost:8888`, its `ADMIN_API_KEY` if set, a user ID | Memory and memory training work. Mem0 writes facts in its own style, and behavior learning needs Hindsight. |
+
+Other engines (Zep, Letta, MemPalace...) each speak their own API, so they need a small connector in
+[`brain/memory.py`](brain/memory.py) and a type in [`brain/memory_profiles.py`](brain/memory_profiles.py); the Mem0 one is a
+good template. If you had a Hindsight server set up before profiles existed, it's saved as a *Hindsight* profile automatically.
 
 Her memories are written in her own voice ("I promised Sam I'd help with their song"). Search results and picture descriptions
 are never stored as if they were facts about you.
@@ -291,7 +303,7 @@ are stored word for word.
 Turn on *Settings → Memory training* and nothing is saved automatically. After a reply she proposes at most one short fact,
 which waits in a review list. For each one you can **edit the wording**, mark it **Core / Normal / Minor**, and **Save** or
 **Reject**. What you save is stored exactly as you worded it. Core facts are always placed in her prompt; the importance is
-stored as a tag on the memory. It needs the Hindsight provider. Good for the first weeks, while you're shaping what she
+stored as a tag on the memory. It needs a memory server (Hindsight or Mem0). Good for the first weeks, while you're shaping what she
 remembers.
 
 ### Behavior learning
@@ -299,7 +311,8 @@ remembers.
 Rate any reply 👍/👎 and say why in the pop-up (a reason is required). She distills your feedback into short rules ("keep replies
 short", "don't bring up sports") stored in a separate Hindsight bank and added to her prompt on top of her soul (which is never
 changed). A *how much she does on her own* setting decides whether changes need your approval: *Ask first* (every change waits
-for you), *Small tweaks on her own* (strengthening or weakening a rule is automatic), or *Everything on her own*. Needs Hindsight.
+for you), *Small tweaks on her own* (strengthening or weakening a rule is automatic), or *Everything on her own*. Needs a
+Hindsight memory backend.
 
 ### Curiosity
 
@@ -456,7 +469,7 @@ python tools/backup_local_state.py
 
 This copies every gitignored local file to a dated folder **outside** the repo (`../glitch-backups/`), verifies each copy by hash,
 skips the run if nothing changed, and keeps the newest 10. Options: `--dest PATH`, `--keep N`, `--force`. To restore, copy the files
-back to the same relative paths and restart the Brain. Memory that lives in a Hindsight server is backed up separately, on that server.
+back to the same relative paths and restart the Brain. Memory that lives in a memory server is backed up separately, on that server.
 
 ## Project layout
 
@@ -466,7 +479,8 @@ brain/                 Python backend (WebSocket server)
   llm/                 LLM clients (OpenAI-compatible, Ollama native, agent harness)
   voice/               speech-to-text and text-to-speech
   conversation.py      saving/restoring the conversation, daily chat logs
-  memory.py            memory providers (local / Hindsight), core-fact recall
+  memory.py            memory backends (local file / Hindsight / Mem0), core-fact recall
+  memory_profiles.py   saved memory servers
   training.py          memory-training review queue
   lessons.py           behavior learning
   curiosity.py         follow-up questions, saved questions, reaching out

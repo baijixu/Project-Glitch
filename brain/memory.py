@@ -1,47 +1,52 @@
 """Glitch's own native memory of who the user is -- entirely separate
-from, and never touched by, the Hermes harness (see harness.py's own
+from, and never touched by, an agent harness (see harness.py's own
 docstring on how the harness bypasses this module completely).
 
-Two interchangeable backends, picked via set_provider()/read_provider():
+Which backend is in use is the active memory profile (memory_profiles.py,
+Settings -> Memory); activate() connects to it. Kinds of backend:
 
-- "local" (the default -- nothing to set up): one fact per line in
-  memory.md, extracted by a lightweight extra LLM call after every reply
-  (see main.py's _maybe_retain_memory), and re-injected as one static
+- "local" (the built-in "Local file" -- nothing to set up): one fact per
+  line in memory.md, extracted by a lightweight extra LLM call after every
+  reply (see main.py's _maybe_retain_memory), and re-injected as one static
   block every turn regardless of what's being asked.
-- "hindsight": talks to a Hindsight server
-  (https://pypi.org/project/hindsight-client/, the same semantic-memory
-  service Hermes itself can use) in its own bank, kept separate from
-  whatever bank a Hermes harness might use. Extraction and retrieval both
-  happen server-side: retain_exchange() just hands it the raw exchange
-  text and lets it decide what's worth keeping, and recall_relevant()
-  asks it for whatever's actually relevant to the CURRENT message instead
-  of one static block every turn. Requires a real server someone's
-  actually running -- not everyone has one, which is why this isn't the
-  default.
+- a memory server someone runs themselves -- "hindsight"
+  (https://pypi.org/project/hindsight-client/) or "mem0"
+  (https://docs.mem0.ai/open-source/features/rest-api), each in its own
+  bank / user id, kept separate from whatever memory a harness might use.
+  Extraction and retrieval both happen server-side: retain_exchange() just
+  hands it the raw exchange and lets it decide what's worth keeping, and
+  recall_for_prompt() asks it for whatever's relevant to the CURRENT
+  message instead of one static block every turn.
 
-configure() primes the Hindsight client from either the Settings panel's
-saved hindsight_config.json or config.yaml's one-time-seed brain.hindsight
-block (see main.py). Every hindsight_* function below is a no-op/returns
-""/[] if it was never called -- same graceful-degradation pattern as a
-missing brain.llm block, not a crash -- but that only matters when
-read_provider() is actually "hindsight"; the local functions never
-touch it at all.
+Adding another server means: a type in memory_profiles.TYPES, a small client
+here (like Mem0Client), and a branch in each entry point under "Unified
+entry points". Every server function below is a no-op/returns ""/[] if no
+client is connected -- same graceful-degradation pattern as a missing
+brain.llm block, not a crash.
 """
 
 import asyncio
 import json
 from pathlib import Path
 
+import httpx
+
+import memory_profiles
 import training
 from hindsight_client import Hindsight
 
 MEMORY_PATH = Path(__file__).parent / "memory.md"
 MEMORY_ACTIVE_PATH = Path(__file__).parent / "memory_active.txt"
+# Before memory profiles: which backend was picked, and the one Hindsight
+# connection. Only read now, to turn them into a profile once (see migrate()).
 PROVIDER_PATH = Path(__file__).parent / "memory_provider.txt"
 HINDSIGHT_CONFIG_PATH = Path(__file__).parent / "hindsight_config.json"
 
 LOCAL_PROVIDER = "local"
-HINDSIGHT_PROVIDER = "hindsight"
+HINDSIGHT_PROVIDER = memory_profiles.HINDSIGHT
+MEM0_PROVIDER = memory_profiles.MEM0
+# The name migrate() gives the Hindsight connection saved before profiles.
+MIGRATED_HINDSIGHT_NAME = "Hindsight"
 
 # Over this many chars, the local provider's oldest entries are just
 # dropped (FIFO) rather than intelligently merged -- a deliberate
@@ -147,33 +152,105 @@ _PREVIOUS_DEFAULT_MISSIONS = (_MISSION_V1, _MISSION_V2, _MISSION_V2_ROLES)
 
 _client: Hindsight | None = None
 _bank_id = ""
+_mem0: "Mem0Client | None" = None
 # The bank APPROVED_STRATEGY was last set up on (see _ensure_approved_strategy),
 # so it's checked once per bank rather than before every approval.
 _approved_strategy_bank: str | None = None
 
 
-# -- Provider choice (Settings panel's Memory backend dropdown) -------------
+# -- Which backend (Settings -> Memory's profiles, memory_profiles.py) --------
 
 
 def read_provider() -> str:
-    if PROVIDER_PATH.exists() and PROVIDER_PATH.read_text(encoding="utf-8").strip() == HINDSIGHT_PROVIDER:
-        return HINDSIGHT_PROVIDER
-    return LOCAL_PROVIDER
+    """The active profile's kind: LOCAL_PROVIDER, HINDSIGHT_PROVIDER or MEM0_PROVIDER."""
+    name = memory_profiles.read_active()
+    if name == memory_profiles.LOCAL_NAME:
+        return LOCAL_PROVIDER
+    try:
+        return memory_profiles.read_profile(name)["type"]
+    except (OSError, ValueError):
+        return LOCAL_PROVIDER
 
 
-def has_saved_provider() -> bool:
-    """Whether the user (or a one-time config.yaml seed, see main.py) has
-    ever actually chosen a provider -- distinct from read_provider(),
-    which always returns a usable default even when this is False.
+def server_backed() -> bool:
+    """Whether a memory server (not the local file) is the backend."""
+    return read_provider() != LOCAL_PROVIDER
+
+
+def server_configured() -> bool:
+    """Whether a memory server is the backend and connected -- what memory
+    training needs (it stores approved facts word for word, tagged)."""
+    provider = read_provider()
+    if provider == HINDSIGHT_PROVIDER:
+        return hindsight_configured()
+    return provider == MEM0_PROVIDER and _mem0 is not None
+
+
+def migrate(seed: dict | None = None) -> None:
+    """Once, on the first start with memory profiles: the Hindsight connection
+    saved before them (hindsight_config.json, or config.yaml's brain.hindsight
+    `seed` on a machine that never saved one) becomes the "Hindsight" profile,
+    active if Hindsight was the backend -- or if no backend was ever picked,
+    so a connection someone set up isn't left unused.
     """
-    return PROVIDER_PATH.exists()
+    if memory_profiles.has_active() or memory_profiles.list_profiles():
+        return
+    try:
+        old = json.loads(HINDSIGHT_CONFIG_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        old = {}
+    old = old if isinstance(old, dict) and old.get("api_url") else (seed or {})
+    if not old.get("api_url"):
+        return
+    name = memory_profiles.save_profile(
+        MIGRATED_HINDSIGHT_NAME, HINDSIGHT_PROVIDER, old["api_url"], old.get("api_key") or "", old.get("bank_id") or ""
+    )
+    try:
+        picked = PROVIDER_PATH.read_text(encoding="utf-8").strip()
+    except OSError:
+        picked = ""
+    memory_profiles.set_active(name if picked in ("", HINDSIGHT_PROVIDER) else memory_profiles.LOCAL_NAME)
+    print(f"[memory] saved the Hindsight connection as the memory profile {name!r}")
 
 
-def set_provider(provider: str) -> None:
-    PROVIDER_PATH.write_text(provider, encoding="utf-8")
+async def activate() -> None:
+    """Connects to the active profile's server (or disconnects, for the local
+    file). A server that's unreachable still counts as connected -- calls then
+    fail softly per turn -- but raises here so the caller can say so.
+    """
+    global _client, _bank_id, _mem0, _approved_strategy_bank
+    if _client is not None:
+        try:
+            await _client.aclose()  # the old connection, before switching
+        except Exception:
+            pass
+    _client, _mem0, _bank_id, _approved_strategy_bank = None, None, "", None
+    name = memory_profiles.read_active()
+    if name == memory_profiles.LOCAL_NAME:
+        return
+    profile = memory_profiles.read_profile(name)
+    if profile["type"] == HINDSIGHT_PROVIDER:
+        configure(profile["url"], profile["space"], profile["api_key"])
+        await ensure_bank()
+    elif profile["type"] == MEM0_PROVIDER:
+        _mem0 = Mem0Client(profile["url"], profile["space"], profile["api_key"])
+        await _mem0.check()
 
 
-# -- Hindsight connection (Settings panel's Memory Server fields) -----------
+def active_description() -> str:
+    """For the debug log: "local", or e.g. "hindsight 'Home' (bank 'glitch-native')"."""
+    name = memory_profiles.read_active()
+    if name == memory_profiles.LOCAL_NAME:
+        return "local file"
+    try:
+        profile = memory_profiles.read_profile(name)
+    except (OSError, ValueError):
+        return f"unreadable profile {name!r}"
+    space = memory_profiles.TYPES[profile["type"]]["space_label"].lower()
+    return f"{profile['type']} {name!r} ({space} {profile['space']!r})"
+
+
+# -- Hindsight connection -----------------------------------------------------
 
 
 def configure(api_url: str, bank_id: str, api_key: str | None = None) -> None:
@@ -181,25 +258,6 @@ def configure(api_url: str, bank_id: str, api_key: str | None = None) -> None:
     _client = Hindsight(base_url=api_url, api_key=api_key or None)
     _bank_id = bank_id
     _approved_strategy_bank = None
-
-
-def read_hindsight_config() -> dict:
-    """The saved {api_url, api_key, bank_id}, or {} if never saved --
-    config.yaml's own brain.hindsight block is only a one-time seed for
-    this, read directly by main.py, same pattern as a saved harness
-    overriding its own config.yaml seed once one exists.
-    """
-    if HINDSIGHT_CONFIG_PATH.exists():
-        return json.loads(HINDSIGHT_CONFIG_PATH.read_text(encoding="utf-8"))
-    return {}
-
-
-def save_hindsight_config(api_url: str, api_key: str, bank_id: str) -> None:
-    HINDSIGHT_CONFIG_PATH.write_text(
-        json.dumps({"api_url": api_url, "api_key": api_key, "bank_id": bank_id}), encoding="utf-8"
-    )
-    if api_url:
-        configure(api_url, bank_id or "glitch-native", api_key)
 
 
 def hindsight_client() -> Hindsight | None:
@@ -216,6 +274,60 @@ def hindsight_bank_id() -> str:
 
 def hindsight_configured() -> bool:
     return _client is not None
+
+
+# -- Mem0 connection ----------------------------------------------------------
+
+
+# Mem0's own server (mem0/server in https://github.com/mem0ai/mem0): memories
+# live under a user id (the profile's `space`), and it extracts facts from what
+# it's given with its own model, like Hindsight. Approved facts go in with
+# infer=False, which stores them as written.
+MEM0_TIMEOUT_SEC = 30.0
+MEM0_RECALL_LIMIT = 10
+MEM0_LIST_LIMIT = 500
+
+
+class Mem0Client:
+    def __init__(self, url: str, user_id: str, api_key: str = "") -> None:
+        self.url = url.rstrip("/")
+        self.user_id = user_id
+        self._headers = {"X-API-Key": api_key} if api_key else {}
+
+    async def _request(self, method: str, path: str, **kwargs):
+        async with httpx.AsyncClient(timeout=MEM0_TIMEOUT_SEC, headers=self._headers) as client:
+            response = await client.request(method, self.url + path, **kwargs)
+        response.raise_for_status()
+        return response.json() if response.content else None
+
+    async def check(self) -> None:
+        await self.list(limit=1)
+
+    async def add(self, messages: list[dict], *, infer: bool = True, metadata: dict | None = None) -> None:
+        body = {"messages": messages, "user_id": self.user_id, "infer": infer}
+        if metadata:
+            body["metadata"] = metadata
+        await self._request("POST", "/memories", json=body)
+
+    async def search(self, query: str, limit: int = MEM0_RECALL_LIMIT) -> list[dict]:
+        body = {"query": query, "filters": {"user_id": self.user_id}, "top_k": limit}
+        return _mem0_results(await self._request("POST", "/search", json=body))
+
+    async def list(self, limit: int = MEM0_LIST_LIMIT) -> list[dict]:
+        return _mem0_results(await self._request("GET", "/memories", params={"user_id": self.user_id, "top_k": limit}))
+
+    async def delete_all(self) -> None:
+        await self._request("DELETE", "/memories", params={"user_id": self.user_id})
+
+
+def _mem0_results(body) -> list[dict]:
+    # {"results": [...]} from current servers, a bare list from older ones.
+    items = body.get("results", []) if isinstance(body, dict) else body
+    return [item for item in items or [] if isinstance(item, dict) and item.get("memory")]
+
+
+def _mem0_is_core(item: dict) -> bool:
+    return (item.get("metadata") or {}).get("importance") == "core"
 
 
 async def ensure_bank() -> None:
@@ -255,13 +367,7 @@ async def _apply_default_retain_mission() -> None:
 # -- Hindsight provider's own storage ----------------------------------------
 
 
-async def retain_exchange(user_text: str, reply_text: str, asked: str = "") -> None:
-    """Fire-and-forget: hands one exchange to Hindsight to decide what, if
-    anything, is worth remembering long-term. An empty reply_text retains
-    only what the user said -- main.py passes that for a turn where she
-    searched the web, so the search results in her reply never get saved as
-    if they were something about the user.
-    """
+async def _hindsight_retain_exchange(user_text: str, reply_text: str, asked: str = "") -> None:
     if _client is None:
         return
     content = f"User: {user_text}\nGlitch: {reply_text}" if reply_text else f"User: {user_text}"
@@ -270,12 +376,8 @@ async def retain_exchange(user_text: str, reply_text: str, asked: str = "") -> N
     await _client.aretain(_bank_id, content=content)
 
 
-async def retain_fact(text: str, importance: str) -> None:
-    """Retains one fact the user reviewed and approved (brain/training.py),
-    word for word (see APPROVED_STRATEGY), tagged with its importance so core
-    facts can be recalled every turn. Raises if it couldn't be saved at all --
-    the caller keeps the proposal queued so nothing approved is lost.
-    """
+async def _hindsight_retain_fact(text: str, importance: str) -> None:
+    """Word for word (see APPROVED_STRATEGY), tagged with its importance."""
     if _client is None:
         raise RuntimeError("no Hindsight server configured")
     tags = [training.importance_tag(importance)]
@@ -412,27 +514,91 @@ def _clear_local() -> None:
     MEMORY_PATH.write_text("", encoding="utf-8")
 
 
+# -- Mem0 provider's own storage ----------------------------------------------
+
+
+async def _mem0_retain_exchange(user_text: str, reply_text: str, asked: str) -> None:
+    messages = [{"role": "user", "content": user_text}]
+    if reply_text:
+        messages.append({"role": "assistant", "content": reply_text})
+    if asked:
+        messages.insert(0, {"role": "assistant", "content": asked})
+    await _mem0.add(messages)
+
+
+async def _mem0_retain_fact(text: str, importance: str) -> None:
+    await _mem0.add([{"role": "user", "content": text}], infer=False, metadata={"importance": importance})
+
+
+async def _mem0_recall(query: str) -> str:
+    """Core facts first (every turn, whatever the topic), then what's relevant."""
+    relevant, everything = await asyncio.gather(_mem0.search(query), _mem0.list())
+    lines = [item["memory"] for item in everything if _mem0_is_core(item)]
+    lines += [item["memory"] for item in relevant if item["memory"] not in lines]
+    return "\n".join(f"- {line}" for line in lines)
+
+
 # -- Unified entry points (main.py calls these, provider-agnostic) ----------
+
+
+async def retain_exchange(user_text: str, reply_text: str, asked: str = "") -> None:
+    """Fire-and-forget: hands one exchange to the memory server to decide what,
+    if anything, is worth remembering long-term. An empty reply_text retains
+    only what the user said -- main.py passes that for a turn where she
+    searched the web, so the search results in her reply never get saved as
+    if they were something about the user. `asked` is her question he was
+    answering (curiosity.answered_question) -- the answer needs it.
+    """
+    provider = read_provider()
+    if provider == HINDSIGHT_PROVIDER:
+        await _hindsight_retain_exchange(user_text, reply_text, asked)
+    elif provider == MEM0_PROVIDER and _mem0 is not None:
+        await _mem0_retain_exchange(user_text, reply_text, asked)
+
+
+async def retain_fact(text: str, importance: str) -> None:
+    """Retains one fact the user reviewed and approved (brain/training.py),
+    word for word, marked with its importance so core facts can be recalled
+    every turn. Raises if it couldn't be saved at all -- the caller keeps the
+    proposal queued so nothing approved is lost.
+    """
+    provider = read_provider()
+    if provider == HINDSIGHT_PROVIDER:
+        await _hindsight_retain_fact(text, importance)
+    elif provider == MEM0_PROVIDER and _mem0 is not None:
+        await _mem0_retain_fact(text, importance)
+    else:
+        raise RuntimeError("no memory server connected")
 
 
 async def recall_for_prompt(query: str) -> str:
     """Whatever should go into LocalLLM.set_memory() this turn."""
-    if read_provider() == HINDSIGHT_PROVIDER:
+    provider = read_provider()
+    if provider == HINDSIGHT_PROVIDER:
         return await recall_relevant(query)
+    if provider == MEM0_PROVIDER:
+        return await _mem0_recall(query) if _mem0 is not None else ""
     return read_local_block()
 
 
 async def read_entries() -> list[str]:
     """For the Settings panel's Download Memory button."""
-    if read_provider() == HINDSIGHT_PROVIDER:
+    provider = read_provider()
+    if provider == HINDSIGHT_PROVIDER:
         return await _read_hindsight_entries()
+    if provider == MEM0_PROVIDER:
+        return [item["memory"] for item in await _mem0.list()] if _mem0 is not None else []
     return read_local_entries()
 
 
 async def clear() -> None:
     """For the Settings panel's Clear Memory button."""
-    if read_provider() == HINDSIGHT_PROVIDER:
+    provider = read_provider()
+    if provider == HINDSIGHT_PROVIDER:
         await _clear_hindsight()
+    elif provider == MEM0_PROVIDER:
+        if _mem0 is not None:
+            await _mem0.delete_all()
     else:
         _clear_local()
 
@@ -448,12 +614,11 @@ def read_memory_active() -> bool:
     """Defaults to True (on) -- unlike Mic Always-On, this feature's whole
     point is to be on so she actually gets to know the user, so it opts in
     by default rather than requiring the user to find and flip it. The
-    local provider is always "available" (nothing to configure); the
-    hindsight provider additionally needs configure() to have actually
-    been called (a real server address known), same graceful-degradation
-    reasoning as a missing brain.llm block.
+    local provider is always "available" (nothing to configure); a memory
+    server additionally needs to be connected (activate()), same
+    graceful-degradation reasoning as a missing brain.llm block.
     """
-    if read_provider() == HINDSIGHT_PROVIDER and _client is None:
+    if server_backed() and not server_configured():
         return False
     if MEMORY_ACTIVE_PATH.exists():
         return MEMORY_ACTIVE_PATH.read_text(encoding="utf-8").strip() != "0"

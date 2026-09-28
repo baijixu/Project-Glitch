@@ -81,6 +81,7 @@ import kokoro_voices
 import llm_engines
 import lessons
 import memory
+import memory_profiles
 import notes
 import profiles
 import protocol
@@ -857,12 +858,8 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
         await _handle_rate_reply(websocket, data, brain)
     elif msg_type in _LESSON_SETTINGS_TYPES:
         await _handle_lessons_message(msg_type, data)
-    elif msg_type == protocol.SET_MEMORY_PROVIDER:
-        memory.set_provider(data.get("provider") or memory.LOCAL_PROVIDER)
-        await _broadcast(protocol.memory_provider_state(memory.read_provider()))
-        await _broadcast_lessons_state()  # lessons need the hindsight provider, so switching it changes their availability
-    elif msg_type == protocol.SAVE_HINDSIGHT_CONFIG:
-        await _handle_save_hindsight_config(data)
+    elif msg_type in _MEMORY_PROFILE_TYPES:
+        await _handle_memory_profile_message(websocket, msg_type, data)
     elif msg_type == protocol.GET_SOUL_AND_USER:
         await websocket.send(
             json.dumps(protocol.soul_and_user_content(souls.read_main_soul(), profiles.read_main_user()))
@@ -939,19 +936,11 @@ async def _handle_ready(websocket: websockets.ServerConnection, data: dict) -> N
         await websocket.send(json.dumps(_LAST_CONTEXT_USAGE))
     await websocket.send(json.dumps(_training_state_message()))
     await websocket.send(json.dumps(protocol.memory_state(memory.read_memory_active())))
-    await websocket.send(json.dumps(protocol.memory_provider_state(memory.read_provider())))
+    await websocket.send(json.dumps(_memory_profiles_message()))
     # Its own task -- fetching lessons is a network call to Hindsight, and an
     # unreachable server shouldn't hold up the rest of the ready handshake
     # (including the avatar_data that signals it's finished).
     _spawn(_send_lessons_state(websocket))
-    hindsight_cfg = memory.read_hindsight_config()
-    await websocket.send(
-        json.dumps(
-            protocol.hindsight_config(
-                hindsight_cfg.get("api_url", ""), hindsight_cfg.get("api_key", ""), hindsight_cfg.get("bank_id", "")
-            )
-        )
-    )
     await websocket.send(json.dumps(protocol.tts_engines(tts_engines.list_engines(), tts_engines.read_active_engine_name())))
     await _send_tts_voices(websocket, tts_engines.read_active_engine_name())
     await websocket.send(json.dumps(protocol.llm_engines(llm_engines.list_engines(), llm_engines.read_active_engine_name())))
@@ -1951,31 +1940,81 @@ async def _learn_from_rating(
 # Memory server, debug and restart
 # ============================================================================
 
-async def _handle_save_hindsight_config(data: dict) -> None:
-    """Saves the Settings panel's Memory Server fields, points memory.py's
-    Hindsight client at the new server, and ensures the bank exists there
-    -- broadcast to every connected device (not just the one that saved
-    it) since this is shared state the same way harness_health/tts_health
-    are, not a per-connection preference. Doesn't touch which provider is
-    active (memory.py's own read_provider()) -- that's the Memory backend
-    dropdown's job (set_memory_provider), kept independent so filling in
-    connection details doesn't silently switch someone off local memory
-    before they're ready to.
+_MEMORY_PROFILE_TYPES = (
+    protocol.SET_MEMORY_PROFILE,
+    protocol.SAVE_MEMORY_PROFILE,
+    protocol.DELETE_MEMORY_PROFILE,
+    protocol.GET_MEMORY_PROFILE,
+)
+
+
+def _memory_profiles_message(error: str = "") -> dict:
+    types = [{"type": kind, **info} for kind, info in memory_profiles.TYPES.items()]
+    return protocol.memory_profiles(memory_profiles.list_profiles(), memory_profiles.read_active(), types, error)
+
+
+async def _activate_memory() -> str:
+    """Connects to the active memory profile. Returns "" or why it couldn't
+    reach the server (it's still the backend -- calls fail softly per turn)."""
+    try:
+        await memory.activate()
+        return ""
+    except Exception as exc:
+        print(f"[brain] couldn't reach the memory server for {memory_profiles.read_active()!r}: {exc!r}")
+        return f"Couldn't reach that memory server ({type(exc).__name__}). It's saved; check the URL and key."
+
+
+async def _handle_memory_profile_message(websocket: websockets.ServerConnection, msg_type: str, data: dict) -> None:
+    """Settings -> Memory: pick, save, edit or delete a memory backend profile
+    (memory_profiles.py). Every device's list updates; a refusal or an
+    unreachable server is only told to the device that asked.
     """
-    api_url = data.get("api_url", "").strip()
-    api_key = data.get("api_key", "").strip()
-    bank_id = data.get("bank_id", "").strip() or "glitch-native"
-    if _fields_too_long(api_url, api_key, bank_id):
-        return
-    memory.save_hindsight_config(api_url, api_key, bank_id)
-    if api_url:
+    name = str(data.get("name") or "").strip()
+    if msg_type == protocol.GET_MEMORY_PROFILE:
         try:
-            await memory.ensure_bank()
-        except Exception as exc:
-            print(f"[brain] couldn't reach hindsight server {api_url!r}: {exc!r}")
-    print(f"[brain] saved hindsight config (bank {bank_id!r})")
-    await _broadcast(protocol.hindsight_config(api_url, api_key, bank_id))
-    lessons.invalidate()
+            profile = memory_profiles.read_profile(name)
+        except (OSError, ValueError):
+            profile = {}
+        await websocket.send(json.dumps(protocol.memory_profile_content(name, profile)))
+        return
+    error = ""
+    reconnect = False
+    try:
+        if msg_type == protocol.SET_MEMORY_PROFILE:
+            if name != memory_profiles.LOCAL_NAME:
+                memory_profiles.read_profile(name)  # must exist
+            memory_profiles.set_active(name)
+            reconnect = True
+        elif msg_type == protocol.SAVE_MEMORY_PROFILE:
+            fields = [str(data.get(k) or "") for k in ("backend", "url", "api_key", "space", "original_name")]
+            if _fields_too_long(name, *fields):
+                return
+            kind, url, api_key, space, original = fields
+            was_active = memory_profiles.read_active()
+            saved = memory_profiles.save_profile(name, kind, url, api_key, space)
+            if original and original != saved and original != memory_profiles.LOCAL_NAME:
+                try:
+                    memory_profiles.delete_profile(original)  # renamed
+                except OSError:
+                    pass
+            if was_active in (saved, original):
+                memory_profiles.set_active(saved)
+                reconnect = True
+            print(f"[brain] saved memory profile {saved!r} ({kind})")
+        elif msg_type == protocol.DELETE_MEMORY_PROFILE:
+            reconnect = memory_profiles.read_active() == name
+            memory_profiles.delete_profile(name)
+    except (OSError, ValueError) as exc:
+        await websocket.send(json.dumps(_memory_profiles_message(str(exc) if isinstance(exc, ValueError) else "No such memory profile.")))
+        return
+    if reconnect:
+        error = await _activate_memory()
+        lessons.invalidate()
+        await _debug_broadcast("memory", f"memory backend: {memory.active_description()}")
+    await _broadcast(_memory_profiles_message())
+    if error:
+        await websocket.send(json.dumps(_memory_profiles_message(error)))
+    await _broadcast(_training_state_message())
     await _broadcast_lessons_state()
 
 
@@ -2020,9 +2059,8 @@ async def _debug_snapshot(brain: Brain, current: websockets.ServerConnection | N
         lines.append("LLM: none configured")
     lines.append(f"Speech engine: {tts_engines.read_active_engine_name()!r}, voice {on(voice_settings.read_voice_active())}")
     provider = memory.read_provider()
-    bank = f", bank {memory.hindsight_bank_id()!r}" if provider == memory.HINDSIGHT_PROVIDER else ""
     lines.append(
-        f"Memory: {on(memory.read_memory_active())} ({provider}{bank}), training {on(training.read_active())}, "
+        f"Memory: {on(memory.read_memory_active())} ({memory.active_description()}), training {on(training.read_active())}, "
         f"lessons {on(lessons.read_active())} ({lessons.read_autonomy()})"
     )
     lines.append(
@@ -2072,7 +2110,7 @@ def _hindsight_model() -> str:
     """The model Hindsight used for its latest rewrite or summary (from its own
     request log), or "unknown". Never raises."""
     try:
-        api_url = (memory.read_hindsight_config().get("api_url") or "").rstrip("/")
+        api_url = memory_profiles.read_profile(memory_profiles.read_active())["url"].rstrip("/")
         bank = memory.hindsight_bank_id()
         with urllib.request.urlopen(f"{api_url}/v1/default/banks/{bank}/llm-requests?limit=1", timeout=3) as response:
             items = json.load(response).get("items") or []
@@ -2610,7 +2648,7 @@ async def _reply_to(
 # ============================================================================
 
 def _training_state_message(error: str = "") -> dict:
-    available = memory.read_provider() == memory.HINDSIGHT_PROVIDER and memory.hindsight_configured()
+    available = memory.server_configured()
     return protocol.training_state(available, training.read_active(), training.read_pending(), error)
 
 
@@ -2668,7 +2706,7 @@ async def _handle_resolve_memory_proposal(data: dict) -> None:
                 await memory.retain_fact(fact, importance)
             except Exception as exc:
                 print(f"[brain] approving a memory failed: {exc!r}")
-                error = "couldn't save it to Hindsight -- it's still in the list"
+                error = "couldn't save it to her memory server -- it's still in the list"
             else:
                 training.remove_pending(proposal_id)
                 await _debug_broadcast(
@@ -2808,9 +2846,9 @@ async def _maybe_retain_memory(
     entirely during role-play is the simplest way to guarantee that
     rather than trying to classify fiction-vs-real-signal reliably.
 
-    Branches on the active provider (memory.py's own read_provider()):
-    "hindsight" hands the raw exchange straight to Hindsight's own
-    retain(), which decides server-side what's worth keeping and doesn't
+    Branches on the active provider (memory.py's own read_provider()): a
+    memory server (Hindsight, Mem0) gets the raw exchange straight, and
+    decides server-side what's worth keeping and doesn't
     hand back the specific fact synchronously, so no memory_learned gets
     sent for that path. "local" restores the original flat-file
     behavior -- one extra lightweight LLM call
@@ -2826,10 +2864,10 @@ async def _maybe_retain_memory(
     if not user_text.strip() and not reply_text.strip():
         return  # an image-only turn with nothing the user said -- nothing left worth keeping
     start = time.monotonic()
-    if memory.read_provider() == memory.HINDSIGHT_PROVIDER and training.read_active():
+    if memory.server_backed() and training.read_active():
         await _propose_memory(websocket, user_text, reply_text, brain, asked)
         return
-    if memory.read_provider() == memory.HINDSIGHT_PROVIDER:
+    if memory.server_backed():
         try:
             await memory.retain_exchange(user_text, reply_text, asked)  # reply_text is "" for a web-search turn, see _reply_to
         except Exception as exc:
@@ -2900,40 +2938,15 @@ async def main() -> None:
     llm_cfg = brain_cfg.get("llm") or {}
     _DEFAULT_LLM_CONFIG.update(endpoint=llm_cfg.get("endpoint"), model=llm_cfg.get("model"), api_key=llm_cfg.get("api_key"))
 
-    # Optional, same graceful-degradation reasoning as llm above -- with
-    # nothing configured (neither a saved hindsight_config.json nor this
-    # seed), memory.py's hindsight_* functions all stay no-ops rather than
-    # main() requiring this upfront, and the "local" provider (nothing to
-    # set up) is what's actually used regardless. The saved-via-the-app
-    # config always wins once it exists; config.yaml's own block is only a
-    # one-time seed for a machine that's never had one saved yet -- same
-    # pattern as harness's own saved-list migration just below. Seeding
-    # also writes the seed straight into the saved file (not just into
-    # the live client), so the Settings panel's Memory Server fields show
-    # real values on first connect instead of looking unconfigured when
-    # it's actually working.
-    had_saved_provider = memory.has_saved_provider()
-    hindsight_cfg = memory.read_hindsight_config() or brain_cfg.get("hindsight") or {}
-    if hindsight_cfg.get("api_url"):
-        memory.save_hindsight_config(
-            hindsight_cfg["api_url"], hindsight_cfg.get("api_key") or "", hindsight_cfg.get("bank_id") or "glitch-native"
-        )
-        # Unreachable at startup (the server is off, or on a machine that's
-        # asleep) must not stop Brain from starting -- that used to crash it
-        # before it ever listened. Memory calls fail softly per turn instead,
-        # and the bank is re-checked whenever the settings are saved again.
-        try:
-            await memory.ensure_bank()
-        except Exception as exc:
-            print(f"[brain] WARNING: couldn't reach the Hindsight server at {hindsight_cfg['api_url']!r} ({exc!r}) -- starting without it")
-        # Also a one-time seed: nothing explicitly chosen yet (no Memory
-        # backend dropdown pick saved), but hindsight is configured, so
-        # default to actually using it rather than silently leaving what
-        # was just set up unused in favor of "local". Skipped once
-        # memory_provider.txt exists -- from then on the dropdown's own
-        # choice always wins, same as harness's own saved-list migration.
-        if not had_saved_provider:
-            memory.set_provider(memory.HINDSIGHT_PROVIDER)
+    # Her memory backend: the active memory profile (Settings -> Memory,
+    # memory_profiles.py), or the built-in local file. The Hindsight connection
+    # saved before profiles existed -- or config.yaml's brain.hindsight block,
+    # a one-time seed -- becomes a profile the first time (memory.migrate).
+    # An unreachable server (off, or on a machine that's asleep) must not stop
+    # Brain from starting: memory calls fail softly per turn instead.
+    memory.migrate(brain_cfg.get("hindsight") or {})
+    if problem := await _activate_memory():
+        print(f"[brain] WARNING: {problem} Starting without it.")
 
     # Optional, same graceful-degradation reasoning as hindsight above --
     # config.yaml-only (not Settings-managed the way memory's Hindsight

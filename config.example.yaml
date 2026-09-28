@@ -37,17 +37,14 @@ brain:
   #   # llama-server, or Ollama without needing think control).
   #   # provider: ollama
   #   # think: false # only read when provider: ollama -- suppresses reasoning for models that support it (see llm/client.py's OllamaLLM)
-  # Optional -- Glitch's own native memory (brain/memory.py), backed by a
-  # Hindsight server (https://pypi.org/project/hindsight-client/, the same
-  # semantic-memory service Hermes itself can use, see hermes-agent's own
-  # `memory: provider: hindsight` config). Leave this whole block out and
-  # every memory.py function is a no-op -- no native memory, no crash,
-  # same graceful-degradation pattern as a missing llm block above.
+  # Optional -- memory servers are added in Settings -> Memory backend now
+  # (Hindsight or Mem0, each with its own URL, API key and bank / user id).
+  # This block is only a one-time seed: a Hindsight server here is saved as
+  # the first memory backend the first time Brain starts. Leave it out and
+  # she uses the built-in local file until you add one.
   #
-  # bank_id is deliberately its own separate namespace from whatever bank
-  # a Hermes harness (if any) is configured to use, e.g. hermes-agent's
-  # own hindsight/config.json -- her own memory and Hermes's are meant to
-  # never blend (see memory.py's own docstring).
+  # Keep bank_id separate from whatever memory an agent harness uses, so her
+  # own memory and the harness's never blend.
   #
   # hindsight:
   #   api_url: http://localhost:8899

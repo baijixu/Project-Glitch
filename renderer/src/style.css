@@ -730,16 +730,6 @@ body.overlay-chat-active #overlay-edit-button {
   margin-top: 28px;
 }
 
-/* Same 8px rhythm as .settings-action-button ~ .settings-action-button,
-   restated explicitly here since it doesn't apply on its own: Save Memory
-   Server sits one level deeper than Download Memory (inside this wrapper,
-   see index.html), and a sibling combinator can't reach across that
-   boundary -- confirmed live, the two buttons rendered touching with no
-   gap between them without this. */
-#hindsight-config-fields {
-  margin-bottom: 8px;
-}
-
 /* Scoped as .settings-section > .settings-toggle-row (not just
    .settings-toggle-row) so this beats .settings-section > label's `display:
    block` below on specificity -- every toggle row is also a direct-child

@@ -67,8 +67,10 @@ RESOLVE_MEMORY_PROPOSAL = "resolve_memory_proposal"
 SET_MEMORY_ACTIVE = "set_memory_active"
 CLEAR_MEMORY = "clear_memory"
 GET_MEMORY_CONTENT = "get_memory_content"
-SET_MEMORY_PROVIDER = "set_memory_provider"
-SAVE_HINDSIGHT_CONFIG = "save_hindsight_config"
+SET_MEMORY_PROFILE = "set_memory_profile"
+SAVE_MEMORY_PROFILE = "save_memory_profile"
+DELETE_MEMORY_PROFILE = "delete_memory_profile"
+GET_MEMORY_PROFILE = "get_memory_profile"
 GET_SOUL_AND_USER = "get_soul_and_user"
 SAVE_SOUL_AND_USER = "save_soul_and_user"
 GET_NOTES = "get_notes"
@@ -108,8 +110,8 @@ LESSONS_STATE = "lessons_state"
 LESSON_EVENT = "lesson_event"
 MEMORY_STATE = "memory_state"
 MEMORY_CONTENT = "memory_content"
-MEMORY_PROVIDER_STATE = "memory_provider_state"
-HINDSIGHT_CONFIG = "hindsight_config"
+MEMORY_PROFILES = "memory_profiles"
+MEMORY_PROFILE_CONTENT = "memory_profile_content"
 SOUL_AND_USER_CONTENT = "soul_and_user_content"
 NOTES_CONTENT = "notes_content"
 MEMORY_LEARNED = "memory_learned"
@@ -321,22 +323,23 @@ def memory_learned(fact: str) -> dict:
     return {"type": MEMORY_LEARNED, "fact": fact}
 
 
-def memory_provider_state(provider: str) -> dict:
-    """Which memory backend is currently active ("local" or "hindsight",
-    see brain/memory.py) -- sent on `ready`, and again after every
-    set_memory_provider, to every connected device (brain.llm is shared
-    across all of them, so this isn't a per-connection preference).
+def memory_profiles(profiles: list[dict], active: str, types: list[dict], error: str = "") -> dict:
+    """Settings -> Memory (brain/memory_profiles.py): the saved backends
+    ([{name, type}]), which one is active ("Local file" is the built-in one),
+    and the kinds of server that can be added ([{type, label, space_label,
+    default_space}]). Sent on `ready` and to every device after any change;
+    with `error` only to the device whose request was refused or whose server
+    couldn't be reached.
     """
-    return {"type": MEMORY_PROVIDER_STATE, "provider": provider}
+    return {"type": MEMORY_PROFILES, "profiles": profiles, "active": active, "types": types, "error": error}
 
 
-def hindsight_config(api_url: str, api_key: str, bank_id: str) -> dict:
-    """The saved Hindsight connection details (brain/memory.py) -- sent on
-    `ready`, and again after every save_hindsight_config, to pre-fill the
-    Settings panel's Memory Server fields. api_key is echoed back the same
-    way a saved TTS/LLM/harness engine's api_key already is.
+def memory_profile_content(name: str, profile: dict) -> dict:
+    """One saved memory profile, for the ✏️ editor: {type, url, api_key, space}
+    ({} if there's no such profile). api_key is echoed back the same way a
+    saved LLM engine's or harness's is.
     """
-    return {"type": HINDSIGHT_CONFIG, "api_url": api_url, "api_key": api_key, "bank_id": bank_id}
+    return {"type": MEMORY_PROFILE_CONTENT, "name": name, "profile": profile}
 
 
 def no_reply() -> dict:

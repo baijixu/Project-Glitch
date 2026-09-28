@@ -8,6 +8,7 @@ import { LessonsUI } from "./lessons_ui.js";
 import { TrainingUI } from "./training_ui.js";
 import { SamplingUI } from "./sampling_ui.js";
 import { ChatLogsUI } from "./chat_logs_ui.js";
+import { MemoryProfilesUI } from "./memory_profiles_ui.js";
 
 const RECONNECT_DELAY_MS = 3000;
 // Fades out 10s after the text finishes streaming in, not 10s from when it
@@ -206,12 +207,6 @@ export class BrainClient {
     micEnabledToggleInputEl,
     micAlwaysOnToggleInputEl,
     memoryToggleInputEl,
-    memoryProviderSelectEl,
-    hindsightConfigFieldsEl,
-    hindsightApiUrlEl,
-    hindsightApiKeyEl,
-    hindsightBankIdEl,
-    saveHindsightConfigButtonEl,
     downloadMemoryButtonEl,
     clearMemoryButtonEl,
     openSoulUserEditorButtonEl,
@@ -369,6 +364,8 @@ export class BrainClient {
     // Settings -> Chat Logs (brain/conversation.py's daily logs). Its list is
     // fetched whenever Settings opens, so it's never stale.
     this._chatLogsUI = new ChatLogsUI({ send: (message) => this._send(message) });
+    // Settings -> Memory backend (brain/memory_profiles.py).
+    this._memoryProfilesUI = new MemoryProfilesUI({ send: (message) => this._send(message) });
     document.getElementById("settings-button")?.addEventListener("click", () => this._chatLogsUI.refresh());
     this._rateControls = new WeakMap(); // history entry -> {paint} for its 👍/👎 controls
     this._entryBubbles = new WeakMap(); // history entry -> its bubble in the History panel, for editing
@@ -386,18 +383,6 @@ export class BrainClient {
     this.micEnabledToggleInputEl = micEnabledToggleInputEl;
     this.micAlwaysOnToggleInputEl = micAlwaysOnToggleInputEl;
     this.memoryToggleInputEl = memoryToggleInputEl;
-    this.memoryProviderSelectEl = memoryProviderSelectEl;
-    this.hindsightConfigFieldsEl = hindsightConfigFieldsEl;
-    this.hindsightApiUrlEl = hindsightApiUrlEl;
-    this.hindsightApiKeyEl = hindsightApiKeyEl;
-    this.hindsightBankIdEl = hindsightBankIdEl;
-    this.saveHindsightConfigButtonEl = saveHindsightConfigButtonEl;
-    this.memoryProviderSelectEl?.addEventListener("change", () => {
-      const provider = this.memoryProviderSelectEl.value;
-      this._renderMemoryProviderVisibility(provider);
-      this._send({ type: "set_memory_provider", provider });
-    });
-    this.saveHindsightConfigButtonEl?.addEventListener("click", () => this._saveHindsightConfig());
     this.downloadMemoryButtonEl = downloadMemoryButtonEl;
     this.clearMemoryButtonEl = clearMemoryButtonEl;
     this._pendingMemoryDownload = false;
@@ -794,6 +779,7 @@ export class BrainClient {
       if (e.key === "Escape" && !document.getElementById("edit-message-modal-backdrop")?.hidden) this._closeEditModal();
       if (e.key === "Escape" && !document.getElementById("rate-modal-backdrop")?.hidden) this._closeRateModal();
       if (e.key === "Escape" && this._chatLogsUI?.isOpen()) this._chatLogsUI.close();
+      if (e.key === "Escape" && this._memoryProfilesUI?.isOpen()) this._memoryProfilesUI.close();
     });
 
     this._renderSoulList([], DEFAULT_SOUL_NAME); // shows just "Default" immediately, before any `souls` message arrives
@@ -2129,31 +2115,6 @@ export class BrainClient {
     this._send({ type: "delete_harness", name });
   }
 
-  // Everything in the Memory section that depends on which backend is
-  // picked. The connection fields are shown only for "hindsight" --
-  // picking "local" hides them again without clearing whatever was
-  // typed, so switching back and forth doesn't lose a half-filled-in
-  // server URL. Download/Clear Memory are the inverse: local-only --
-  // Hindsight has its own server-side tools for that, and "Clear Memory"
-  // there means deleting and recreating the whole bank (memory.py's
-  // clear()), a bigger and more destructive action than clearing a local
-  // flat file, so this deliberately doesn't offer it as a casual
-  // Settings-panel button for that backend.
-  _renderMemoryProviderVisibility(provider) {
-    const isHindsight = provider === "hindsight";
-    if (this.hindsightConfigFieldsEl) this.hindsightConfigFieldsEl.hidden = !isHindsight;
-    if (this.downloadMemoryButtonEl) this.downloadMemoryButtonEl.hidden = isHindsight;
-    if (this.clearMemoryButtonEl) this.clearMemoryButtonEl.hidden = isHindsight;
-  }
-
-  _saveHindsightConfig() {
-    const apiUrl = this.hindsightApiUrlEl?.value.trim() || "";
-    const apiKey = this.hindsightApiKeyEl?.value.trim() || "";
-    const bankId = this.hindsightBankIdEl?.value.trim() || "";
-    if (!apiUrl) return;
-    this._send({ type: "save_hindsight_config", api_url: apiUrl, api_key: apiKey, bank_id: bankId });
-  }
-
   // Always prepends None (never sent by Brain, see harness.py's
   // NONE_NAME) and always sets .value, defaulting to None when nothing's
   // active -- the toggle (see _renderHarnessState) is what actually means
@@ -2216,6 +2177,7 @@ export class BrainClient {
     this._updateLlmEngineEditControls();
     this._updateAvatarEditControls();
     this._samplingUI?.setLocked(this._harnessActive);
+    this._memoryProfilesUI?.setLocked(this._harnessActive);
     this._renderHarnessLight(); // active may have just flipped -- green overrides whatever reachability last said
   }
 
@@ -3363,18 +3325,11 @@ export class BrainClient {
       case "memory_state":
         if (this.memoryToggleInputEl) this.memoryToggleInputEl.checked = !!data.active;
         break;
-      case "memory_provider_state":
-        if (this.memoryProviderSelectEl) this.memoryProviderSelectEl.value = data.provider || "local";
-        this._renderMemoryProviderVisibility(data.provider || "local");
+      case "memory_profiles":
+        this._memoryProfilesUI.handleState(data);
         break;
-      case "hindsight_config":
-        // Pre-fills the fields, but not while the user has one of them
-        // focused (mid-edit, about to Save) -- same reasoning as
-        // harness_state's own switch-key field, so a config broadcast
-        // triggered by another device can't yank out what's being typed.
-        if (this.hindsightApiUrlEl && document.activeElement !== this.hindsightApiUrlEl) this.hindsightApiUrlEl.value = data.api_url || "";
-        if (this.hindsightApiKeyEl && document.activeElement !== this.hindsightApiKeyEl) this.hindsightApiKeyEl.value = data.api_key || "";
-        if (this.hindsightBankIdEl && document.activeElement !== this.hindsightBankIdEl) this.hindsightBankIdEl.value = data.bank_id || "";
+      case "memory_profile_content":
+        this._memoryProfilesUI.handleContent(data);
         break;
       case "memory_content":
         if (this._pendingMemoryDownload) {
