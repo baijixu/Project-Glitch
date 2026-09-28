@@ -15,8 +15,8 @@ talk to her from your PC, or from your phone over your home network or [Tailscal
   never the same question twice ([curiosity](#curiosity)).
 - **Role-play and work, kept apart.** A [role-play mode](#souls-user-info-and-role-play) with its own personas and chat
   logs that never touches her real memory, and a
-  [harness mode](#hermes-harness-her-professional-self) where she drives Hermes Agent with a separate work persona and
-  memory, so personal and professional never mix.
+  [harness mode](#harness-mode-her-professional-self) where she drives an agent harness (Hermes Agent, OpenClaw, or any
+  OpenAI-compatible one) with a separate work persona and memory, so personal and professional never mix.
 
 > **Status:** a personal project under active development, shared as-is. It runs as a development
 > setup (a Python backend plus a Vite dev server), not a packaged installer. It has been developed and
@@ -30,7 +30,7 @@ talk to her from your PC, or from your phone over your home network or [Tailscal
 The main window with the shipped default avatar:
 
 - **🌸 top left:** chat history (with Resend Last and Clear Chat, and 👍/👎 on her replies)
-- **top right:** the **RP** badge (shown while role-play is on), three status lights (Brain connection, Hermes harness, speech engine), and **⚙️ Settings**
+- **top right:** the **RP** badge (shown while role-play is on), three status lights (Brain connection, harness, speech engine), and **⚙️ Settings**
 - **right edge:** 📷 camera, 🖥️ screen capture, 🎤 hold to talk
 - **bottom:** 📎 attach a picture or text file, the message box, and **Send**
 
@@ -76,8 +76,9 @@ The main window with the shipped default avatar:
 - **Vision.** Show her your camera, your screen, or attach a picture or text file (with a vision-capable model).
 - **Web access.** Optional web search through your own [SearXNG](https://docs.searxng.org/) instance, with results labeled
   trusted / unverified / user-uploaded so she doesn't mistake an AI-generated fan upload for the real thing.
-- **Optional Hermes agent.** Hand the conversation to a [Hermes Agent](https://github.com/NousResearch/hermes-agent) harness,
-  her "professional" self with its own soul, memory and tools, and switch back at any time. Nothing personal crosses over.
+- **Optional agent harness.** Hand the conversation to an agent harness such as
+  [Hermes Agent](https://github.com/NousResearch/hermes-agent) or [OpenClaw](https://docs.openclaw.ai/), her "professional"
+  self with its own soul, memory and tools, and switch back at any time. Nothing personal crosses over.
 - **Your chat logs, readable.** A daily log of your conversations you can read or delete from Settings.
 - **Works from your phone.** Open the page on your phone (camera and mic included) over your LAN or Tailscale.
 - **A debug log that explains itself.** One download shows her whole setup, timings, token counts and every failure, and
@@ -94,11 +95,11 @@ Two independent programs and one small protocol between them:
 │  avatar, animation, lip-sync  │                    │  conversation loop            │
 │  chat UI, settings, mic,      │                    │  LLM · STT · TTS              │
 │  camera, screen capture       │                    │  memory · lessons · curiosity │
-│                               │                    │  web search · Hermes harness  │
+│                               │                    │  web search · agent harness   │
 │  never makes decisions        │                    │  decides everything           │
 └──────────────────────────────┘                    └───────────────┬───────────────┘
                                                                      │ HTTP
-                          your LLM · speech engine · Hindsight · SearXNG · Hermes
+                          your LLM · speech engine · Hindsight · SearXNG · harness
 ```
 
 - The **Renderer** (`renderer/`) only draws and plays what it is told and reports events back. All the thinking is in the Brain.
@@ -130,7 +131,7 @@ Two independent programs and one small protocol between them:
 | A [Hindsight](https://pypi.org/project/hindsight-client/) memory server | Semantic long-term memory, memory training, and behavior learning |
 | A [SearXNG](https://docs.searxng.org/) instance with JSON output enabled | Web access |
 | A vision-capable model | Camera, screen and picture understanding |
-| [Hermes Agent](https://github.com/NousResearch/hermes-agent) | The harness mode |
+| An agent harness with an OpenAI-compatible endpoint, e.g. [Hermes Agent](https://github.com/NousResearch/hermes-agent) or [OpenClaw](https://docs.openclaw.ai/) | The harness mode |
 | [Tailscale](https://tailscale.com) | Reaching her securely from your phone away from home |
 | Linux only: `python3-gi` and `gir1.2-webkit2-4.1` | The optional native window (`pywebview`) |
 
@@ -215,7 +216,7 @@ Two small files, both created by the setup script and both **gitignored** (they 
 | `brain.llm` | Optional one-time seed for the first LLM engine (you can also do this in Settings). |
 | `brain.hindsight` | Hindsight server `api_url` and `bank_id`. |
 | `brain.web_search` | `searxng_url`, plus optional `trusted_domains` you consider reliable. |
-| `brain.harness` | Optional Hermes endpoint seed. |
+| `brain.harness` | Optional harness seed (Hermes and OpenClaw examples included). |
 
 **`renderer/.env`**
 
@@ -244,7 +245,7 @@ The ⚙️ panel, top to bottom:
 | **Avatar** | Pick, import, rename or delete avatars. |
 | **Speech Engine** | Her voice: engines, voices, blended Kokoro voices. |
 | **LLM** | Engines, sampling profiles, and the context meter. |
-| **Harness** | Hand the conversation to Hermes (locks everything above while it's on). |
+| **Harness** | Hand the conversation to an agent harness (locks everything above while it's on). |
 | **Soul & User Files** | Edit `soul.md` and `user.md` directly. |
 | **Chat Logs** | Read or delete a day's chat or role-play log. |
 | **Debugging** | The debug log and its download. |
@@ -274,7 +275,7 @@ Two providers, chosen in Settings:
 
 - **Local** flat file: nothing to set up. She keeps a short list of durable facts.
 - **Hindsight** (recommended): a semantic memory server. Relevant memories are recalled per message. She keeps her own bank
-  (`bank_id`), separate from any Hermes agent's memory.
+  (`bank_id`), separate from any harness's own memory.
 
 Her memories are written in her own voice ("I promised Sam I'd help with their song"). Search results and picture descriptions
 are never stored as if they were facts about you.
@@ -354,20 +355,30 @@ Point `brain.web_search.searxng_url` at a SearXNG instance with `search: formats
 Access* in Settings. Results are ranked and labeled by how much to trust them, and her reply text from a search turn is not
 saved to memory.
 
-### Hermes harness: her professional self
+### Harness mode: her professional self
 
-Add a Hermes Agent gateway in the *Harness* section of Settings and toggle it on to route the conversation through it. The idea is
-two separate selves: **Glitch the companion** (her soul, her memory, her chat log) and **Hermes Glitch** (Hermes's own soul,
-memory and tools, for work). While Hermes is in control:
+Add an agent harness in the *Harness* section of Settings and toggle it on to route the conversation through it. Any harness
+with an OpenAI-compatible `/v1/chat/completions` endpoint works. The idea is two separate selves: **Glitch the companion**
+(her soul, her memory, her chat log) and **her work self** (the harness's own persona, memory and tools). While a harness is
+in control:
 
-- Glitch sends Hermes only your message (and any picture): not her soul, not `user.md`, not her memories.
+- Glitch sends the harness only your message (and any picture): not her soul, not `user.md`, not her memories.
 - Nothing is saved to her memory, memory training, curiosity or lessons, and the conversation isn't written to her chat log
-  (Hermes keeps its own session logs).
-- **Hermes keeps the conversation going** from one message to the next, and across Brain restarts, when the harness has an API
-  key saved in Glitch and Hermes has the same key (`API_SERVER_KEY`). Without one, each message starts a new Hermes conversation.
-  **Clear Chat** starts a new Hermes conversation. Resend and ✏️ edit add a new message there rather than replacing the last one.
+  (the harness keeps its own).
+- **The harness keeps the conversation going** from one message to the next, and across Brain restarts: Glitch tells it
+  which conversation each message belongs to. **Clear Chat** starts a new one there. Resend and ✏️ edit add a new message
+  rather than replacing the last one.
+- For facial expressions, have the harness's persona end replies with a `[mood: ...]` tag, like her own soul does.
+  Without it she stays neutral.
 
-If Hermes uses Hindsight too, give its bank a retain mission that keeps work only, so personal material stays in her own memory.
+| Harness | Endpoint | Model | API key |
+| --- | --- | --- | --- |
+| [Hermes Agent](https://github.com/NousResearch/hermes-agent) (run `hermes gateway` with the api_server platform on) | `http://localhost:8642/v1` | blank | Hermes's `API_SERVER_KEY`. **Needed** for Hermes to continue a conversation; without it each message starts a new one. |
+| [OpenClaw](https://docs.openclaw.ai/gateway/openai-http-api) (set `gateway.http.endpoints.chatCompletions.enabled: true`) | `http://localhost:18789/v1` | `openclaw` or `openclaw/<agentId>` | Your gateway token. |
+| Anything else OpenAI-compatible | its `/v1` URL | whatever it expects | if it needs one |
+
+If the harness has a memory of its own (Hermes with Hindsight, for example), set it to keep work only, so personal material
+stays in her own memory.
 
 ### Chat logs
 
@@ -452,7 +463,7 @@ back to the same relative paths and restart the Brain. Memory that lives in a Hi
 ```
 brain/                 Python backend (WebSocket server)
   main.py              entry point and message handling (a map of its sections is at the top)
-  llm/                 LLM clients (OpenAI-compatible, Ollama native, Hermes harness)
+  llm/                 LLM clients (OpenAI-compatible, Ollama native, agent harness)
   voice/               speech-to-text and text-to-speech
   conversation.py      saving/restoring the conversation, daily chat logs
   memory.py            memory providers (local / Hindsight), core-fact recall
@@ -486,7 +497,7 @@ SPEC.md                original design notes
 | She never speaks | No speech engine is selected: add one in *Settings → Speech Engine*, and check the *Voice* toggle. On a phone, tap the page once (browsers block sound until you do); the debug log says so if that's it. |
 | Memory, lessons or curiosity seem inactive | Role-play may be on (it pauses them). Toggle it off in Settings. Lessons and memory training also need the Hindsight provider. |
 | Her memories mix up who's who ("your hair" when it's hers) | Hindsight's own model is too small or its bank has no instructions: give the Hindsight server a 7–9B model, and restart Brain so it sets up her bank. Facts saved through memory training are stored word for word. |
-| In Hermes mode she forgets the previous message | Save the harness's API key in Glitch, matching Hermes's `API_SERVER_KEY`; without it every message starts a new Hermes conversation. |
+| In harness mode she forgets the previous message | For Hermes, save the harness's API key in Glitch, matching Hermes's `API_SERVER_KEY`; without it every message starts a new Hermes conversation. |
 | Phone can't connect | Both devices on the same network or Tailscale, port 5173 reachable, and Vite running with its default `host: true`. Check the PC's firewall. |
 | Camera or mic won't start on the phone | The page must be HTTPS. Use the `https://` address and accept the warning. |
 | Photos look black | Reload the page and retry, and check the browser's camera permission for the site. |
@@ -502,7 +513,7 @@ Built on [three.js](https://threejs.org), [@pixiv/three-vrm](https://github.com/
 [faster-whisper](https://github.com/SYSTRAN/faster-whisper), [Kokoro](https://github.com/hexgrad/kokoro) and
 [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI), [Hindsight](https://pypi.org/project/hindsight-client/),
 [SearXNG](https://docs.searxng.org/), [pywebview](https://pywebview.flowrl.com), [uv](https://docs.astral.sh/uv/), and optionally
-[Hermes Agent](https://github.com/NousResearch/hermes-agent) and [Tailscale](https://tailscale.com).
+[Hermes Agent](https://github.com/NousResearch/hermes-agent), [OpenClaw](https://docs.openclaw.ai/) and [Tailscale](https://tailscale.com).
 
 ## License
 

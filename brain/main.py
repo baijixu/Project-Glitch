@@ -1671,11 +1671,11 @@ def _build_harness_llm(name: str) -> HarnessLLM | None:
         print(f"[brain] couldn't activate harness {name!r}: no endpoint saved")
         return None
     print(f"[brain] using harness {name!r} at {config['endpoint']!r}")
-    # Continue the same conversation across messages (and Brain restarts). Hermes
-    # refuses a session id without an API key, so none is sent without one.
-    session = harness.session_id(name) if config.get("api_key") else None
-    if session is None:
-        print(f"[brain] harness {name!r} has no API key -- each message will start a new conversation there")
+    # Continue the same conversation across messages (and Brain restarts) --
+    # see HarnessLLM.__init__ for how each harness is told which one.
+    session = harness.session_id(name)
+    if not config.get("api_key"):
+        print(f"[brain] harness {name!r} has no API key -- Hermes needs one to continue a conversation")
     llm = HarnessLLM(endpoint=config["endpoint"], model=config.get("model"), api_key=config.get("api_key"), session_id=session)
     llm.harness_name = name
     return llm

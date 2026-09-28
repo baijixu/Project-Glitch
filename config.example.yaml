@@ -79,15 +79,22 @@ brain:
   # gets copied into that saved-harness system automatically the first
   # time Brain ever starts with none saved yet, so it's a convenience for
   # setting one up before first launch, not a requirement.
-  harness:
-    hermes:
-      # Hermes Agent (https://github.com/NousResearch/hermes-agent),
-      # reached via its gateway's api_server platform adapter -- run
-      # `hermes gateway` with that platform enabled first. Default port
-      # per Hermes's own source (gateway/platforms/api_server.py).
-      endpoint: http://localhost:8642/v1
-      model: null # only needed if your Hermes setup requires a specific model/agent id
-      api_key: null
+  # Any harness with an OpenAI-compatible /v1/chat/completions works; two
+  # examples (uncomment the one you use):
+  # harness:
+  #   hermes:
+  #     # Hermes Agent (https://github.com/NousResearch/hermes-agent), reached
+  #     # via its gateway's api_server platform -- run `hermes gateway` with
+  #     # that platform enabled first.
+  #     endpoint: http://localhost:8642/v1
+  #     model: null
+  #     api_key: null # set it (matching Hermes's API_SERVER_KEY) so she keeps the conversation going
+  #   openclaw:
+  #     # OpenClaw (https://docs.openclaw.ai/gateway/openai-http-api) -- turn on
+  #     # gateway.http.endpoints.chatCompletions.enabled first.
+  #     endpoint: http://localhost:18789/v1
+  #     model: openclaw # or openclaw/<agentId>
+  #     api_key: null # your gateway token
 
 # The Renderer is a browser/WebView app, not a Python process -- it can't
 # read this file directly, so it gets the same host/port (and auth_token,

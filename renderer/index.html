@@ -37,7 +37,7 @@
       <button id="clear-chat-history-button" class="settings-action-button danger">Clear Chat</button>
     </aside>
     <span id="connection-light" class="connection-light" title="Connection to Brain"></span>
-    <span id="harness-light" class="connection-light" title="Hermes harness status"></span>
+    <span id="harness-light" class="connection-light" title="Harness status"></span>
     <span id="tts-light" class="connection-light" title="Speech engine status"></span>
     <span id="roleplay-badge" class="rp-badge" title="Role-play">RP</span>
     <button id="settings-button" class="corner-button" title="Settings">⚙️</button>
@@ -597,9 +597,9 @@
       <div id="harness-modal" class="modal" role="dialog" aria-labelledby="harness-modal-title">
         <h2 id="harness-modal-title">New Harness</h2>
         <label for="harness-name">Name</label>
-        <input id="harness-name" type="text" placeholder="e.g. Hermes" autocomplete="off" />
+        <input id="harness-name" type="text" placeholder="e.g. Hermes or OpenClaw" autocomplete="off" />
         <label for="harness-endpoint">HTTP endpoint</label>
-        <input id="harness-endpoint" type="text" placeholder="e.g. http://localhost:8642/v1" autocomplete="off" />
+        <input id="harness-endpoint" type="text" placeholder="e.g. http://localhost:8642/v1 (Hermes) or http://localhost:18789/v1 (OpenClaw)" autocomplete="off" />
         <label for="harness-model">Model (optional)</label>
         <input
           id="harness-model"

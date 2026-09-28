@@ -1224,9 +1224,10 @@ class OllamaLLM(LocalLLM):
 
 
 class HarnessLLM:
-    """Delegates entirely to an external agent harness (brain/harness.py;
-    e.g. Hermes Agent's own OpenAI-compatible /v1/chat/completions,
-    https://github.com/NousResearch/hermes-agent) instead of this app's
+    """Delegates entirely to an external agent harness (brain/harness.py) --
+    anything with an OpenAI-compatible /v1/chat/completions, e.g. Hermes Agent
+    (https://github.com/NousResearch/hermes-agent) or OpenClaw's gateway
+    (https://docs.openclaw.ai/gateway/openai-http-api) -- instead of this app's
     own persona/soul/profile/history system. When this is active, the
     harness's own agent/session config *is* Glitch's entire personality
     -- Brain becomes a thin relay, not a second source of "who she is",
@@ -1250,12 +1251,15 @@ class HarnessLLM:
             base_url=endpoint, api_key=api_key or "not-needed", timeout=REQUEST_TIMEOUT_SEC, max_retries=0
         )
         self._model = model or ""  # see LocalLLM.__init__'s comment -- None serializes to a literal JSON null
-        # Which conversation this is (brain/harness.py's session_id). Sent as
-        # Hermes's X-Hermes-Session-Id so it continues the same conversation
-        # instead of starting a new one for every message; a harness that
-        # doesn't know the header just ignores it. Hermes only accepts it with an
-        # API key set, so main.py passes None when there isn't one.
+        # Which conversation this is (brain/harness.py's session_id), so the
+        # harness continues the same conversation instead of starting a new one
+        # for every message. Harnesses are told in whichever way they listen:
+        # OpenAI's standard `user` field (OpenClaw derives a stable session from
+        # it), and Hermes's X-Hermes-Session-Id header -- which Hermes refuses
+        # without an API key, so that header is only sent when there is one. A
+        # harness ignores whichever of the two it doesn't know.
         self.session_id = session_id
+        self._session_header = bool(api_key)
         self.harness_name = ""  # which saved harness this is, for starting a new session (set by main.py)
 
     def reply(
@@ -1289,7 +1293,7 @@ class HarnessLLM:
             model=self._model,
             messages=[{"role": "user", "content": content}],
             max_tokens=MAX_REPLY_TOKENS,
-            extra_headers={"X-Hermes-Session-Id": self.session_id} if self.session_id else None,
+            **self._session_args(),
         )
         raw_reply = _reply_content(response.choices[0].message)
         # _extract_mood returns (mood, text) -- swapped here to match this
@@ -1300,6 +1304,14 @@ class HarnessLLM:
         # real reply silently ended up in `mood` instead.
         mood, reply_text = _extract_mood(raw_reply)
         return reply_text, mood
+
+    def _session_args(self) -> dict:
+        if not self.session_id:
+            return {}
+        args = {"user": self.session_id}
+        if self._session_header:
+            args["extra_headers"] = {"X-Hermes-Session-Id": self.session_id}
+        return args
 
 
 class NoneLLM:

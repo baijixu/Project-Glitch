@@ -111,10 +111,10 @@ def read_selected_harness_name() -> str:
 
 # -- Conversation continuity ---------------------------------------------------
 # Glitch sends a harness only the newest message; the harness keeps the
-# conversation. Hermes needs to be told which conversation a message belongs to
-# (its X-Hermes-Session-Id header) -- without one it started a brand-new session
+# conversation. It needs to be told which conversation a message belongs to
+# (see HarnessLLM.__init__) -- without that Hermes started a brand-new session
 # for every message (seen in its log: history=0, a new session id per turn), so
-# she forgot what was said a message ago. One id per harness, kept on disk so a
+# she forgot what was said a message ago; OpenClaw is the same by default. One id per harness, kept on disk so a
 # Brain restart continues the same conversation; Clear Chat starts a new one.
 
 
