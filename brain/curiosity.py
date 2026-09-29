@@ -332,6 +332,12 @@ def note_user_message(now: float) -> None:
     _save_pacing(pacing)
 
 
+def restart_quiet_hour(now: float) -> None:
+    """Clear Chat: whatever she said to reach out is gone from the conversation,
+    so she's no longer waiting on a reply to it -- the hour starts again now."""
+    note_user_message(now)
+
+
 def should_reach_out(now: float) -> bool:
     """True once an hour has passed since his last message and she hasn't reached
     out since. Nothing to measure from yet (a fresh install) starts the clock now.

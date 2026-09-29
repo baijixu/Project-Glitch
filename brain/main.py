@@ -2396,6 +2396,7 @@ async def _handle_clear_conversation(brain: Brain) -> None:
         # session id. (Not marked in her personal chat log -- see _reply_to.)
         brain.llm.session_id = harness.new_session_id(getattr(brain.llm, "harness_name", ""))
     _LAST_CONTEXT_USAGE = None
+    curiosity.restart_quiet_hour(time.time())  # she may reach out again an hour from now
     print("[brain] conversation cleared")
     await _broadcast(protocol.conversation_cleared())
 
