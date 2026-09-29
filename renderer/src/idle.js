@@ -38,9 +38,12 @@ export class IdleController {
   }
 
   relaxPose() {
-    // Arms down and slightly forward, not a T-pose bind.
-    const upperArmAngle = (-75 * Math.PI) / 180;
-    const elbowAngle = (20 * Math.PI) / 180;
+    // Arms down close to her sides, not a T-pose bind: the upper arm drops to
+    // about 11 degrees from vertical (at 75 her hands hung ~21 cm out from her
+    // legs), and the elbow bends forward, not outward, so the hands rest just in
+    // front of her hips instead of sinking into them.
+    const upperArmAngle = (-79 * Math.PI) / 180;
+    const elbowForward = (-18 * Math.PI) / 180;
 
     for (const side of ["left", "right"]) {
       const sign = side === "left" ? 1 : -1;
@@ -48,7 +51,7 @@ export class IdleController {
       if (upperArm) upperArm.rotation.z = sign * upperArmAngle;
 
       const lowerArm = this.humanoid.getNormalizedBoneNode(`${side}LowerArm`);
-      if (lowerArm) lowerArm.rotation.z = sign * elbowAngle;
+      if (lowerArm) lowerArm.rotation.y = sign * elbowForward;
     }
 
     this._curlFingers();
