@@ -175,8 +175,12 @@ controls.maxDistance = 4.5;
 controls.maxPolarAngle = Math.PI / 2 + 0.3;
 controls.update();
 
-scene.add(new THREE.AmbientLight(0xffffff, 1.0));
-const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+// Her toon (MToon) shading shows lit areas at texture color x light strength,
+// plus the ambient light on top -- past 100% bright colors clip toward white.
+// At 1.0 ambient + 1.5 directional she looked washed out; these keep her
+// texture colors close to how they were painted.
+scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+const dirLight = new THREE.DirectionalLight(0xffffff, 1.1);
 dirLight.position.set(1.5, 3, 2);
 dirLight.castShadow = true;
 // The shadow only needs to cover her and the floor around her feet; a tight box
