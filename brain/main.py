@@ -844,6 +844,9 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
         await _handle_resolve_memory_proposal(data)
     elif msg_type == protocol.SET_CURIOSITY_ACTIVE:
         curiosity.set_active(bool(data.get("active")))
+        await _broadcast_curiosity_timer()
+    elif msg_type == protocol.TEST_REACH_OUT:
+        await _handle_test_reach_out(websocket, brain)
     elif msg_type in (protocol.SET_SAMPLING_PROFILE, protocol.SAVE_SAMPLING_PROFILE, protocol.DELETE_SAMPLING_PROFILE):
         await _handle_sampling_message(websocket, msg_type, data)
     elif msg_type == protocol.SET_MEMORY_ACTIVE:
@@ -931,6 +934,7 @@ async def _handle_ready(websocket: websockets.ServerConnection, data: dict) -> N
     await websocket.send(json.dumps(protocol.voice_state(voice_settings.read_voice_active())))
     await websocket.send(json.dumps(protocol.web_search_state(web_search.read_active())))
     await websocket.send(json.dumps(protocol.curiosity_state(curiosity.read_active())))
+    await websocket.send(json.dumps(_curiosity_timer_message()))
     await websocket.send(json.dumps(_sampling_state_message()))
     if _LAST_CONTEXT_USAGE:
         await websocket.send(json.dumps(_LAST_CONTEXT_USAGE))
@@ -2397,6 +2401,7 @@ async def _handle_clear_conversation(brain: Brain) -> None:
         brain.llm.session_id = harness.new_session_id(getattr(brain.llm, "harness_name", ""))
     _LAST_CONTEXT_USAGE = None
     curiosity.restart_quiet_hour(time.time())  # she may reach out again an hour from now
+    await _broadcast_curiosity_timer()
     print("[brain] conversation cleared")
     await _broadcast(protocol.conversation_cleared())
 
@@ -2460,6 +2465,7 @@ async def _reply_to(
         return
     print(f"[brain] user said: {text!r}" + (" (+ image)" if image_b64 else ""))
     curiosity.note_user_message(time.time())  # restarts the hour before she may reach out (see _reach_out_loop)
+    await _broadcast_curiosity_timer()
 
     # isinstance guard: same reasoning as every other brain.llm-touching
     # call in this file -- HarnessLLM has no set_memory at all, and it
@@ -2783,6 +2789,7 @@ async def _reach_out_loop(brain: Brain) -> None:
     while True:
         await asyncio.sleep(REACH_OUT_CHECK_SEC)
         try:
+            await _broadcast_curiosity_timer(only_if_changed=True)  # catches role-play / harness switches
             if (
                 isinstance(brain.llm, LocalLLM)
                 and curiosity.read_active()
@@ -2797,13 +2804,57 @@ async def _reach_out_loop(brain: Brain) -> None:
             print(f"[brain] reaching out failed: {exc!r}")
 
 
-async def _reach_out(brain: Brain) -> None:
+# The last curiosity_timer sent to everyone, so the loop only re-sends a change.
+_LAST_CURIOSITY_TIMER: dict | None = None
+
+
+def _curiosity_timer_message(error: str = "") -> dict:
+    if not curiosity.read_active():
+        return protocol.curiosity_timer("off", None, error)
+    if profiles.read_roleplay_active():
+        return protocol.curiosity_timer("roleplay", None, error)
+    if harness.read_active_harness():
+        return protocol.curiosity_timer("harness", None, error)
+    due = curiosity.reach_out_due()
+    return protocol.curiosity_timer("counting" if due else "waiting", due, error)
+
+
+async def _broadcast_curiosity_timer(only_if_changed: bool = False) -> None:
+    global _LAST_CURIOSITY_TIMER
+    message = _curiosity_timer_message()
+    if only_if_changed and message == _LAST_CURIOSITY_TIMER:
+        return
+    _LAST_CURIOSITY_TIMER = message
+    await _broadcast(message)
+
+
+async def _handle_test_reach_out(websocket: websockets.ServerConnection, brain: Brain) -> None:
+    """Settings -> Curiosity's Test button: she reaches out right now, the same
+    way she would after an hour (a check-in -- her saved questions are kept for
+    the real thing), and then waits for a reply like after any reach-out.
+    """
+    problem = ""
+    if not isinstance(brain.llm, LocalLLM):
+        problem = "She can't reach out while a harness is in control, or with no LLM set up."
+    elif profiles.read_roleplay_active():
+        problem = "She doesn't reach out during role-play."
+    elif _reply_lock().locked():
+        problem = "She's in the middle of a reply -- try again in a moment."
+    if problem:
+        await websocket.send(json.dumps(_curiosity_timer_message(problem)))
+        return
+    async with _reply_lock():
+        await _reach_out(brain, test=True)
+
+
+async def _reach_out(brain: Brain, *, test: bool = False) -> None:
     """Writes her unprompted message and delivers it like a reply -- expression,
     text and voice -- to every connected device, since there's no one device
     that asked. Logged in her chat log. Marked as done even if nothing came of
-    it, so a failing model can't make her try every minute.
+    it, so a failing model can't make her try every minute. A `test` (the
+    Settings button) is a plain check-in, so it doesn't use up a saved question.
     """
-    question = curiosity.question_to_reach_out_with()
+    question = None if test else curiosity.question_to_reach_out_with()
     brain.llm.set_user_info(_effective_user_info())
     brain.llm.set_sampling(sampling.active_values())
     brain.llm.set_curiosity("")  # the reach-out note carries its own instruction
@@ -2812,12 +2863,14 @@ async def _reach_out(brain: Brain) -> None:
         text, mood = await asyncio.to_thread(brain.llm.reach_out, question["text"] if question else None)
     finally:
         curiosity.mark_reached_out(question["id"] if question else None)
+        await _broadcast_curiosity_timer()
     if not text:
         await _debug_broadcast("curiosity", "tried to reach out after an hour of quiet, but the model said nothing")
         return
     await _debug_broadcast(
         "curiosity",
-        f"reached out after an hour of quiet ({'with a saved question' if question else 'a check-in'}, {len(text)} chars, "
+        f"reached out {'(test from Settings)' if test else 'after an hour of quiet'} "
+        f"({'with a saved question' if question else 'a check-in'}, {len(text)} chars, "
         f"to {len(_RENDERER_CONNECTIONS)} device(s))",
     )
     await _broadcast(protocol.set_expression(mood, 1.0))

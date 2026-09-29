@@ -335,7 +335,7 @@ Three parts, all toggled by *Curiosity* in Settings and paused during role-play 
 - **Things she wonders about.** Every few of your messages she may note one thing she'd like to know about you, and she works one
   in at most every few messages. A question is never kept or asked twice, even reworded. There's no list of forbidden topics.
 - **Speaking first.** After an hour with no message from you, she reaches out once (with a question she's been saving, or just
-  checking in), on every connected device. If you don't reply she stays quiet; your next message, or Clear Chat, starts the hour again.
+  checking in), on every connected device. If you don't reply she stays quiet; your next message, or Clear Chat, starts the hour again. *Settings → Curiosity* shows a live countdown to when she may reach out (or why she's waiting), and a **Test reach-out** button makes her do it right away.
 
 Your answer is remembered like anything else you tell her, together with the question it answers, so with memory training on it
 shows up in the review list.

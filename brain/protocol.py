@@ -59,6 +59,7 @@ RETIRE_LESSON = "retire_lesson"
 DELETE_LESSON = "delete_lesson"
 RESOLVE_LESSON_PROPOSAL = "resolve_lesson_proposal"
 SET_CURIOSITY_ACTIVE = "set_curiosity_active"
+TEST_REACH_OUT = "test_reach_out"
 SET_SAMPLING_PROFILE = "set_sampling_profile"
 SAVE_SAMPLING_PROFILE = "save_sampling_profile"
 DELETE_SAMPLING_PROFILE = "delete_sampling_profile"
@@ -102,6 +103,7 @@ ROLEPLAY_ENGINE = "roleplay_engine"
 VOICE_STATE = "voice_state"
 WEB_SEARCH_STATE = "web_search_state"
 CURIOSITY_STATE = "curiosity_state"
+CURIOSITY_TIMER = "curiosity_timer"
 SAMPLING_STATE = "sampling_state"
 CONTEXT_USAGE = "context_usage"
 CONVERSATION_CLEARED = "conversation_cleared"
@@ -273,6 +275,15 @@ def context_usage(used: int, window: int | None, conversation: int | None = None
     reply, and on `ready` if there's been one.
     """
     return {"type": CONTEXT_USAGE, "used": used, "window": window, "conversation": conversation, "keep": keep}
+
+
+def curiosity_timer(state: str, due_at: float | None, error: str = "") -> dict:
+    """Settings -> Curiosity's countdown to her speaking first. `state` is
+    "counting" (`due_at`: epoch seconds when she may reach out), "waiting" (she
+    reached out and waits for a reply), "off", "roleplay" or "harness" (paused).
+    With `error`, only to the device whose test_reach_out couldn't run.
+    """
+    return {"type": CURIOSITY_TIMER, "state": state, "due_at": due_at, "error": error}
 
 
 def curiosity_state(active: bool) -> dict:

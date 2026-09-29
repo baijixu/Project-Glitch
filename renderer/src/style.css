@@ -1441,3 +1441,9 @@ body.overlay-chat-active #side-actions .overlay-rate-button {
   border-top: 1px solid #3a3f52;
   margin: 12px 0;
 }
+
+/* Settings -> Curiosity's countdown to her reaching out (curiosity_timer_ui.js). */
+.curiosity-timer {
+  font-variant-numeric: tabular-nums;
+  color: #b8bccb;
+}

@@ -31,6 +31,7 @@ so with frequent restarts she rarely got as far as thinking up a new question.
 
 import json
 import re
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -348,6 +349,15 @@ def should_reach_out(now: float) -> bool:
         _save_pacing(pacing)
         return False
     return not pacing["reached_out"] and now - pacing["last_user_at"] >= REACH_OUT_AFTER_SEC
+
+
+def reach_out_due() -> float | None:
+    """When she may next reach out (epoch seconds), or None while she's waiting
+    for a reply to the last time she did. For the Settings countdown."""
+    pacing = _pacing()
+    if pacing["reached_out"]:
+        return None
+    return (pacing["last_user_at"] or time.time()) + REACH_OUT_AFTER_SEC
 
 
 def question_to_reach_out_with() -> dict | None:

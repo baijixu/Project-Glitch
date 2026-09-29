@@ -9,6 +9,7 @@ import { TrainingUI } from "./training_ui.js";
 import { SamplingUI } from "./sampling_ui.js";
 import { ChatLogsUI } from "./chat_logs_ui.js";
 import { MemoryProfilesUI } from "./memory_profiles_ui.js";
+import { CuriosityTimerUI } from "./curiosity_timer_ui.js";
 
 const RECONNECT_DELAY_MS = 3000;
 // Fades out 10s after the text finishes streaming in, not 10s from when it
@@ -366,6 +367,8 @@ export class BrainClient {
     this._chatLogsUI = new ChatLogsUI({ send: (message) => this._send(message) });
     // Settings -> Memory backend (brain/memory_profiles.py).
     this._memoryProfilesUI = new MemoryProfilesUI({ send: (message) => this._send(message) });
+    // Settings -> Curiosity's countdown to her reaching out, and its Test button.
+    this._curiosityTimerUI = new CuriosityTimerUI({ send: (message) => this._send(message) });
     document.getElementById("settings-button")?.addEventListener("click", () => this._chatLogsUI.refresh());
     this._rateControls = new WeakMap(); // history entry -> {paint} for its 👍/👎 controls
     this._entryBubbles = new WeakMap(); // history entry -> its bubble in the History panel, for editing
@@ -3324,6 +3327,9 @@ export class BrainClient {
       }
       case "memory_state":
         if (this.memoryToggleInputEl) this.memoryToggleInputEl.checked = !!data.active;
+        break;
+      case "curiosity_timer":
+        this._curiosityTimerUI.handleTimer(data);
         break;
       case "memory_profiles":
         this._memoryProfilesUI.handleState(data);
