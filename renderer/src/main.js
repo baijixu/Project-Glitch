@@ -154,6 +154,10 @@ const canvas = document.getElementById("scene");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
+// Shadows: she casts one on the floor and on herself (hair on her face, arms on
+// her body). Soft-edged, from the one directional light below.
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000);
@@ -174,14 +178,38 @@ controls.update();
 scene.add(new THREE.AmbientLight(0xffffff, 1.0));
 const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
 dirLight.position.set(1.5, 3, 2);
+dirLight.castShadow = true;
+// The shadow only needs to cover her and the floor around her feet; a tight box
+// keeps it sharp. The biases stop the toon shading from speckling itself.
+dirLight.shadow.mapSize.set(2048, 2048);
+Object.assign(dirLight.shadow.camera, { left: -1.2, right: 1.2, top: 2.2, bottom: -0.4, near: 0.5, far: 8 });
+dirLight.shadow.bias = -0.0005;
+dirLight.shadow.normalBias = 0.02;
+dirLight.shadow.radius = 3;
 scene.add(dirLight);
 
-const floor = new THREE.Mesh(
-  new THREE.PlaneGeometry(4, 4),
-  new THREE.MeshStandardMaterial({ color: 0x000000 })
-);
+// A faint glow on the floor under her, fading to the black background, so her
+// shadow has somewhere to show (a shadow on a black floor is invisible).
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(4, 4), new THREE.MeshStandardMaterial({ map: floorGlowTexture() }));
 floor.rotation.x = -Math.PI / 2;
+floor.receiveShadow = true;
 scene.add(floor);
+
+function floorGlowTexture() {
+  const size = 256;
+  const glowCanvas = document.createElement("canvas");
+  glowCanvas.width = glowCanvas.height = size;
+  const ctx = glowCanvas.getContext("2d");
+  const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  gradient.addColorStop(0, "#2a2d38");
+  gradient.addColorStop(0.35, "#15161c");
+  gradient.addColorStop(1, "#000000");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+  const texture = new THREE.CanvasTexture(glowCanvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
 
 function handleViewportResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -266,6 +294,12 @@ async function setActiveAvatar(source, kind = "vrm") {
     scene.remove(vrm.scene);
     VRMUtils.deepDispose(vrm.scene); // frees the old model's GPU geometry/textures -- repeated swaps would otherwise leak
   }
+  newVrm.scene.traverse((object) => {
+    if (object.isMesh) {
+      object.castShadow = true;
+      object.receiveShadow = true;
+    }
+  });
   scene.add(newVrm.scene);
   vrm = newVrm;
 
