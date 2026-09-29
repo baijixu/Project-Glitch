@@ -60,7 +60,9 @@ export class IdleController {
   _curlFingers() {
     // More curl at the knuckle, less at the fingertip; mirrored per side.
     const fingerCurlDeg = { Proximal: 22, Intermediate: 18, Distal: 12 };
-    const thumbCurlDeg = { Metacarpal: 5, Proximal: 10, Distal: 6 };
+    // The thumb swings in toward the index finger (y) as well as curling (z),
+    // so it rests along the fingers instead of jutting out forward.
+    const thumbDeg = { Metacarpal: [-25, 5], Proximal: [-10, 10], Distal: [-5, 6] };
 
     for (const side of ["left", "right"]) {
       const sign = side === "left" ? -1 : 1;
@@ -69,8 +71,9 @@ export class IdleController {
           this._curlJoint(`${side}${finger[0].toUpperCase()}${finger.slice(1)}${segment}`, deg * sign);
         }
       }
-      for (const [segment, deg] of Object.entries(thumbCurlDeg)) {
-        this._curlJoint(`${side}Thumb${segment}`, deg * sign);
+      for (const [segment, [swingDeg, curlDeg]] of Object.entries(thumbDeg)) {
+        const bone = this.humanoid.getNormalizedBoneNode(`${side}Thumb${segment}`);
+        if (bone) bone.rotation.set(0, (swingDeg * sign * Math.PI) / 180, (curlDeg * sign * Math.PI) / 180);
       }
     }
   }
