@@ -101,6 +101,7 @@ brain/conversation.json
 brain/conversation_roleplay.json
 brain/conversation*.tmp
 brain/roleplay_previous_engine.txt
+brain/roleplay_session.json
 brain/roleplay_llm_engine.txt
 brain/chat_logs/
 brain/backups/

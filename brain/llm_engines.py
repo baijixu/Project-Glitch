@@ -118,3 +118,53 @@ def set_roleplay_engine(name: str) -> None:
     if name and name not in list_engines():
         raise ValueError(f"there's no saved LLM engine called {name!r}")
     ROLEPLAY_ENGINE_PATH.write_text(name, encoding="utf-8")
+
+
+# -- Role-play sessions ---------------------------------------------------------
+# While role-play has switched her to its own engine: {"previous": the engine to
+# go back to ("" = stay), "engine": the role-play engine, "think": the confirm
+# dialog's choice}. The think choice is applied when that engine is built
+# (main.py's _build_llm) -- never written into the engine's saved settings, which
+# role-play used to overwrite (and then force back to think=True when it ended).
+ROLEPLAY_SESSION_PATH = Path(__file__).parent / "roleplay_session.json"
+# The two-line text file role-play kept before sessions existed (previous engine,
+# then the role-play engine) -- converted once at startup, see migrate_roleplay_record.
+_LEGACY_ROLEPLAY_RECORD_PATH = Path(__file__).parent / "roleplay_previous_engine.txt"
+
+
+def start_roleplay_session(previous: str, engine: str, think: bool) -> None:
+    ROLEPLAY_SESSION_PATH.write_text(json.dumps({"previous": previous, "engine": engine, "think": think}), encoding="utf-8")
+
+
+def read_roleplay_session() -> dict:
+    """The current role-play session, or {} if role-play didn't switch engines."""
+    try:
+        return json.loads(ROLEPLAY_SESSION_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def end_roleplay_session() -> dict:
+    """Removes and returns the current role-play session ({} if there wasn't one)."""
+    session = read_roleplay_session()
+    ROLEPLAY_SESSION_PATH.unlink(missing_ok=True)
+    return session
+
+
+def migrate_roleplay_record() -> None:
+    """One-time: turns the old two-line record into a session. The old code had
+    already written role-play's think choice into the engine's saved settings,
+    so that's where the session's think comes from.
+    """
+    try:
+        lines = _LEGACY_ROLEPLAY_RECORD_PATH.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return
+    previous = lines[0].strip() if lines else ""
+    engine = lines[1].strip() if len(lines) > 1 else ""
+    try:
+        think = bool(read_engine(engine)["think"]) if engine else False
+    except (ValueError, OSError):
+        think = False
+    start_roleplay_session(previous, engine, think)
+    _LEGACY_ROLEPLAY_RECORD_PATH.unlink()
