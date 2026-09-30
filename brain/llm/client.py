@@ -1,23 +1,26 @@
-"""Local LLM clients -- spec section 5's "own the conversation loop end-to-
-end". LocalLLM talks to any OpenAI-compatible endpoint (LM Studio,
-llama-server, etc.); OllamaLLM shares all of LocalLLM's persona/soul/memory/
-history logic via inheritance but talks to Ollama's native /api/chat
-instead, the only way to get a real, honored `think: false` against a
-reasoning model (see OllamaLLM's own docstring). NoneLLM is the
-placeholder used when nothing's configured at all (see its own docstring).
-No further real-backend provider abstraction beyond LocalLLM/OllamaLLM --
-matches this build's own minimalism, add a third only if/when one's
-actually needed.
+"""LLM backends -- spec section 5's "own the conversation loop end-to-end".
 
-Conversation history here is in-memory only, lost on restart -- this is
-ordinary within-session continuity (every chat needs *some* form of this to
-hold a conversation at all), not the persistent cross-session memory/recall
-system SPEC.md section 2 explicitly excludes.
+Every backend is a ChatBackend, so main.py can call the same methods on
+whichever one is active:
+
+  LocalLLM ... any OpenAI-compatible endpoint (LM Studio, llama-server, etc.) --
+               her own soul, prompt and conversation history
+  OllamaLLM .. LocalLLM over Ollama's native /api/chat, the only way to get a
+               real, honored `think: false` from a reasoning model
+  HarnessLLM . relays to an agent harness, which owns the conversation
+  NoneLLM .... the placeholder when nothing's configured at all
+
+Only LocalLLM (and so OllamaLLM) has a conversation of its own
+(`owns_conversation`); on the others the prompt setters do nothing. The
+history is saved to disk by main.py (on_history_change, brain/conversation.py).
 """
 
 import json
 import re
 import time
+import urllib.request
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from datetime import datetime
 
 import httpx
@@ -472,8 +475,111 @@ def _extract_mood(text: str) -> tuple[str, str]:
     return mood, _MOOD_TAG.sub("", text).strip()
 
 
-class LocalLLM:
-    def __init__(self, endpoint: str, model: str | None, api_key: str | None = None) -> None:
+def _image_content(text: str, image_b64: str | None, image_mime: str) -> str | list[dict]:
+    """A user turn's content: plain text, or the standard OpenAI multimodal list
+    when a picture is attached (a camera/desktop snapshot or an uploaded image)."""
+    if not image_b64:
+        return text
+    return [
+        {"type": "text", "text": text or "What do you see?"},
+        {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_b64}"}},
+    ]
+
+
+def _prefix_text(content: str | list[dict], prefix: str) -> str | list[dict]:
+    """Puts `prefix` in front of a message's text -- the text part of a picture turn."""
+    if isinstance(content, list):
+        return [{**part, "text": prefix + part.get("text", "")} if part.get("type") == "text" else part for part in content]
+    return prefix + content
+
+
+@dataclass
+class Reply:
+    """What one reply() or reach_out() produced. text is "" when there's nothing
+    to say (cancelled, cleared, or the model came back empty). The rest is for
+    the debug log and the context meter -- sizes and flags, never content."""
+
+    text: str = ""
+    mood: str = "neutral"
+    # prompt/completion/reasoning token counts from the last model call, when the server says
+    usage: dict = field(default_factory=dict)
+    trimmed: dict | None = None  # what _trim_history dropped this turn: {"dropped", "kept", "budget"}
+    fell_back: bool = False  # thinking ran out of room, so it answered again with thinking off
+    used_web_search: bool = False  # search results are woven in, so the reply isn't a memory of the user
+
+
+class ChatBackend:
+    """What main.py can call on any backend. The defaults are for a backend with
+    no conversation of its own (HarnessLLM, NoneLLM): the prompt setters do
+    nothing and there's no history to restore, clear or pop -- so main.py calls
+    them unconditionally and only checks `owns_conversation` where a feature
+    really is hers alone (memory, lessons, curiosity, her chat log).
+    """
+
+    owns_conversation = False
+
+    def set_soul(self, soul_md: str) -> None:
+        pass
+
+    def update_soul(self, soul_md: str) -> None:
+        pass
+
+    def set_persona(self, persona_md: str) -> None:
+        pass
+
+    def update_persona(self, persona_md: str) -> None:
+        pass
+
+    def set_memory(self, memory_block: str) -> None:
+        pass
+
+    def set_user_info(self, user_info: str) -> None:
+        pass
+
+    def set_lessons(self, lessons_block: str) -> None:
+        pass
+
+    def set_curiosity(self, curiosity_block: str) -> None:
+        pass
+
+    def set_sampling(self, values: dict) -> None:
+        pass
+
+    def restore_history(self, messages: list[dict]) -> None:
+        pass
+
+    def clear_history(self) -> None:
+        pass
+
+    def cancel_reply(self) -> None:
+        pass
+
+    def pop_last_exchange(self) -> str | None:
+        return None
+
+    def recent_replies(self, count: int) -> list[str]:
+        return []
+
+    @property
+    def memory_block(self) -> str:
+        return ""
+
+    def reply(
+        self, user_text: str, image_b64: str | None = None, image_mime: str = "image/jpeg", web_search_enabled: bool = False
+    ) -> Reply:
+        raise NotImplementedError
+
+
+class LocalLLM(ChatBackend):
+    owns_conversation = True
+
+    def __init__(
+        self,
+        endpoint: str,
+        model: str | None,
+        api_key: str | None = None,
+        on_history_change: Callable[[list[dict]], None] | None = None,
+    ) -> None:
         self._client = OpenAI(
             base_url=endpoint, api_key=api_key or "not-needed", timeout=REQUEST_TIMEOUT_SEC, max_retries=0
         )
@@ -486,14 +592,16 @@ class LocalLLM:
         # way config.yaml's own `model: null` comment promises. An empty
         # string is a normal, harmless value for a server to see instead.
         self._model = model or ""
-        self._init_state()
+        self._init_state(on_history_change)
 
-    def _init_state(self) -> None:
+    def _init_state(self, on_history_change: Callable[[list[dict]], None] | None = None) -> None:
         """Everything that makes up her conversation and prompt, set to empty.
         Shared with OllamaLLM (which has a different connection but the same
         state) so a new prompt part only has to be added in one place.
         """
         self._history: list[dict] = []
+        # Told about every change to _history (main.py saves it to disk).
+        self._on_history_change = on_history_change
         # Prompt parts, each set by main.py (see _system_prompt/_turn_notes).
         self._persona = ""
         self._soul = ""
@@ -504,15 +612,29 @@ class LocalLLM:
         # Sampling settings for her replies only (brain/sampling.py), set by
         # main.py before each reply. Empty = the server's own settings.
         self._sampling: dict = {}
-        # Whether the most recent reply() ran a web search -- read by main.py's
-        # _reply_to right after reply() returns, so what a search returned
-        # isn't saved as a memory of the user (see _maybe_retain_memory).
-        self.last_reply_used_web_search = False
-        # Bumped by cancel_reply() -- see reply()'s check against it.
+        # Bumped by cancel_reply() and clear_history() -- see _answer's check against it.
         self._reply_generation = 0
-        # What the latest reply()'s _trim_history dropped, if anything -- for the
-        # debug log, so "she forgot" can be told apart from "it was trimmed away".
-        self.last_trim: dict | None = None
+        # (window, when it was asked) -- see context_window.
+        self._context_window_cache: tuple[int | None, float] | None = None
+        # False once the server has refused reasoning_effort -- see _complete_raw.
+        self._reasoning_effort_supported = True
+
+    @property
+    def model_name(self) -> str:
+        return self._model
+
+    @property
+    def message_count(self) -> int:
+        return len(self._history)
+
+    @property
+    def memory_block(self) -> str:
+        return self._memory
+
+    def recent_replies(self, count: int) -> list[str]:
+        """Her last `count` replies' text (curiosity's question cooldown reads these)."""
+        replies = [m["content"] for m in self._history if m.get("role") == "assistant" and isinstance(m.get("content"), str)]
+        return replies[-count:] if count else []
 
     def cancel_reply(self) -> None:
         """Marks whatever reply() call is currently in flight as abandoned
@@ -558,7 +680,7 @@ class LocalLLM:
             extra = {k: v for k, v in sampling.items() if k not in _OPENAI_SAMPLING_ARGS}
             if extra:
                 kwargs["extra_body"] = extra
-        if no_thinking and getattr(self, "_reasoning_effort_supported", True):
+        if no_thinking and self._reasoning_effort_supported:
             # See _complete's no_thinking. A server that rejects the parameter gets
             # the call again without it, and is never sent it again.
             try:
@@ -597,7 +719,7 @@ class LocalLLM:
         max_tokens: int,
         tools: list[dict] | None = None,
         no_thinking: bool = False,
-        usage: dict | None = None,
+        into: Reply | None = None,
         sampling: dict | None = None,
     ) -> str:
         """Runs _complete_raw once, or -- while `tools` is given and the
@@ -609,6 +731,9 @@ class LocalLLM:
         `messages` itself is never mutated -- the loop works on its own
         copy, so a tool-calling detour never pollutes what reply() ends up
         appending to self._history (only the clean final text does).
+
+        `into`, when given, collects the token usage and whether a web search
+        ran (see Reply).
 
         no_thinking asks a reasoning model to skip its thinking pass -- for the
         short background JSON calls (memory/question/lesson proposals), never
@@ -622,14 +747,15 @@ class LocalLLM:
         working = list(messages)
         for _ in range(MAX_TOOL_ITERATIONS):
             result = self._complete_raw(working, max_tokens, tools, no_thinking=no_thinking, sampling=sampling)
-            if usage is not None:  # the last call's numbers are the conversation's current size
-                usage.update({k: v for k, v in (result.get("usage") or {}).items() if v is not None})
+            if into is not None:  # the last call's numbers are the conversation's current size
+                into.usage.update({k: v for k, v in (result.get("usage") or {}).items() if v is not None})
             if not result["tool_calls"]:
                 return result["content"]
             working.append(result["raw_message"])
             for call in result["tool_calls"]:
                 if call["name"] == "web_search":
-                    self.last_reply_used_web_search = True
+                    if into is not None:
+                        into.used_web_search = True
                     output = _run_web_search_tool(call["arguments"])
                 else:
                     output = "Unknown tool."
@@ -866,10 +992,7 @@ class LocalLLM:
         times = [t for m in self._history if (t := _message_time(m))]
         if self._persona or not times or (now - times[-1]).total_seconds() < GAP_MARKER_SEC:
             return content
-        marker = f"[{_how_long((now - times[-1]).total_seconds())} later -- {_when(now)}]\n"
-        if isinstance(content, list):
-            return [{**part, "text": marker + part.get("text", "")} if part.get("type") == "text" else part for part in content]
-        return marker + content
+        return _prefix_text(content, f"[{_how_long((now - times[-1]).total_seconds())} later -- {_when(now)}]\n")
 
     def _request_messages(self) -> list[dict]:
         """System prompt + history, with this turn's notes attached to the newest
@@ -879,14 +1002,7 @@ class LocalLLM:
         notes = self._turn_notes()
         if notes and messages[-1].get("role") == "user":
             wrapped = f"<notes>\n{TURN_NOTES_HEADER}\n\n{notes}\n</notes>\n\n"
-            content = messages[-1]["content"]
-            if isinstance(content, list):  # a picture turn: prefix the text part
-                content = [
-                    {**part, "text": wrapped + part.get("text", "")} if part.get("type") == "text" else part for part in content
-                ]
-            else:
-                content = wrapped + content
-            messages[-1] = {**messages[-1], "content": content}
+            messages[-1] = {**messages[-1], "content": _prefix_text(messages[-1]["content"], wrapped)}
         return messages
 
     def reply(
@@ -895,84 +1011,67 @@ class LocalLLM:
         image_b64: str | None = None,
         image_mime: str = "image/jpeg",
         web_search_enabled: bool = False,
-    ) -> tuple[str, str]:
-        """Returns (reply_text, mood) -- reply_text has the mood tag
-        already stripped out (never shown/spoken), mood is one of
-        VALID_MOODS.
+    ) -> Reply:
+        """Answers the user's message. The reply's text has the mood tag
+        stripped out (never shown/spoken); its mood is one of VALID_MOODS.
 
         image_b64, when given (a camera/desktop snapshot -- see main.py's
         _reply_to), turns this turn's content into the standard OpenAI
-        multimodal list instead of a plain string, so any vision-capable
-        model behind this endpoint sees it. No "does this engine support
-        vision" flag exists -- an endpoint/model that can't handle images
-        is left to fail exactly the way a bad model string already does
-        (caught by _reply_to's broad except, surfaced as a speak_text
-        stand-in), rather than adding a second way to configure the same
-        failure mode.
+        multimodal list, so any vision-capable model behind this endpoint sees
+        it. There's no "does this engine support vision" flag: an endpoint that
+        can't handle images fails the way a bad model string does (caught by
+        _reply_to, surfaced as a speak_text stand-in).
 
-        web_search_enabled offers WEB_SEARCH_TOOL for this call only (see
-        main.py's _reply_to, which reads web_search.read_active() fresh
-        every turn) -- whether the model actually uses it is its own
-        call, same as vision above: no "does this model support tools"
-        flag, an endpoint that can't just never calls it.
+        web_search_enabled offers WEB_SEARCH_TOOL for this call only -- whether
+        the model uses it is its own call; an endpoint without tool support just
+        never does.
         """
-        content: str | list[dict] = user_text
-        if image_b64:
-            content = [
-                {"type": "text", "text": user_text or "What do you see?"},
-                {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_b64}"}},
-            ]
         now = _now()
-        self._history.append({"role": "user", "content": self._mark_gap(content, now), "at": now.isoformat(timespec="seconds")})
-        self.last_trim = None
-        self._trim_history()
-        messages = self._request_messages()
+        content = self._mark_gap(_image_content(user_text, image_b64, image_mime), now)
+        self._history.append({"role": "user", "content": content, "at": now.isoformat(timespec="seconds")})
+        result = Reply(trimmed=self._trim_history())
         tools = [WEB_SEARCH_TOOL] if web_search_enabled else None
-        generation = self._reply_generation
-        self.last_reply_used_web_search = False
-        usage: dict = {}
-        self.last_reply_fell_back = False
-        raw_reply = self._complete(messages, MAX_REPLY_TOKENS, tools, usage=usage, sampling=self._sampling)
-        if generation != self._reply_generation:
+        if not self._answer(self._request_messages(), tools, result):
             self._history_changed()  # the user's own turn stays (see cancel_reply)
-            return "", "neutral"  # cancelled via cancel_reply() while in flight -- discarded, never reaches _history
-        mood, reply_text = _extract_mood(raw_reply)
-        if not reply_text.strip():
-            # Thinking used up the whole budget and left no answer -- this model
-            # sometimes keeps re-checking her soul's rules until it runs out (seen
-            # live: 8,000 tokens, 7 minutes, nothing). Rather than nothing, answer
-            # once more with thinking off. Her normal replies still think.
-            self.last_reply_fell_back = True
-            raw_reply = self._complete(
-                messages, MAX_REPLY_TOKENS, tools, no_thinking=True, usage=usage, sampling=self._sampling
-            )
-            if generation != self._reply_generation:
-                self._history_changed()
-                return "", "neutral"
-            mood, reply_text = _extract_mood(raw_reply)
-        if not reply_text.strip():
+            return Reply(trimmed=result.trimmed)  # cancelled while in flight -- discarded, never reaches _history
+        if not result.text.strip():
             # Still nothing: leave the user's turn and store no empty "reply" --
-            # a blank turn from her would sit in the conversation (and now
-            # survive restarts), and a model reads it as her ignoring them.
+            # a blank turn from her would sit in the conversation (and survive
+            # restarts), and a model reads it as her ignoring them.
             self._history_changed()
-            return "", mood
-        # Stored cleaned, not with the tag -- keeps the tag from cluttering
-        # future turns' context for no benefit (the system prompt alone is
-        # enough to keep the model tagging consistently turn to turn).
-        self._history.append({"role": "assistant", "content": reply_text, "at": _now().isoformat(timespec="seconds")})
+            return result
+        # Stored without the mood tag -- the system prompt alone keeps the model tagging.
+        self._history.append({"role": "assistant", "content": result.text, "at": _now().isoformat(timespec="seconds")})
         self._history_changed()
-        self.last_usage = dict(usage)
-        return reply_text, mood
+        return result
+
+    def _answer(self, messages: list[dict], tools: list[dict] | None, result: Reply) -> bool:
+        """Fills result.text/mood from the model. If thinking used up the whole
+        budget and left no answer -- this model sometimes keeps re-checking her
+        soul's rules until it runs out (seen live: 8,000 tokens, 7 minutes,
+        nothing) -- it answers once more with thinking off. Her normal replies
+        still think. False if the reply was cancelled or the chat cleared meanwhile.
+        """
+        generation = self._reply_generation
+        for no_thinking in (False, True):
+            raw = self._complete(messages, MAX_REPLY_TOKENS, tools, no_thinking=no_thinking, into=result, sampling=self._sampling)
+            if generation != self._reply_generation:
+                return False
+            result.mood, result.text = _extract_mood(raw)
+            if result.text.strip():
+                break
+            result.fell_back = True
+        return True
 
     def context_window(self) -> int | None:
         """How many tokens the loaded model can hold, or None if the server doesn't
         say. Asked of LM Studio (/api/v0/models) or llama.cpp's llama-server (/props);
         cached for a minute, since the Settings meter asks after every reply.
         """
-        cached = getattr(self, "_context_window_cache", None)
+        cached = self._context_window_cache
         if cached and time.monotonic() - cached[1] < CONTEXT_WINDOW_CACHE_SEC:
             return cached[0]
-        root = str(self._client.base_url).rstrip("/").removesuffix("/v1")
+        root = self._server_root()
         window = None
         try:
             with httpx.Client(timeout=CONTEXT_WINDOW_TIMEOUT_SEC) as http:
@@ -991,13 +1090,29 @@ class LocalLLM:
         self._context_window_cache = (window, time.monotonic())
         return window
 
-    def reach_out(self, question: str | None = None) -> tuple[str, str]:
+    def _server_root(self) -> str:
+        """The server's own base URL, without the OpenAI-compatible /v1."""
+        return str(self._client.base_url).rstrip("/").removesuffix("/v1")
+
+    def loaded_models(self) -> str:
+        """Which models her LLM server has in memory right now -- a slow reply is
+        often a model being swapped in. LM Studio (/api/v0/models) can say;
+        anything else is "unknown". Never raises.
+        """
+        try:
+            with urllib.request.urlopen(f"{self._server_root()}/api/v0/models", timeout=3) as response:
+                data = json.load(response).get("data", [])
+            return ", ".join(m["id"] for m in data if m.get("state") == "loaded" and m.get("id")) or "nothing loaded"
+        except Exception:
+            return "unknown"
+
+    def reach_out(self, question: str | None = None) -> Reply:
         """She speaks first -- nothing new from the user for a while (main.py's
-        reach-out loop). Returns (text, mood) like reply(). The instruction goes in
-        as an app note after the conversation (the model needs a final user turn)
-        and isn't kept: only her message is added to _history, right after her
-        last reply. Two of her turns in a row is fine for this model's chat
-        template (checked live), and she knows afterwards what she asked.
+        reach-out loop). The instruction goes in as an app note after the
+        conversation (the model needs a final user turn) and isn't kept: only her
+        message is added to _history, right after her last reply. Two of her turns
+        in a row is fine for this model's chat template (checked live), and she
+        knows afterwards what she asked.
         """
         hint = (
             f'If it fits, bring up something you\'ve wondered about: "{question}" -- in your own words. '
@@ -1011,25 +1126,18 @@ class LocalLLM:
             f"{_current_time_line()}\n</notes>"
         )
         messages = [{"role": "system", "content": self._system_prompt()}, *map(_for_model, self._history), {"role": "user", "content": note}]
-        generation = self._reply_generation
-        usage: dict = {}
-        raw_reply = self._complete(messages, MAX_REPLY_TOKENS, usage=usage, sampling=self._sampling)
-        mood, text = _extract_mood(raw_reply)
-        if not text.strip():  # same fallback as reply(): thinking ran out, answer without it
-            mood, text = _extract_mood(
-                self._complete(messages, MAX_REPLY_TOKENS, no_thinking=True, usage=usage, sampling=self._sampling)
-            )
-        if generation != self._reply_generation or not text.strip():
-            return "", mood  # cleared or cancelled meanwhile, or nothing to say
-        self._history.append({"role": "assistant", "content": text, "at": _now().isoformat(timespec="seconds")})
+        result = Reply()
+        if not self._answer(messages, None, result) or not result.text.strip():
+            return Reply(mood=result.mood)  # cleared or cancelled meanwhile, or nothing to say
+        self._history.append({"role": "assistant", "content": result.text, "at": _now().isoformat(timespec="seconds")})
         self._history_changed()
-        return text, mood
+        return result
 
     def clear_history(self) -> None:
         """Starts a fresh conversation (the Clear Chat button). Her soul, memory
         and everything else stay as they are. A reply still in flight is
         discarded (same as cancel_reply), not added to the new conversation."""
-        self._reply_generation = getattr(self, "_reply_generation", 0) + 1
+        self._reply_generation += 1
         self._history.clear()
         self._history_changed()
 
@@ -1048,16 +1156,18 @@ class LocalLLM:
             return HISTORY_FALLBACK_TOKENS
         return max(HISTORY_MIN_TOKENS, int(window * HISTORY_CONTEXT_FRACTION))
 
-    def _trim_history(self) -> None:
+    def _trim_history(self) -> dict | None:
         """Keeps the conversation within history_budget(). Past it, drops the
         oldest messages in one go down to HISTORY_TRIM_TO_FRACTION of the budget
         (see its comment for why in one go), always starting on one of the
-        user's messages. The newest message is always kept.
+        user's messages. The newest message is always kept. Returns what was
+        dropped, for the debug log -- so "she forgot" can be told apart from
+        "it was trimmed away" -- or None.
         """
         sizes = [_estimate_tokens(m) for m in self._history]
         budget = self.history_budget()
         if sum(sizes) <= budget and len(self._history) <= MAX_HISTORY_MESSAGES:
-            return
+            return None
         target = budget * HISTORY_TRIM_TO_FRACTION
         total, cut = sum(sizes), 0
         while cut < len(self._history) - 1 and (total > target or len(self._history) - cut > MAX_HISTORY_MESSAGES * HISTORY_TRIM_TO_FRACTION):
@@ -1066,8 +1176,7 @@ class LocalLLM:
         while cut < len(self._history) - 1 and self._history[cut].get("role") != "user":
             cut += 1
         del self._history[:cut]
-        if cut:
-            self.last_trim = {"dropped": cut, "kept": len(self._history), "budget": budget}
+        return {"dropped": cut, "kept": len(self._history), "budget": budget} if cut else None
 
     def restore_history(self, messages: list[dict]) -> None:
         """Puts back a saved conversation (brain/conversation.py) -- at startup, or
@@ -1079,11 +1188,10 @@ class LocalLLM:
         """Tells whoever is listening (main.py saves it to disk) that _history
         changed. Never lets a failure there break a reply.
         """
-        callback = getattr(self, "_on_history_change", None)
-        if callback is None:
+        if self._on_history_change is None:
             return
         try:
-            callback(self._history)
+            self._on_history_change(self._history)
         except Exception as exc:
             print(f"[llm] couldn't save the conversation: {exc!r}")
 
@@ -1224,19 +1332,35 @@ class OllamaLLM(LocalLLM):
     budget-cap/`/no_think`-prompt workarounds that setup needs.
     """
 
-    def __init__(self, endpoint: str, model: str | None, api_key: str | None = None, think: bool = False) -> None:
+    def __init__(
+        self,
+        endpoint: str,
+        model: str | None,
+        api_key: str | None = None,
+        think: bool = False,
+        on_history_change: Callable[[list[dict]], None] | None = None,
+    ) -> None:
         # No OpenAI client here on purpose -- endpoint is Ollama's own base
         # URL (e.g. http://localhost:11434), not an OpenAI-compatible /v1
         # one, so this talks to it directly over plain HTTP instead.
         self._http = httpx.Client(base_url=endpoint.rstrip("/"), timeout=REQUEST_TIMEOUT_SEC)
         self._model = model or ""
         self._think = think
-        self._init_state()
+        self._init_state(on_history_change)
+
+    def loaded_models(self) -> str:
+        """LocalLLM.loaded_models, from Ollama's /api/ps."""
+        try:
+            response = self._http.get("/api/ps", timeout=3)
+            names = [m.get("name") for m in response.json().get("models", [])]
+            return ", ".join(n for n in names if n) or "nothing loaded"
+        except Exception:
+            return "unknown"
 
     def context_window(self) -> int | None:
         """Ollama's own answer (/api/ps lists each loaded model's context_length),
         cached like LocalLLM.context_window."""
-        cached = getattr(self, "_context_window_cache", None)
+        cached = self._context_window_cache
         if cached and time.monotonic() - cached[1] < CONTEXT_WINDOW_CACHE_SEC:
             return cached[0]
         window = None
@@ -1309,34 +1433,37 @@ class OllamaLLM(LocalLLM):
         }
 
 
-class HarnessLLM:
+class HarnessLLM(ChatBackend):
     """Delegates entirely to an external agent harness (brain/harness.py) --
     anything with an OpenAI-compatible /v1/chat/completions, e.g. Hermes Agent
     (https://github.com/NousResearch/hermes-agent) or OpenClaw's gateway
     (https://docs.openclaw.ai/gateway/openai-http-api) -- instead of this app's
     own persona/soul/profile/history system. When this is active, the
-    harness's own agent/session config *is* Glitch's entire personality
-    -- Brain becomes a thin relay, not a second source of "who she is",
-    so unlike LocalLLM this sends no system prompt and keeps no
-    conversation history of its own (the harness owns that).
+    harness's own agent/session config *is* Glitch's entire personality --
+    Brain becomes a thin relay, not a second source of "who she is", so unlike
+    LocalLLM this sends no system prompt and keeps no conversation history of
+    its own (the harness owns that).
 
-    Duck-types LocalLLM's reply() -> (reply_text, mood) contract exactly,
-    so main.py's _reply_to needs no changes to work with either -- it
-    just calls brain.llm.reply(text) without caring which one is active.
-    Still runs replies through the same [mood: ...] tag convention
-    (_extract_mood) so facial expressions keep working automatically if
-    the harness's own Glitch persona has been set up to include the tag;
-    falls back to "neutral" exactly like a Brain-side reply missing the
-    tag already does otherwise.
+    Replies still go through the same [mood: ...] tag convention
+    (_extract_mood), so facial expressions keep working if the harness's own
+    Glitch persona has been set up to include the tag, and fall back to
+    "neutral" otherwise.
     """
 
     def __init__(
-        self, endpoint: str, model: str | None = None, api_key: str | None = None, session_id: str | None = None
+        self,
+        endpoint: str,
+        model: str | None = None,
+        api_key: str | None = None,
+        session_id: str | None = None,
+        name: str = "",
+        new_session: Callable[[], str] | None = None,
     ) -> None:
         self._client = OpenAI(
             base_url=endpoint, api_key=api_key or "not-needed", timeout=REQUEST_TIMEOUT_SEC, max_retries=0
         )
         self._model = model or ""  # see LocalLLM.__init__'s comment -- None serializes to a literal JSON null
+        self.name = name  # which saved harness this is
         # Which conversation this is (brain/harness.py's session_id), so the
         # harness continues the same conversation instead of starting a new one
         # for every message. Harnesses are told in whichever way they listen:
@@ -1346,7 +1473,12 @@ class HarnessLLM:
         # harness ignores whichever of the two it doesn't know.
         self.session_id = session_id
         self._session_header = bool(api_key)
-        self.harness_name = ""  # which saved harness this is, for starting a new session (set by main.py)
+        self._new_session = new_session
+
+    def clear_history(self) -> None:
+        """The harness keeps the conversation, so a fresh one there means a new session id."""
+        if self.session_id and self._new_session:
+            self.session_id = self._new_session()
 
     def reply(
         self,
@@ -1354,42 +1486,22 @@ class HarnessLLM:
         image_b64: str | None = None,
         image_mime: str = "image/jpeg",
         web_search_enabled: bool = False,
-    ) -> tuple[str, str]:
-        # web_search_enabled accepted (not **kwargs) so this keeps duck-
-        # typing LocalLLM.reply()'s exact signature, but deliberately
-        # unused -- a harness has its own tools (e.g. Hermes's own web/
-        # session search, config.yaml's web.backend) when it's active,
-        # Glitch's own web-search toggle has nothing to offer here.
-        # Same MAX_REPLY_TOKENS cap as LocalLLM.reply, same reasoning -- a
-        # runaway generation is exactly as much of a hang either way. If a
-        # given harness turns out to legitimately need more tokens for its
-        # own internal multi-step reasoning within one completion, this is
-        # the first place to revisit, not something to just remove.
-        content: str | list[dict] = user_text
-        if image_b64:
-            # Same multimodal content shape as LocalLLM.reply -- whether
-            # the harness itself is vision-capable is between it and
-            # whatever model it's running; this just passes the image
-            # through the same way a text turn already does.
-            content = [
-                {"type": "text", "text": user_text or "What do you see?"},
-                {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_b64}"}},
-            ]
+    ) -> Reply:
+        # web_search_enabled is deliberately unused -- a harness has its own tools
+        # (e.g. Hermes's own web search) when it's active. Same MAX_REPLY_TOKENS
+        # cap as LocalLLM.reply: a runaway generation is as much of a hang either
+        # way. If a harness turns out to need more room for its own multi-step
+        # reasoning within one completion, this is the first place to revisit.
+        # Whether the harness is vision-capable is between it and its model --
+        # a picture is passed through the same way LocalLLM sends one.
         response = self._client.chat.completions.create(
             model=self._model,
-            messages=[{"role": "user", "content": content}],
+            messages=[{"role": "user", "content": _image_content(user_text, image_b64, image_mime)}],
             max_tokens=MAX_REPLY_TOKENS,
             **self._session_args(),
         )
-        raw_reply = _reply_content(response.choices[0].message)
-        # _extract_mood returns (mood, text) -- swapped here to match this
-        # method's own (reply_text, mood) contract, same as LocalLLM.reply
-        # does. Confirmed live: without this swap, main.py's _reply_to
-        # (which unpacks `reply_text, mood = brain.llm.reply(text)`) got
-        # the mood tag ("neutral") back as the spoken reply text, and the
-        # real reply silently ended up in `mood` instead.
-        mood, reply_text = _extract_mood(raw_reply)
-        return reply_text, mood
+        mood, text = _extract_mood(_reply_content(response.choices[0].message))
+        return Reply(text=text, mood=mood)
 
     def _session_args(self) -> dict:
         if not self.session_id:
@@ -1400,36 +1512,14 @@ class HarnessLLM:
         return args
 
 
-class NoneLLM:
-    """Placeholder used when genuinely no LLM is configured -- a fresh
-    install with nothing in config.yaml's now-optional brain.llm block and
-    no saved engine chosen yet via Settings (llm_engines.py's NONE_NAME).
-    Duck-types LocalLLM's reply()/set_persona()/set_soul()/set_memory()
-    contract so main.py's _build_llm needs no special-casing beyond
-    building this instead of a real client, and every other call site
-    (main.py's _reply_to, the settings-panel handlers) keeps working
-    completely unchanged.
-
-    Deliberately not a subclass of LocalLLM -- main.py gates memory
-    extraction and persona/soul priming on isinstance(brain.llm, LocalLLM)
-    specifically so those never fire for a harness relay (HarnessLLM); the
-    same exclusion is exactly right here too; there's nothing real to
-    extract memory from or apply a persona to yet.
-
-    reply() always returns the same honest, in-character-adjacent line
-    instead of crashing or silently doing nothing -- someone freshly
-    cloning this project and opening the Renderer for the first time
-    should see *why* nothing's happening without reading code to find out.
+class NoneLLM(ChatBackend):
+    """Placeholder used when genuinely no LLM is configured -- a fresh install
+    with nothing in config.yaml's optional brain.llm block and no saved engine
+    chosen yet via Settings (llm_engines.py's NONE_NAME). reply() always
+    returns the same honest line instead of crashing or silently doing nothing
+    -- someone opening the Renderer for the first time should see *why*
+    nothing's happening without reading code to find out.
     """
-
-    def set_persona(self, persona_md: str) -> None:
-        pass
-
-    def set_soul(self, soul_md: str) -> None:
-        pass
-
-    def set_memory(self, memory_block: str) -> None:
-        pass
 
     def reply(
         self,
@@ -1437,5 +1527,5 @@ class NoneLLM:
         image_b64: str | None = None,
         image_mime: str = "image/jpeg",
         web_search_enabled: bool = False,
-    ) -> tuple[str, str]:
-        return "(No LLM engine is configured yet -- add one in Settings, under LLM.)", "neutral"
+    ) -> Reply:
+        return Reply(text="(No LLM engine is configured yet -- add one in Settings, under LLM.)")

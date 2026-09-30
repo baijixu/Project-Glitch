@@ -37,10 +37,10 @@ Map of this file (sections are marked with a `# ===` banner)
   Startup .................... main(), _serve_when_free
 
 Two things to keep in mind throughout: there's ONE Brain and ONE conversation
-shared by every connected device (see Brain), and brain.llm can be a LocalLLM,
-an OllamaLLM (a LocalLLM subclass), a HarnessLLM or a NoneLLM -- anything
-that touches her soul, memory or history checks isinstance(brain.llm,
-LocalLLM) first.
+shared by every connected device (see Brain), and brain.llm can be any
+ChatBackend (llm/client.py) -- her own LocalLLM/OllamaLLM, a HarnessLLM or a
+NoneLLM. Every one takes the same calls; features that are hers alone
+(memory, lessons, curiosity, her chat log) check brain.llm.owns_conversation.
 """
 
 import asyncio
@@ -92,7 +92,7 @@ import tts_engines
 import voice_settings
 import web_search
 from config import load_config
-from llm import REQUEST_TIMEOUT_SEC, HarnessLLM, LocalLLM, NoneLLM, OllamaLLM, list_models, list_ollama_models
+from llm import REQUEST_TIMEOUT_SEC, ChatBackend, HarnessLLM, LocalLLM, NoneLLM, OllamaLLM, list_models, list_ollama_models
 from voice import FasterWhisperSTT, NoneTTS, RemoteTTS
 
 # ============================================================================
@@ -530,7 +530,7 @@ class Brain:
     are isolated the way separate browser tabs usually imply.
     """
 
-    def __init__(self, llm: LocalLLM | HarnessLLM | NoneLLM, tts: RemoteTTS | NoneTTS, stt: FasterWhisperSTT) -> None:
+    def __init__(self, llm: ChatBackend, tts: RemoteTTS | NoneTTS, stt: FasterWhisperSTT) -> None:
         self.llm = llm
         self.tts = tts
         self.stt = stt
@@ -686,7 +686,7 @@ async def _run_reply_message(websocket: websockets.ServerConnection, raw: str, b
 
 def _stop_replies(reply_tasks: set[asyncio.Task], brain: Brain) -> None:
     """The Renderer's Stop button. Cancels every in-flight reply task on
-    this connection, and tells a LocalLLM to discard whatever its worker
+    this connection, and tells the LLM to discard whatever its worker
     thread eventually returns (see LocalLLM.cancel_reply -- the thread
     itself can't be killed). A no-op when nothing's in flight, e.g. Stop
     raced with a reply that had just finished.
@@ -696,8 +696,7 @@ def _stop_replies(reply_tasks: set[asyncio.Task], brain: Brain) -> None:
         return
     for task in in_flight:
         task.cancel()
-    if isinstance(brain.llm, LocalLLM):
-        brain.llm.cancel_reply()
+    brain.llm.cancel_reply()
     print("[brain] reply stopped by renderer")
 
 
@@ -841,8 +840,7 @@ async def _handle_message(websocket: websockets.ServerConnection, raw: str, brai
         memory.set_memory_active(bool(data.get("active")))
     elif msg_type == protocol.CLEAR_MEMORY:
         await memory.clear()
-        if isinstance(brain.llm, LocalLLM):
-            brain.llm.set_memory("")
+        brain.llm.set_memory("")
     elif msg_type == protocol.GET_MEMORY_CONTENT:
         await websocket.send(json.dumps(protocol.memory_content(await memory.read_entries())))
     elif msg_type == protocol.RATE_REPLY:
@@ -994,13 +992,7 @@ async def _handle_delete_profile(websocket: websockets.ServerConnection, data: d
     # LLM's persona pointing at a file that no longer exists.
     if profiles.read_active_profile_name() == name:
         content = profiles.load_profile(profiles.DEFAULT_PROFILE_NAME)
-        # isinstance guard: brain.llm could be a HarnessLLM (no set_persona
-        # at all, see its own docstring) if a harness happened to be active
-        # when this arrived -- the Renderer's UI already disables profile
-        # deletion in that state, but two devices can race (brain.llm is
-        # shared across every connection, see Brain's own docstring), so
-        # this can't just assume the message implies brain.llm is LocalLLM.
-        if profiles.read_roleplay_active() and isinstance(brain.llm, LocalLLM):
+        if profiles.read_roleplay_active():
             brain.llm.set_persona(content)
         print(f"[brain] active profile was deleted -- reset to {profiles.DEFAULT_PROFILE_NAME!r}")
     await _broadcast(protocol.profiles(profiles.list_profiles(), profiles.read_active_profile_name()))
@@ -1060,15 +1052,10 @@ def _handle_load_soul(data: dict, brain: Brain) -> None:
     except (ValueError, OSError) as exc:
         print(f"[brain] couldn't load soul {name!r}: {exc!r}")
         return
-    # isinstance guard: see _handle_delete_profile's own comment -- a
-    # HarnessLLM has no set_soul at all, and brain.llm is shared across
-    # every connected device, so a harness turning on elsewhere can race
-    # with this one arriving.
     if profiles.read_roleplay_active():
-        if isinstance(brain.llm, LocalLLM):
-            # Not `content` directly: loading "Default" clears the RP soul,
-            # which means "no RP soul -- use her main soul", not "no soul".
-            brain.llm.set_soul(_effective_soul())
+        # Not `content` directly: loading "Default" clears the RP soul,
+        # which means "no RP soul -- use her main soul", not "no soul".
+        brain.llm.set_soul(_effective_soul())
         print(f"[brain] loaded soul {name!r}")
     else:
         # Still recorded above (in rp_soul.md, never her main soul.md) -- just
@@ -1103,8 +1090,7 @@ def _handle_save_soul_and_user(data: dict, brain: Brain) -> None:
     profiles can't. The live LLM is re-primed to match her main soul, which
     applies whenever role-play is off (or on with no RP soul selected). The
     role-play profile is a separate file (rp_user.md) this never touches.
-    Guarded on LocalLLM since HarnessLLM has neither method -- if the
-    harness is active the files are still saved for whenever it's turned
+    With a harness active the files are still saved for whenever it's turned
     back off, just not applied to anything now.
     """
     soul_content = data.get("soul", "")
@@ -1113,8 +1099,7 @@ def _handle_save_soul_and_user(data: dict, brain: Brain) -> None:
         return
     souls.write_main_soul(soul_content)
     profiles.write_main_user(user_content)
-    if isinstance(brain.llm, LocalLLM):
-        brain.llm.update_soul(_effective_soul())  # an edit, not a new her: the conversation carries on
+    brain.llm.update_soul(_effective_soul())  # an edit, not a new her: the conversation carries on
     print("[brain] soul.md/user.md updated via manual editor")
 
 
@@ -1130,8 +1115,7 @@ async def _handle_delete_soul(websocket: websockets.ServerConnection, data: dict
     # LLM pointing at a soul that no longer exists.
     if souls.read_active_soul_name() == name:
         souls.load_soul(souls.DEFAULT_SOUL_NAME)
-        # isinstance guard: see _handle_delete_profile's own comment.
-        if profiles.read_roleplay_active() and isinstance(brain.llm, LocalLLM):
+        if profiles.read_roleplay_active():
             brain.llm.set_soul(_effective_soul())
         print(f"[brain] active soul was deleted -- reset to {souls.DEFAULT_SOUL_NAME!r}")
     await _broadcast(protocol.souls(souls.list_souls(), souls.read_active_soul_name()))
@@ -1559,7 +1543,7 @@ async def _handle_delete_llm_engine(websocket: websockets.ServerConnection, data
     await _broadcast(protocol.llm_engines(llm_engines.list_engines(), llm_engines.read_active_engine_name()))
 
 
-def _build_llm(name: str) -> LocalLLM | NoneLLM:
+def _build_llm(name: str) -> ChatBackend:
     """LocalLLM (or OllamaLLM, see below) built from config.yaml's brain.llm
     block (_DEFAULT_LLM_CONFIG) for llm_engines.NONE_NAME, or a saved
     engine's endpoint/model/api_key otherwise. Always re-primes the fresh
@@ -1595,42 +1579,40 @@ def _build_llm(name: str) -> LocalLLM | NoneLLM:
 
     if not config.get("endpoint"):
         print(f"[brain] no LLM engine configured ({name!r} has no endpoint) -- add one in Settings under LLM")
-        llm = NoneLLM()
-    else:
-        print(f"[brain] using LLM engine {name!r} at {config['endpoint']!r}")
-        # See OllamaLLM's own docstring for why this distinction matters:
-        # Ollama's OpenAI-compatible endpoint silently ignores `think`, only
-        # its native API (what OllamaLLM talks to) actually honors it.
-        if config.get("provider") == "ollama":
-            # During role-play on its own engine, the confirm dialog's think
-            # choice wins over the engine's saved one (see _switch_to_roleplay_engine).
-            session = llm_engines.read_roleplay_session()
-            if profiles.read_roleplay_active() and session.get("engine") == name:
-                think = bool(session.get("think"))
-            else:
-                think = bool(config.get("think", False))
-            llm = OllamaLLM(endpoint=config["endpoint"], model=config.get("model"), api_key=config.get("api_key"), think=think)
+        return NoneLLM()
+    print(f"[brain] using LLM engine {name!r} at {config['endpoint']!r}")
+    # The conversation is saved on every change, so a restart or an engine
+    # switch picks it back up (restore_history below) instead of wiping it.
+    connection = {
+        "endpoint": config["endpoint"],
+        "model": config.get("model"),
+        "api_key": config.get("api_key"),
+        "on_history_change": lambda history: conversation.save_state(history, _conversation_mode()),
+    }
+    # See OllamaLLM's own docstring for why this distinction matters:
+    # Ollama's OpenAI-compatible endpoint silently ignores `think`, only
+    # its native API (what OllamaLLM talks to) actually honors it.
+    if config.get("provider") == "ollama":
+        # During role-play on its own engine, the confirm dialog's think
+        # choice wins over the engine's saved one (see _switch_to_roleplay_engine).
+        session = llm_engines.read_roleplay_session()
+        if profiles.read_roleplay_active() and session.get("engine") == name:
+            think = bool(session.get("think"))
         else:
-            llm = LocalLLM(endpoint=config["endpoint"], model=config.get("model"), api_key=config.get("api_key"))
+            think = bool(config.get("think", False))
+        llm = OllamaLLM(**connection, think=think)
+    else:
+        llm = LocalLLM(**connection)
 
     # Her main soul always applies unless role-play is on with an RP soul
     # selected (see _effective_soul); the RP profile only applies during
-    # role-play (below).
-    llm.set_soul(_effective_soul())
-    # No memory priming here -- unlike the old flat-file version, there's
-    # no fixed block to prime with at build time, only whatever's relevant
-    # to each turn's own message (see _reply_to, which calls set_memory
-    # fresh before every reply). self._memory already defaults to "".
-    active_profile = profiles.read_active_profile()
-    if active_profile and profiles.read_roleplay_active():
-        llm.set_persona(active_profile)
-    # Pick the conversation back up where it was (a Brain restart or an engine
-    # switch used to wipe it), then save it on every change from here on. Hooked
-    # up only after the set_soul/set_persona above, which each clear history and
-    # would otherwise save an empty conversation over the real one.
-    if isinstance(llm, LocalLLM):
-        llm.restore_history(conversation.load_state(_conversation_mode()))
-        llm._on_history_change = lambda history: conversation.save_state(history, _conversation_mode())
+    # role-play. update_*, not set_*: those start a fresh conversation, which
+    # would save an empty one over the real one restored just after. No memory
+    # priming here -- _reply_to recalls what's relevant to each message.
+    llm.update_soul(_effective_soul())
+    if profiles.read_roleplay_active():
+        llm.update_persona(profiles.read_active_profile())
+    llm.restore_history(conversation.load_state(_conversation_mode()))
     return llm
 
 
@@ -1656,12 +1638,16 @@ def _build_harness_llm(name: str) -> HarnessLLM | None:
     print(f"[brain] using harness {name!r} at {config['endpoint']!r}")
     # Continue the same conversation across messages (and Brain restarts) --
     # see HarnessLLM.__init__ for how each harness is told which one.
-    session = harness.session_id(name)
     if not config.get("api_key"):
         print(f"[brain] harness {name!r} has no API key -- Hermes needs one to continue a conversation")
-    llm = HarnessLLM(endpoint=config["endpoint"], model=config.get("model"), api_key=config.get("api_key"), session_id=session)
-    llm.harness_name = name
-    return llm
+    return HarnessLLM(
+        endpoint=config["endpoint"],
+        model=config.get("model"),
+        api_key=config.get("api_key"),
+        session_id=harness.session_id(name),
+        name=name,
+        new_session=lambda: harness.new_session_id(name),
+    )
 
 
 async def _handle_set_harness_active(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
@@ -1880,7 +1866,7 @@ async def _handle_rate_reply(websocket: websockets.ServerConnection, data: dict,
     """A thumbs up/down on one of her replies. The rating itself is always
     logged locally (lessons.log_rating); learning from it only happens when
     the feature is on, role-play is off (in-character replies shouldn't
-    teach her habits for normal conversation) and this is a LocalLLM (a
+    teach her habits for normal conversation) and she's on her own LLM (a
     harness manages its own behavior). That part runs as a background task
     -- it's an extra LLM call plus Hindsight writes, and the user shouldn't
     wait on it.
@@ -1894,7 +1880,7 @@ async def _handle_rate_reply(websocket: websockets.ServerConnection, data: dict,
     roleplay = profiles.read_roleplay_active()
     lessons.log_rating(user_text, reply_text, rating, note, roleplay)
     await _debug_log(websocket, "lessons", f"rating logged ({rating})")
-    if roleplay or not lessons.read_active() or not isinstance(brain.llm, LocalLLM):
+    if roleplay or not lessons.read_active() or not brain.llm.owns_conversation:
         return
     _spawn(_learn_from_rating(websocket, brain, user_text, reply_text, rating, note))
 
@@ -2038,15 +2024,15 @@ async def _debug_snapshot(brain: Brain, current: websockets.ServerConnection | N
         lines.append(f"{'This device' if connection is current else 'Also connected'}: {_device_label(connection)}")
     if isinstance(llm, HarnessLLM):
         session = (llm.session_id or "none")[:14]
-        lines.append(f"LLM: harness {getattr(llm, 'harness_name', '')!r} (session {session}...)")
+        lines.append(f"LLM: harness {llm.name!r} (session {session}...)")
     elif isinstance(llm, LocalLLM):
         engine = llm_engines.read_active_engine_name()
         kind = "Ollama" if isinstance(llm, OllamaLLM) else "OpenAI-compatible"
         window = await asyncio.to_thread(llm.context_window)
         lines.append(
-            f"LLM: engine {engine!r} ({kind}), model {llm._model or '(server default)'!r}, "
+            f"LLM: engine {engine!r} ({kind}), model {llm.model_name or '(server default)'!r}, "
             f"context {window or 'unknown'}, keeps ~{llm.history_budget()} tokens of chat, "
-            f"{len(llm._history)} messages in the conversation now"
+            f"{llm.message_count} messages in the conversation now"
         )
         lines.append(f"Sampling profile: {sampling.read_active_name()!r} {sampling.active_values() or '(server settings)'}")
     else:
@@ -2071,7 +2057,7 @@ async def _debug_snapshot(brain: Brain, current: websockets.ServerConnection | N
         f"active lessons: {lesson_count}; her saved questions: {questions['open']} open, {questions['done']} asked or dropped"
     )
     if isinstance(llm, LocalLLM):
-        lines.append(f"Loaded on her LLM server: {await asyncio.to_thread(_loaded_models, llm)}")
+        lines.append(f"Loaded on her LLM server: {await asyncio.to_thread(llm.loaded_models)}")
     if provider == memory.HINDSIGHT_PROVIDER:
         lines.append(f"Hindsight's own model (rewrites and summaries): {await asyncio.to_thread(_hindsight_model)}")
     if _RECENT_PROBLEMS:
@@ -2079,25 +2065,6 @@ async def _debug_snapshot(brain: Brain, current: websockets.ServerConnection | N
         for at, category, message in list(_RECENT_PROBLEMS)[-10:]:
             lines.append(f"  {time.strftime('%H:%M:%S', time.localtime(at))} [{category}] {message}")
     return lines
-
-
-def _loaded_models(llm: LocalLLM) -> str:
-    """Which models her LLM server has in memory right now -- a slow reply is
-    often a model being swapped in. LM Studio (/api/v0/models) and Ollama
-    (/api/ps) can say; anything else is "unknown". Never raises.
-    """
-    try:
-        if isinstance(llm, OllamaLLM):
-            response = llm._http.get("/api/ps", timeout=3)
-            names = [m.get("name") for m in response.json().get("models", [])]
-        else:
-            base = str(llm._client.base_url).rstrip("/").removesuffix("/v1")
-            with urllib.request.urlopen(f"{base}/api/v0/models", timeout=3) as response:
-                data = json.load(response).get("data", [])
-            names = [m.get("id") for m in data if m.get("state") == "loaded"]
-        return ", ".join(n for n in names if n) or "nothing loaded"
-    except Exception:
-        return "unknown"
 
 
 def _hindsight_model() -> str:
@@ -2209,9 +2176,7 @@ def _handle_load_profile(data: dict, brain: Brain) -> None:
         print(f"[brain] couldn't load profile {name!r}: {exc!r}")
         return
     if profiles.read_roleplay_active():
-        # isinstance guard: see _handle_delete_profile's own comment.
-        if isinstance(brain.llm, LocalLLM):
-            brain.llm.set_persona(content)
+        brain.llm.set_persona(content)
         print(f"[brain] loaded profile {name!r}")
     else:
         # Still recorded in rp_user.md above -- just not applied to the LLM
@@ -2253,14 +2218,11 @@ def _apply_conversation_mode(brain: Brain, persona: str) -> None:
     """Brings the LLM in line with the current mode after role-play is toggled:
     the right soul and persona, and the right saved conversation -- without the
     wipe set_soul/set_persona do (those are for switching to a different
-    character, where a fresh conversation is the point). isinstance guard: a
-    HarnessLLM has none of this, and _switch_to_roleplay_engine leaves brain.llm
-    alone if it couldn't switch.
+    character, where a fresh conversation is the point).
     """
-    if isinstance(brain.llm, LocalLLM):
-        brain.llm.update_soul(_effective_soul())
-        brain.llm.update_persona(persona)
-        brain.llm.restore_history(conversation.load_state(_conversation_mode()))
+    brain.llm.update_soul(_effective_soul())
+    brain.llm.update_persona(persona)
+    brain.llm.restore_history(conversation.load_state(_conversation_mode()))
 
 
 def _switch_to_roleplay_engine(name: str, think: bool, brain: Brain, was_active: bool) -> None:
@@ -2311,7 +2273,7 @@ def _end_roleplay_engine(brain: Brain) -> None:
     target = previous or llm_engines.read_active_engine_name()
     if not previous and target != roleplay_engine:
         return  # nothing to switch back to, and nothing to rebuild
-    if isinstance(brain.llm, HarnessLLM):
+    if harness.read_active_harness():
         llm_engines.set_active_engine_name(target)  # a harness is in charge; applied when it's turned off
         return
     try:
@@ -2357,13 +2319,9 @@ async def _handle_clear_conversation(brain: Brain) -> None:
     conversation goes. Every connected device clears its panel as well.
     """
     global _LAST_CONTEXT_USAGE
-    if isinstance(brain.llm, LocalLLM):
-        brain.llm.clear_history()
+    brain.llm.clear_history()  # with a harness: a new session there
+    if brain.llm.owns_conversation:  # a harness's conversations stay out of her chat log -- see _reply_to
         conversation.log_marker("New conversation (chat cleared)", mode=_conversation_mode())
-    elif isinstance(brain.llm, HarnessLLM) and brain.llm.session_id:
-        # The harness keeps the conversation, so a fresh one there means a new
-        # session id. (Not marked in her personal chat log -- see _reply_to.)
-        brain.llm.session_id = harness.new_session_id(getattr(brain.llm, "harness_name", ""))
     _LAST_CONTEXT_USAGE = None
     curiosity.restart_quiet_hour(time.time())  # she may reach out again an hour from now
     await _broadcast_curiosity_timer()
@@ -2379,21 +2337,18 @@ async def _handle_regenerate_last(websocket: websockets.ServerConnection, data: 
     would do and reads as "he's just repeating himself" rather than a
     clean second attempt.
 
-    Only LocalLLM/OllamaLLM actually have history to pop (see
-    pop_last_exchange's own docstring) -- a HarnessLLM manages its own
-    memory externally with no local equivalent, so this falls back to
-    just answering whatever text the Renderer sent (its own best
-    recollection of the last prompt), same as an ordinary user_text, for
-    that case and for NoneLLM.
+    Only her own LLM has history to pop (see pop_last_exchange's own
+    docstring) -- with a harness or NoneLLM there's nothing to pop, so this
+    just answers whatever text the Renderer sent (its own best recollection
+    of the last prompt), same as an ordinary user_text.
     """
     text = str(data.get("text", ""))
     edited = bool(data.get("edited"))  # the ✏️ button: answer their corrected text instead
     if edited and _fields_too_long(text):
         return
-    if isinstance(brain.llm, LocalLLM):
-        popped_text = brain.llm.pop_last_exchange()
-        if popped_text is not None and not edited:
-            text = popped_text
+    popped_text = brain.llm.pop_last_exchange()
+    if popped_text is not None and not edited:
+        text = popped_text
     await _reply_to(websocket, text, brain)
 
 
@@ -2432,10 +2387,8 @@ async def _reply_to(
     curiosity.note_user_message(time.time())  # restarts the hour before she may reach out (see _reach_out_loop)
     await _broadcast_curiosity_timer()
 
-    # isinstance guard: same reasoning as every other brain.llm-touching
-    # call in this file -- HarnessLLM has no set_memory at all, and it
-    # manages its own memory externally anyway (see memory.py's own
-    # docstring). recall_for_prompt is provider-agnostic (memory.py's own
+    # Her own LLM only -- a harness manages its own memory (see memory.py's
+    # own docstring). recall_for_prompt is provider-agnostic (memory.py's own
     # read_provider() decides local-vs-hindsight) -- for hindsight this is
     # recalled fresh for THIS message every turn, not just primed once at
     # LLM-build time, so different questions actually surface different
@@ -2452,7 +2405,7 @@ async def _reply_to(
     # alone rather than clearing it -- there's nothing to recall against,
     # but that's not the same as "pause memory", so this only clears when
     # there actually was a message and memory was skipped for it.
-    if text and isinstance(brain.llm, LocalLLM):
+    if text and brain.llm.owns_conversation:
         if memory.read_memory_active() and not profiles.read_roleplay_active():
             recall_start = time.monotonic()
             try:
@@ -2470,41 +2423,36 @@ async def _reply_to(
             # sitting in the system prompt from right before).
             brain.llm.set_memory("")
 
-    if isinstance(brain.llm, LocalLLM):
-        brain.llm.set_user_info(_effective_user_info())
-        # Her sampling profile (brain/sampling.py) -- read every turn, so a switch
-        # in Settings applies to the very next reply. Kept on during role-play:
-        # it's how she generates, not something about the real user.
-        brain.llm.set_sampling(sampling.active_values())
+    brain.llm.set_user_info(_effective_user_info())
+    # Her sampling profile (brain/sampling.py) -- read every turn, so a switch
+    # in Settings applies to the very next reply. Kept on during role-play:
+    # it's how she generates, not something about the real user.
+    brain.llm.set_sampling(sampling.active_values())
 
     # Learned behavior rules (brain/lessons.py) -- like memory, off during
     # role-play and cleared rather than skipped so a stale block can't linger
     # into an in-character turn. Never lets a lookup failure break the reply.
-    if isinstance(brain.llm, LocalLLM):
-        if lessons.read_active() and not profiles.read_roleplay_active():
-            try:
-                brain.llm.set_lessons(await asyncio.wait_for(lessons.prompt_block(), timeout=LESSON_PROMPT_TIMEOUT_SEC))
-            except Exception as exc:
-                await _debug_log(websocket, "lessons", f"couldn't load lessons: {exc!r}")
-                brain.llm.set_lessons("")
-        else:
+    if brain.llm.owns_conversation and lessons.read_active() and not profiles.read_roleplay_active():
+        try:
+            brain.llm.set_lessons(await asyncio.wait_for(lessons.prompt_block(), timeout=LESSON_PROMPT_TIMEOUT_SEC))
+        except Exception as exc:
+            await _debug_log(websocket, "lessons", f"couldn't load lessons: {exc!r}")
             brain.llm.set_lessons("")
+    else:
+        brain.llm.set_lessons("")
 
     # Curiosity (brain/curiosity.py) -- same shape as lessons: off during role-play,
     # cleared rather than skipped. Not tied to Hindsight; it only needs the local files.
-    curious = isinstance(brain.llm, LocalLLM) and curiosity.read_active() and not profiles.read_roleplay_active()
-    if isinstance(brain.llm, LocalLLM):
-        recent = [m["content"] for m in brain.llm._history if m.get("role") == "assistant" and isinstance(m.get("content"), str)]
-        brain.llm.set_curiosity(curiosity.start_turn(recent[-curiosity.QUESTION_COOLDOWN_REPLIES:]) if curious else "")
+    curious = brain.llm.owns_conversation and curiosity.read_active() and not profiles.read_roleplay_active()
+    recent = brain.llm.recent_replies(curiosity.QUESTION_COOLDOWN_REPLIES)
+    brain.llm.set_curiosity(curiosity.start_turn(recent) if curious else "")
     answered = curiosity.answered_question() if curious else ""  # her question this message answers, for memory
     for event in curiosity.take_events():
         await _debug_log(websocket, "curiosity", event)
 
     llm_start = time.monotonic()
     try:
-        reply_text, mood = await asyncio.to_thread(
-            brain.llm.reply, text, image_b64, image_mime, web_search.read_active()
-        )
+        reply = await asyncio.to_thread(brain.llm.reply, text, image_b64, image_mime, web_search.read_active())
     except Exception as exc:
         # No Brain -> Renderer error message type exists yet (protocol.md's
         # `error` is Renderer -> Brain only) -- surfacing this as speak_text
@@ -2519,27 +2467,26 @@ async def _reply_to(
     # conversation content).
     # Sizes and settings only -- how big the prompt was, how long the reply was,
     # which sampling profile -- so a slow or odd reply can be told apart.
+    reply_text, mood, usage, trim = reply.text, reply.mood, reply.usage, reply.trimmed
     details = ""
-    usage = getattr(brain.llm, "last_usage", None) or {}
     llm_ms = (time.monotonic() - llm_start) * 1000
-    if isinstance(brain.llm, LocalLLM):
+    if brain.llm.owns_conversation:
         thinking = f", {usage['reasoning']} of them thinking" if usage.get("reasoning") else ""
         details = (
             f" ({usage.get('prompt', '?')} prompt + {usage.get('completion', '?')} reply tokens{thinking}, "
-            f"{len(brain.llm._history)} messages, profile {sampling.read_active_name()!r})"
+            f"{brain.llm.message_count} messages, profile {sampling.read_active_name()!r})"
         )
     await _debug_log(websocket, "llm", f"LLM reply received{details}", llm_ms)
-    trim = getattr(brain.llm, "last_trim", None)
     if trim:
         await _debug_log(
             websocket, "llm",
             f"conversation trimmed: dropped the oldest {trim['dropped']} messages, kept {trim['kept']} "
             f"(budget ~{trim['budget']} tokens)",
         )
-    if llm_ms > SLOW_REPLY_MS and isinstance(brain.llm, LocalLLM):
-        loaded = await asyncio.to_thread(_loaded_models, brain.llm)
+    if llm_ms > SLOW_REPLY_MS and brain.llm.owns_conversation:
+        loaded = await asyncio.to_thread(brain.llm.loaded_models)
         await _debug_log(websocket, "llm", f"slow reply -- loaded on her LLM server now: {loaded}")
-    if getattr(brain.llm, "last_reply_fell_back", False):
+    if reply.fell_back:
         await _debug_log(websocket, "llm", "ran out of thinking room -- answered again with thinking off")
 
     if not reply_text.strip():
@@ -2569,9 +2516,9 @@ async def _reply_to(
     # control she's working under a different soul and memory -- that side keeps
     # its own session logs, and personal and professional are kept apart on
     # purpose. NoneLLM's placeholder isn't a conversation either.
-    if isinstance(brain.llm, LocalLLM):
+    if brain.llm.owns_conversation:
         conversation.log_exchange(text, reply_text, roleplay=profiles.read_roleplay_active(), picture=bool(image_b64))
-    _spawn(_send_context_usage(brain))
+    _spawn(_send_context_usage(brain, usage))
 
     # Fire-and-forget: must never slow down or affect the reply the user
     # already has. Runs regardless of whether voice/TTS succeeds below --
@@ -2582,8 +2529,7 @@ async def _reply_to(
     # moment. Only the user's own side is remembered for those, so memory
     # doesn't fill with headlines and "the keyboard has blue keys" (and she
     # can't repeat a bad search result back later as if it were a memory).
-    used_web_search = bool(getattr(brain.llm, "last_reply_used_web_search", False))
-    omit_reply = used_web_search or bool(image_b64)
+    omit_reply = reply.used_web_search or bool(image_b64)
     _spawn(_maybe_retain_memory(websocket, text, "" if omit_reply else reply_text, brain, asked=answered))
     if curious:
         curiosity.end_turn(reply_text)
@@ -2639,7 +2585,7 @@ async def _propose_memory(
         part
         for part in (
             f"The human's own description of themselves:\n{user_info}" if user_info else "",
-            getattr(brain.llm, "_memory", ""),
+            brain.llm.memory_block,
             *(f"- {p['fact']}" for p in training.read_pending()),
         )
         if part
@@ -2693,14 +2639,14 @@ async def _handle_resolve_memory_proposal(data: dict) -> None:
 _LAST_CONTEXT_USAGE: dict | None = None
 
 
-async def _send_context_usage(brain: Brain) -> None:
-    """After a reply: how full her context is, for the Settings meter. Asking the
-    server for the context size is a network call (cached, see
-    LocalLLM.context_window), so this runs on its own and never delays her.
+async def _send_context_usage(brain: Brain, usage: dict) -> None:
+    """After a reply: how full her context is, for the Settings meter (`usage`
+    is the reply's token counts). Asking the server for the context size is a
+    network call (cached, see LocalLLM.context_window), so this runs on its own
+    and never delays her.
     """
     global _LAST_CONTEXT_USAGE
-    usage = getattr(brain.llm, "last_usage", None)
-    if not isinstance(brain.llm, LocalLLM) or not usage:
+    if not brain.llm.owns_conversation or not usage:
         return
     used = (usage.get("prompt") or 0) + (usage.get("completion") or 0)
     if not used:
@@ -2723,7 +2669,7 @@ async def _maybe_propose_question(
     a failure -- a turn with no new question is the normal outcome.
     """
     start = time.monotonic()
-    known = "\n".join(part for part in (_effective_user_info(), getattr(brain.llm, "_memory", "")) if part)
+    known = "\n".join(part for part in (_effective_user_info(), brain.llm.memory_block) if part)
     try:
         raw = await asyncio.to_thread(
             brain.llm.propose_question, user_text, reply_text, known, curiosity.all_question_texts()
@@ -2756,7 +2702,7 @@ async def _reach_out_loop(brain: Brain) -> None:
         try:
             await _broadcast_curiosity_timer(only_if_changed=True)  # catches role-play / harness switches
             if (
-                isinstance(brain.llm, LocalLLM)
+                brain.llm.owns_conversation
                 and curiosity.read_active()
                 and not profiles.read_roleplay_active()
                 and _RENDERER_CONNECTIONS
@@ -2799,7 +2745,7 @@ async def _handle_test_reach_out(websocket: websockets.ServerConnection, brain: 
     the real thing), and then waits for a reply like after any reach-out.
     """
     problem = ""
-    if not isinstance(brain.llm, LocalLLM):
+    if not brain.llm.owns_conversation:
         problem = "She can't reach out while a harness is in control, or with no LLM set up."
     elif profiles.read_roleplay_active():
         problem = "She doesn't reach out during role-play."
@@ -2825,7 +2771,8 @@ async def _reach_out(brain: Brain, *, test: bool = False) -> None:
     brain.llm.set_curiosity("")  # the reach-out note carries its own instruction
     print("[brain] an hour of quiet -- reaching out" + (f" with {question['text']!r}" if question else ""))
     try:
-        text, mood = await asyncio.to_thread(brain.llm.reach_out, question["text"] if question else None)
+        reply = await asyncio.to_thread(brain.llm.reach_out, question["text"] if question else None)
+        text, mood = reply.text, reply.mood
     finally:
         curiosity.mark_reached_out(question["id"] if question else None)
         await _broadcast_curiosity_timer()
@@ -2857,10 +2804,8 @@ async def _maybe_retain_memory(
 ) -> None:
     """Glitch's own native memory (brain/memory.py) -- entirely separate
     from anything Hermes does with its own memory. Gated on three things:
-    not the harness (isinstance check, not a duck-typed call -- HarnessLLM
-    has no set_memory at all, on purpose, and manages its own memory
-    externally anyway), the feature's own on/off toggle, and role-play
-    being OFF -- the user was explicit that in-character role-play content
+    her own LLM (a harness manages its own memory), the feature's own on/off
+    toggle, and role-play being OFF -- the user was explicit that in-character role-play content
     must never be captured as fact about them, and skipping retention
     entirely during role-play is the simplest way to guarantee that
     rather than trying to classify fiction-vs-real-signal reliably.
@@ -2878,7 +2823,7 @@ async def _maybe_retain_memory(
     Wrapped in try/except throughout: a failure here must never surface to
     the user or affect anything else, it's a pure background nice-to-have.
     """
-    if not isinstance(brain.llm, LocalLLM) or not memory.read_memory_active() or profiles.read_roleplay_active():
+    if not brain.llm.owns_conversation or not memory.read_memory_active() or profiles.read_roleplay_active():
         return
     if not user_text.strip() and not reply_text.strip():
         return  # an image-only turn with nothing the user said -- nothing left worth keeping
@@ -2917,14 +2862,9 @@ async def _maybe_retain_memory(
         # something new" for a fact she already had).
         await _debug_log(websocket, "memory", "fact already known", (time.monotonic() - start) * 1000)
         return
-    # Re-check isinstance here rather than trusting the guard at the top of
-    # this function -- brain.llm is a plain shared attribute (see Brain's
-    # own docstring on why there's no per-connection state), and the
-    # asyncio.to_thread call above this awaited long enough for another
-    # connection's set_harness_active to reassign it out from under this
-    # task in the meantime. HarnessLLM has no set_memory at all.
-    if isinstance(brain.llm, LocalLLM):
-        brain.llm.set_memory(memory.read_local_block())
+    # brain.llm, not a local from the top: the await above is long enough for
+    # another device to have switched engines or plugged in a harness.
+    brain.llm.set_memory(memory.read_local_block())
     await _debug_log(websocket, "memory", "learned something new", (time.monotonic() - start) * 1000)
     await websocket.send(json.dumps(protocol.memory_learned(fact)))
 
