@@ -6,149 +6,11 @@ import { IdleController } from "./idle.js";
 import { BrainClient } from "./brain_client.js";
 
 const statusEl = document.getElementById("status");
-const subtitleEl = document.getElementById("subtitle");
-const bubbleOverlayEl = document.getElementById("bubble-overlay");
-const overlayChatToggleInputEl = document.getElementById("overlay-chat-toggle");
-const memoryToastEl = document.getElementById("memory-toast");
-const inputEl = document.getElementById("message-input");
-const chatBarEl = document.getElementById("chat-bar");
-const sideActionsEl = document.getElementById("side-actions");
-const sendButtonEl = document.getElementById("send-button");
-const stopButtonEl = document.getElementById("stop-button");
-const overlayResendButtonEl = document.getElementById("overlay-resend-button");
-const fileUploadButtonEl = document.getElementById("file-upload-button");
-const fileUploadInputEl = document.getElementById("file-upload-input");
-const cameraVisionButtonEl = document.getElementById("camera-vision-button");
-const desktopVisionButtonEl = document.getElementById("desktop-vision-button");
-const micButtonEl = document.getElementById("mic-button");
-const voiceToggleInputEl = document.getElementById("voice-toggle");
-const webSearchToggleInputEl = document.getElementById("web-search-toggle");
-const cameraEnabledToggleInputEl = document.getElementById("camera-enabled-toggle");
-const desktopCaptureEnabledToggleInputEl = document.getElementById("desktop-capture-enabled-toggle");
-const micEnabledToggleInputEl = document.getElementById("mic-enabled-toggle");
-const micAlwaysOnToggleInputEl = document.getElementById("mic-always-on-toggle");
-const memoryToggleInputEl = document.getElementById("memory-toggle");
-const downloadMemoryButtonEl = document.getElementById("download-memory-button");
-const clearMemoryButtonEl = document.getElementById("clear-memory-button");
-const openSoulUserEditorButtonEl = document.getElementById("open-soul-user-editor-button");
-const soulUserEditorModalBackdropEl = document.getElementById("soul-user-editor-modal-backdrop");
-const soulUserEditorSoulEl = document.getElementById("soul-user-editor-soul");
-const soulUserEditorUserEl = document.getElementById("soul-user-editor-user");
-const soulUserEditorSaveButtonEl = document.getElementById("soul-user-editor-save-button");
-const soulUserEditorCancelButtonEl = document.getElementById("soul-user-editor-cancel-button");
-const micLabelEl = document.getElementById("mic-label");
 const historyButtonEl = document.getElementById("history-button");
 const historyPanelEl = document.getElementById("history-panel");
-const historyListEl = document.getElementById("history-list");
-const resendLastButtonEl = document.getElementById("resend-last-button");
-const clearHistoryButtonEl = document.getElementById("clear-chat-history-button");
-const connectionLightEl = document.getElementById("connection-light");
-const harnessLightEl = document.getElementById("harness-light");
-const ttsLightEl = document.getElementById("tts-light");
 const settingsButtonEl = document.getElementById("settings-button");
 const settingsPanelEl = document.getElementById("settings-panel");
-const settingsContentEl = document.getElementById("settings-content");
-const roleplayToggleInputEl = document.getElementById("roleplay-toggle");
-const roleplayBadgeEl = document.getElementById("roleplay-badge");
-const profileOptionsEl = document.getElementById("profile-options");
-const soulSectionEl = document.getElementById("soul-section");
-const profileSelectEl = document.getElementById("profile-select");
-const editProfileButtonEl = document.getElementById("edit-profile-button");
-const newProfileButtonEl = document.getElementById("new-profile-button");
-const deleteProfileButtonEl = document.getElementById("delete-profile-button");
-const profileModalBackdropEl = document.getElementById("profile-modal-backdrop");
-const profileModalTitleEl = document.getElementById("profile-modal-title");
-const profileNameEl = document.getElementById("profile-name");
-const profileIdentityEl = document.getElementById("profile-identity");
-const profileScenarioEl = document.getElementById("profile-scenario");
-const profileSaveButtonEl = document.getElementById("profile-save-button");
-const profileCancelButtonEl = document.getElementById("profile-cancel-button");
-const soulSelectEl = document.getElementById("soul-select");
-const editSoulButtonEl = document.getElementById("edit-soul-button");
-const newSoulButtonEl = document.getElementById("new-soul-button");
-const deleteSoulButtonEl = document.getElementById("delete-soul-button");
-const soulModalBackdropEl = document.getElementById("soul-modal-backdrop");
-const soulModalTitleEl = document.getElementById("soul-modal-title");
-const soulNameEl = document.getElementById("soul-name");
-const soulDescriptionEl = document.getElementById("soul-description");
-const soulExamplesEl = document.getElementById("soul-examples");
-const soulSaveButtonEl = document.getElementById("soul-save-button");
-const soulCancelButtonEl = document.getElementById("soul-cancel-button");
-const avatarSelectEl = document.getElementById("avatar-select");
-const importAvatarButtonEl = document.getElementById("import-avatar-button");
-const avatarFileInputEl = document.getElementById("avatar-file-input");
-const importAvatarPngButtonEl = document.getElementById("import-avatar-png-button");
-const avatarPngFileInputEl = document.getElementById("avatar-png-file-input");
 const avatarImageEl = document.getElementById("avatar-image");
-const ttsEngineSelectEl = document.getElementById("tts-engine-select");
-const editTtsEngineButtonEl = document.getElementById("edit-tts-engine-button");
-const newTtsEngineButtonEl = document.getElementById("new-tts-engine-button");
-const deleteTtsEngineButtonEl = document.getElementById("delete-tts-engine-button");
-const ttsEngineModalBackdropEl = document.getElementById("tts-engine-modal-backdrop");
-const ttsEngineModalTitleEl = document.getElementById("tts-engine-modal-title");
-const ttsEngineNameEl = document.getElementById("tts-engine-name");
-const ttsEngineEndpointEl = document.getElementById("tts-engine-endpoint");
-const ttsEngineApiKeyEl = document.getElementById("tts-engine-api-key");
-const ttsEngineVoiceEl = document.getElementById("tts-engine-voice");
-const ttsEngineModelEl = document.getElementById("tts-engine-model");
-const ttsEngineVoicesDirEl = document.getElementById("tts-engine-voices-dir");
-const ttsEngineSaveButtonEl = document.getElementById("tts-engine-save-button");
-const ttsEngineCancelButtonEl = document.getElementById("tts-engine-cancel-button");
-const ttsVoiceSelectEl = document.getElementById("tts-voice-select");
-const createTtsVoiceButtonEl = document.getElementById("create-tts-voice-button");
-const kokoroBlendModalBackdropEl = document.getElementById("kokoro-blend-modal-backdrop");
-const kokoroBlendNameEl = document.getElementById("kokoro-blend-name");
-const kokoroBlendSpecEl = document.getElementById("kokoro-blend-spec");
-const kokoroBlendCancelButtonEl = document.getElementById("kokoro-blend-cancel-button");
-const kokoroBlendCreateButtonEl = document.getElementById("kokoro-blend-create-button");
-const llmEngineSelectEl = document.getElementById("llm-engine-select");
-const editLlmEngineButtonEl = document.getElementById("edit-llm-engine-button");
-const newLlmEngineButtonEl = document.getElementById("new-llm-engine-button");
-const deleteLlmEngineButtonEl = document.getElementById("delete-llm-engine-button");
-const llmEngineModalBackdropEl = document.getElementById("llm-engine-modal-backdrop");
-const llmEngineModalTitleEl = document.getElementById("llm-engine-modal-title");
-const llmEngineNameEl = document.getElementById("llm-engine-name");
-const llmEngineProviderEl = document.getElementById("llm-engine-provider");
-const llmEngineEndpointEl = document.getElementById("llm-engine-endpoint");
-const llmEngineModelEl = document.getElementById("llm-engine-model");
-const llmEngineModelOptionsEl = document.getElementById("llm-engine-model-options");
-const fetchLlmModelsButtonEl = document.getElementById("fetch-llm-models-button");
-const llmEngineApiKeyEl = document.getElementById("llm-engine-api-key");
-const llmEngineThinkRowEl = document.getElementById("llm-engine-think-row");
-const llmEngineThinkHintEl = document.getElementById("llm-engine-think-hint");
-const llmEngineThinkToggleEl = document.getElementById("llm-engine-think-toggle");
-const llmEngineSaveButtonEl = document.getElementById("llm-engine-save-button");
-const llmEngineCancelButtonEl = document.getElementById("llm-engine-cancel-button");
-const harnessToggleInputEl = document.getElementById("harness-toggle");
-const harnessSelectEl = document.getElementById("harness-select");
-const editHarnessButtonEl = document.getElementById("edit-harness-button");
-const newHarnessButtonEl = document.getElementById("new-harness-button");
-const deleteHarnessButtonEl = document.getElementById("delete-harness-button");
-const harnessLockableEl = document.getElementById("harness-lockable");
-const harnessConfirmModalBackdropEl = document.getElementById("harness-confirm-modal-backdrop");
-const harnessConfirmModalTextEl = document.getElementById("harness-confirm-modal-text");
-const harnessConfirmCancelButtonEl = document.getElementById("harness-confirm-cancel-button");
-const harnessConfirmConnectButtonEl = document.getElementById("harness-confirm-connect-button");
-const harnessModalBackdropEl = document.getElementById("harness-modal-backdrop");
-const harnessModalTitleEl = document.getElementById("harness-modal-title");
-const harnessNameEl = document.getElementById("harness-name");
-const harnessEndpointEl = document.getElementById("harness-endpoint");
-const harnessModelEl = document.getElementById("harness-model");
-const harnessApiKeyEl = document.getElementById("harness-api-key");
-const harnessModalCancelButtonEl = document.getElementById("harness-modal-cancel-button");
-const harnessModalSaveButtonEl = document.getElementById("harness-modal-save-button");
-const roleplayConfirmModalBackdropEl = document.getElementById("roleplay-confirm-modal-backdrop");
-const roleplayConfirmThinkToggleEl = document.getElementById("roleplay-confirm-think-toggle");
-const roleplayConfirmCancelButtonEl = document.getElementById("roleplay-confirm-cancel-button");
-const roleplayConfirmEnableButtonEl = document.getElementById("roleplay-confirm-enable-button");
-const debugToggleInputEl = document.getElementById("debug-toggle");
-const downloadDebugLogButtonEl = document.getElementById("download-debug-log-button");
-const restartBrainButtonEl = document.getElementById("restart-brain-button");
-const openNotesButtonEl = document.getElementById("open-notes-button");
-const notesModalBackdropEl = document.getElementById("notes-modal-backdrop");
-const notesTextareaEl = document.getElementById("notes-textarea");
-const notesSaveButtonEl = document.getElementById("notes-save-button");
-const notesCancelButtonEl = document.getElementById("notes-cancel-button");
 
 const canvas = document.getElementById("scene");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -333,145 +195,6 @@ brain = new BrainClient({
   url: import.meta.env.VITE_BRAIN_WS_URL || defaultBrainWsUrl,
   authToken: import.meta.env.VITE_BRAIN_AUTH_TOKEN,
   vrm,
-  statusEl,
-  subtitleEl,
-  bubbleOverlayEl,
-  overlayChatToggleInputEl,
-  memoryToastEl,
-  inputEl,
-  chatBarEl,
-  sideActionsEl,
-  sendButtonEl,
-  stopButtonEl,
-  overlayResendButtonEl,
-  fileUploadButtonEl,
-  fileUploadInputEl,
-  cameraVisionButtonEl,
-  desktopVisionButtonEl,
-  micButtonEl,
-  micLabelEl,
-  voiceToggleInputEl,
-  webSearchToggleInputEl,
-  cameraEnabledToggleInputEl,
-  desktopCaptureEnabledToggleInputEl,
-  micEnabledToggleInputEl,
-  micAlwaysOnToggleInputEl,
-  memoryToggleInputEl,
-  downloadMemoryButtonEl,
-  clearMemoryButtonEl,
-  openSoulUserEditorButtonEl,
-  soulUserEditorModalBackdropEl,
-  soulUserEditorSoulEl,
-  soulUserEditorUserEl,
-  soulUserEditorSaveButtonEl,
-  soulUserEditorCancelButtonEl,
-  historyListEl,
-  resendLastButtonEl,
-  clearHistoryButtonEl,
-  connectionLightEl,
-  harnessLightEl,
-  ttsLightEl,
-  roleplayToggleInputEl,
-  roleplayBadgeEl,
-  profileOptionsEl,
-  soulSectionEl,
-  profileSelectEl,
-  editProfileButtonEl,
-  newProfileButtonEl,
-  deleteProfileButtonEl,
-  profileModalBackdropEl,
-  profileModalTitleEl,
-  profileNameEl,
-  profileIdentityEl,
-  profileScenarioEl,
-  profileSaveButtonEl,
-  profileCancelButtonEl,
-  soulSelectEl,
-  editSoulButtonEl,
-  newSoulButtonEl,
-  deleteSoulButtonEl,
-  soulModalBackdropEl,
-  soulModalTitleEl,
-  soulNameEl,
-  soulDescriptionEl,
-  soulExamplesEl,
-  soulSaveButtonEl,
-  soulCancelButtonEl,
-  avatarSelectEl,
-  importAvatarButtonEl,
-  avatarFileInputEl,
-  importAvatarPngButtonEl,
-  avatarPngFileInputEl,
-  ttsEngineSelectEl,
-  editTtsEngineButtonEl,
-  newTtsEngineButtonEl,
-  deleteTtsEngineButtonEl,
-  ttsEngineModalBackdropEl,
-  ttsEngineModalTitleEl,
-  ttsEngineNameEl,
-  ttsEngineEndpointEl,
-  ttsEngineApiKeyEl,
-  ttsEngineVoiceEl,
-  ttsEngineModelEl,
-  ttsEngineVoicesDirEl,
-  ttsEngineSaveButtonEl,
-  ttsEngineCancelButtonEl,
-  ttsVoiceSelectEl,
-  createTtsVoiceButtonEl,
-  kokoroBlendModalBackdropEl,
-  kokoroBlendNameEl,
-  kokoroBlendSpecEl,
-  kokoroBlendCancelButtonEl,
-  kokoroBlendCreateButtonEl,
-  llmEngineSelectEl,
-  editLlmEngineButtonEl,
-  newLlmEngineButtonEl,
-  deleteLlmEngineButtonEl,
-  llmEngineModalBackdropEl,
-  llmEngineModalTitleEl,
-  llmEngineNameEl,
-  llmEngineProviderEl,
-  llmEngineEndpointEl,
-  llmEngineModelEl,
-  llmEngineModelOptionsEl,
-  fetchLlmModelsButtonEl,
-  llmEngineApiKeyEl,
-  llmEngineThinkRowEl,
-  llmEngineThinkHintEl,
-  llmEngineThinkToggleEl,
-  llmEngineSaveButtonEl,
-  llmEngineCancelButtonEl,
-  harnessToggleInputEl,
-  harnessSelectEl,
-  editHarnessButtonEl,
-  newHarnessButtonEl,
-  deleteHarnessButtonEl,
-  harnessLockableEl,
-  harnessConfirmModalBackdropEl,
-  harnessConfirmModalTextEl,
-  harnessConfirmCancelButtonEl,
-  harnessConfirmConnectButtonEl,
-  harnessModalBackdropEl,
-  harnessModalTitleEl,
-  harnessNameEl,
-  harnessEndpointEl,
-  harnessModelEl,
-  harnessApiKeyEl,
-  harnessModalCancelButtonEl,
-  harnessModalSaveButtonEl,
-  roleplayConfirmModalBackdropEl,
-  roleplayConfirmThinkToggleEl,
-  roleplayConfirmCancelButtonEl,
-  roleplayConfirmEnableButtonEl,
-  debugToggleInputEl,
-  downloadDebugLogButtonEl,
-  restartBrainButtonEl,
-  openNotesButtonEl,
-  notesModalBackdropEl,
-  notesTextareaEl,
-  notesSaveButtonEl,
-  notesCancelButtonEl,
-  settingsContentEl,
   onAvatarSwap: setActiveAvatar,
 });
 brain.connect();
@@ -482,7 +205,7 @@ window.__brain = brain; // for console-driven verification while building
 // Message and location only.
 window.addEventListener("error", (event) => {
   const where = event.filename ? ` at ${event.filename.split("/").pop()}:${event.lineno}` : "";
-  brain._logDebug("client", `error: ${event.message}${where}`);
+  brain.log("client", `error: ${event.message}${where}`);
 });
 // The first tap or key press unlocks sound (see BrainClient._playAudio), so her
 // first reply isn't silent on a browser that starts audio suspended.
@@ -493,7 +216,7 @@ window.addEventListener("pointerdown", unlockAudio, { once: true, capture: true 
 window.addEventListener("keydown", unlockAudio, { once: true, capture: true });
 window.addEventListener("unhandledrejection", (event) => {
   const reason = event.reason instanceof Error ? event.reason.message : String(event.reason);
-  brain._logDebug("client", `unhandled promise rejection: ${reason.slice(0, 200)}`);
+  brain.log("client", `unhandled promise rejection: ${reason.slice(0, 200)}`);
 });
 
 // Only one of the two slide-out panels should be open at a time -- they'd
