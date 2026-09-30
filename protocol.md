@@ -132,11 +132,11 @@ reports state/events back. All "thinking" happens in the Brain.
 | `delete_llm_engine` | `name: string` | Delete a saved LLM engine -- removes `brain/llm_engines/<name>.json`. Refused for `"Default"` (not a real file, must always stay selectable). If the deleted engine was the active one, Brain falls back to `"Default"` before replying with an updated `llm_engines` list. |
 | `set_harness_active` | `active: bool`, `name: string` | Plug Glitch into (`true`) or disconnect her from (`false`) the named agent harness (must be one of `harness_state`'s `available` list, e.g. `"Hermes"`). While active, Brain replaces her `LocalLLM` with a `HarnessLLM` (`brain/llm/client.py`) that sends the user's text straight to the harness's own OpenAI-compatible endpoint (`config.yaml`'s `brain.harness.<name>` block) with no system prompt of its own -- the harness's own agent/session *is* her personality now, her profile/soul/LLM-engine settings are bypassed entirely (not deleted, just unused) until this is turned back off. STT/TTS/viseme playback are unaffected either way -- only the reply-generation step changes. Brain always replies with the resulting `harness_state`, whether or not the request actually succeeded. |
 | `select_harness` | `name: string` | Move the Renderer's harness dropdown pick without connecting to anything. Only meaningful while inactive (the dropdown is disabled while a harness is actually connected). Persists as `harness.py`'s `selected_harness_name` (`""` for `harness.NONE_NAME`) so a later refresh/reconnect shows the same pick instead of falling back to whatever was last actually connected -- see `harness_state`'s own `selected` field. Brain always replies with the resulting `harness_state`. |
-| `set_debug_active` | `active: bool` | Turn the Settings panel's Debugging toggle on/off for *this connection only* -- Brain tracks which open connections currently want `debug_event`s (`main.py`'s `_DEBUG_CONNECTIONS`) rather than broadcasting them to every Renderer regardless of whether it asked. No reply -- the Renderer already knows its own toggle state; it's Brain's future sends that need to know this, not the client. |
+| `set_debug_active` | `active: bool` | Turn the Settings panel's Debugging toggle on/off for *this connection only* -- Brain tracks which open connections currently want `debug_event`s (`hub.py`'s `DEBUG_CONNECTIONS`) rather than broadcasting them to every Renderer regardless of whether it asked. No reply -- the Renderer already knows its own toggle state; it's Brain's future sends that need to know this, not the client. |
 | `debug_ping` | `ts` (opaque to Brain, echoed back unchanged) | A liveness/round-trip-time probe the Renderer sends periodically while debugging is on -- distinct from the existing Brain-initiated `ping`/`pong` (which only measures Brain's own send interval, not actual network RTT). Brain replies with `debug_pong` immediately. |
-| `restart_brain` | — | Restart Brain's entire Python process in place (`os.execv` -- same PID, re-reads `config.yaml`, rebuilds every engine/soul/profile/harness from disk exactly like a normal launch). In-memory conversation history is lost, same as any other restart. No reply -- the process is gone before one could be sent; every connected Renderer just sees an ordinary disconnect and reconnects on its own (`brain_client.js`'s existing reconnect loop), getting a fresh `ready` handshake once the new process is listening again. |
+| `restart_brain` | — | Restart Brain's entire Python process in place (`os.execv` -- same PID, re-reads `config.yaml`, rebuilds every engine/soul/profile/harness from disk exactly like a normal launch). In-memory conversation history is lost, same as any other restart. No reply -- the process is gone before one could be sent; every connected Renderer just sees an ordinary disconnect and reconnects on its own (`brain_client.js`'s reconnect loop), getting a fresh `ready` handshake once the new process is listening again. |
 
-**Transfer size note:** VRM files are large (the shipped default is ~15MB; base64 adds ~33% on top), so the WS server's `max_size` is set well above the default 20MB used for TTS/STT audio -- see `brain/main.py`.
+**Transfer size note:** VRM files are large (the shipped default is ~15MB; base64 adds ~33% on top), so the WS server's `max_size` is set well above the default 20MB used for TTS/STT audio -- see `brain/main.py`'s `max_size`.
 
 ## Authentication
 
@@ -145,7 +145,7 @@ carrying a matching `token` field -- every other message type is refused (the co
 until that succeeds. This exists because the Brain has no other access control: anyone who can open
 a WebSocket connection to it can chat as the user, rewrite Glitch's active persona, or fill disk
 with uploaded avatars, so a token is required whenever `host` is anything other than
-`localhost`/`127.0.0.1` (i.e. reachable from other devices on the LAN). See `brain/main.py`'s
+`localhost`/`127.0.0.1` (i.e. reachable from other devices on the LAN). See `brain/server.py`'s
 `_authenticate`. Left unset, no token is checked at all -- fine for a strictly localhost-only setup
 with nothing else able to reach the port.
 
@@ -154,7 +154,8 @@ with nothing else able to reach the port.
 1. Add a row to the table above (this file is the source of truth, not the code).
 2. Add it to `brain/protocol.py` (the shared schema Brain-side code builds/validates messages
    against).
-3. Add the matching handler on the other side (Renderer's `src/brain_client.js`, or the relevant
-   Brain subsystem).
+3. Add the matching handler on the other side: Brain-side, a handler registered with
+   `@hub.handles(protocol.X)` in the module that owns it; Renderer-side, an entry in that
+   feature module's `handlers` (see `src/brain_client.js`).
 
 Nothing sends or handles a message type that isn't documented here first.

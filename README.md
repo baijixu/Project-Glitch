@@ -488,7 +488,15 @@ back to the same relative paths and restart the Brain. Memory that lives in a me
 
 ```
 brain/                 Python backend (WebSocket server)
-  main.py              entry point and message handling (a map of its sections is at the top)
+  main.py              entry point: startup (a map of every module is at the top)
+  server.py hub.py     connections, login, routing each message to its handler
+  reply.py             the reply pipeline: recall, prompt, LLM, voice
+  engines.py           building and switching LLM / speech engines and harnesses
+  characters.py        role-play profiles and souls, soul.md/user.md, avatars
+  learning.py          lessons, memory saving and training
+  reach_out.py         curiosity's reaching out and its countdown
+  handshake.py health.py debugging.py persona.py   what a new device gets, status
+                       lights, the debug log, which soul/user info apply
   llm/                 LLM clients (OpenAI-compatible, Ollama native, agent harness)
   voice/               speech-to-text and text-to-speech
   conversation.py      saving/restoring the conversation, daily chat logs
@@ -500,12 +508,12 @@ brain/                 Python backend (WebSocket server)
   sampling.py          sampling profiles (temperature, min_p...) for her replies
   souls.py profiles.py soul / user / role-play file handling
   avatars.py           installed avatars
-  llm_engines.py tts_engines.py harness.py   saved engines and harnesses
+  llm_engines.py tts_engines.py harness.py   saved engines and harnesses (store.py)
   web_search.py        SearXNG search and trust labels
   protocol.py          message constructors
 renderer/              Vite + three.js front end
-  src/                 avatar, chat UI, Brain client, and one module per self-contained
-                       Settings section (lessons, training, sampling, chat logs)
+  src/                 brain_client.js (connection, chat box, her face and voice) and
+                       one module per feature -- see the map at the top of brain_client.js
   shell/               optional pywebview native window
   assets/Glitch.vrm    default avatar
 tools/                 backup_local_state.py
