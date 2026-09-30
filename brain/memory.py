@@ -273,6 +273,18 @@ def hindsight_bank_id() -> str:
     return _bank_id
 
 
+def hindsight_latest_model() -> str:
+    """The model Hindsight used for its latest rewrite or summary (from its own
+    request log), for the debug log -- or "unknown". Never raises."""
+    try:
+        api_url = memory_profiles.read_profile(memory_profiles.read_active())["url"].rstrip("/")
+        response = httpx.get(f"{api_url}/v1/default/banks/{_bank_id}/llm-requests", params={"limit": 1}, timeout=3)
+        items = response.raise_for_status().json().get("items") or []
+        return f"{items[0].get('model')} (latest call: {items[0].get('operation')})" if items else "no calls yet"
+    except Exception:
+        return "unknown"
+
+
 def hindsight_configured() -> bool:
     return _client is not None
 

@@ -57,7 +57,6 @@ import sys
 import tempfile
 import time
 import urllib.parse
-import urllib.request
 from pathlib import Path
 
 import websockets
@@ -107,14 +106,6 @@ from voice import FasterWhisperSTT, NoneTTS, RemoteTTS
 # dict here (nothing in config.yaml at all) means _build_llm falls back to
 # NoneLLM rather than crashing on a missing endpoint, see its own comment.
 _DEFAULT_LLM_CONFIG: dict = {}
-
-# config.yaml's brain.harness block, captured once at startup -- {"hermes":
-# {"endpoint":..., "model":..., "api_key":...}, ...}. Only used as a
-# one-time migration seed now (see main()'s own migration step) -- once
-# harness.py's saved-harness list is non-empty, this is never consulted
-# again; harness.read_harness(name) is the live source of truth from then
-# on, the same as llm_engines.py already is for LLM engines.
-_HARNESS_CONFIGS: dict = {}
 
 PING_INTERVAL_SEC = 15
 
@@ -1971,15 +1962,8 @@ async def _handle_memory_profile_message(websocket: websockets.ServerConnection,
                 return
             kind, url, api_key, space, original = fields
             was_active = memory_profiles.read_active()
-            saved = memory_profiles.save_profile(name, kind, url, api_key, space)
-            if original and original != saved and original != memory_profiles.LOCAL_NAME:
-                try:
-                    memory_profiles.delete_profile(original)  # renamed
-                except OSError:
-                    pass
-            if was_active in (saved, original):
-                memory_profiles.set_active(saved)
-                reconnect = True
+            saved = memory_profiles.save_profile(name, kind, url, api_key, space, replaces=original)
+            reconnect = was_active in (saved, original)
             print(f"[brain] saved memory profile {saved!r} ({kind})")
         elif msg_type == protocol.DELETE_MEMORY_PROFILE:
             reconnect = memory_profiles.read_active() == name
@@ -2059,7 +2043,7 @@ async def _debug_snapshot(brain: Brain, current: websockets.ServerConnection | N
     if isinstance(llm, LocalLLM):
         lines.append(f"Loaded on her LLM server: {await asyncio.to_thread(llm.loaded_models)}")
     if provider == memory.HINDSIGHT_PROVIDER:
-        lines.append(f"Hindsight's own model (rewrites and summaries): {await asyncio.to_thread(_hindsight_model)}")
+        lines.append(f"Hindsight's own model (rewrites and summaries): {await asyncio.to_thread(memory.hindsight_latest_model)}")
     if _RECENT_PROBLEMS:
         lines.append(f"Problems since Brain started ({len(_RECENT_PROBLEMS)}, newest last):")
         for at, category, message in list(_RECENT_PROBLEMS)[-10:]:
@@ -2067,78 +2051,28 @@ async def _debug_snapshot(brain: Brain, current: websockets.ServerConnection | N
     return lines
 
 
-def _hindsight_model() -> str:
-    """The model Hindsight used for its latest rewrite or summary (from its own
-    request log), or "unknown". Never raises."""
-    try:
-        api_url = memory_profiles.read_profile(memory_profiles.read_active())["url"].rstrip("/")
-        bank = memory.hindsight_bank_id()
-        with urllib.request.urlopen(f"{api_url}/v1/default/banks/{bank}/llm-requests?limit=1", timeout=3) as response:
-            items = json.load(response).get("items") or []
-        return f"{items[0].get('model')} (latest call: {items[0].get('operation')})" if items else "no calls yet"
-    except Exception:
-        return "unknown"
-
-
 async def _handle_restart_brain(websocket: websockets.ServerConnection) -> None:
-    """Restarts this entire Python process -- not a graceful reload of
-    individual pieces, a full fresh start: config.yaml is re-read and
-    every engine/soul/profile/harness is rebuilt from disk exactly as
-    main() does on a normal launch. In-memory conversation history is
-    gone, same as any other restart.
+    """Restarts this entire Python process: config.yaml is re-read and every
+    engine/soul/profile/harness rebuilt from disk, exactly as a normal launch.
+    There's no supervisor process (setup.sh/.bat just run `uv run main.py`),
+    so it relaunches its own command line (sys.executable + sys.argv) rather
+    than exiting and hoping something restarts it. Every Renderer just sees an
+    ordinary disconnect and reconnects; its `ready` re-syncs everything.
 
-    Relaunches the exact command that launched this process
-    (sys.executable + sys.argv) rather than just exiting and hoping
-    something relaunches it -- this project has no supervisor process
-    (see setup.sh/.bat, both just run `uv run main.py` directly), so a
-    plain exit would leave Brain dead until someone manually started it
-    again. Works whether Brain was started via `uv run main.py` or the
-    venv's python.exe directly, since sys.executable/sys.argv reflect the
-    real invocation either way.
+    POSIX replaces the process in place (os.execv). Windows can't, for three
+    reasons found by testing it there:
 
-    POSIX gets a true in-place os.execv (same PID, no gap where two
-    Brains could both be trying to bind the port). Windows does NOT --
-    confirmed live, two separate real bugs found by actually testing this
-    on Windows rather than assuming either approach would just work:
+    1. Its os.execv doesn't quote the executable path, so a path with a space
+       in it (like this project's) breaks the relaunch. subprocess.Popen quotes
+       correctly.
+    2. Inside a Job Object that kills its processes when it closes (e.g. a
+       sandboxed dev environment), the child needs CREATE_BREAKAWAY_FROM_JOB to
+       survive -- harmless when there's no such job.
+    3. DETACHED_PROCESS left the parent hung before it could exit; explicit
+       std handles get the same independence without that.
 
-    1. os.execv there is emulated via the C runtime's _execv, which
-       reconstructs its own command line without quoting the executable
-       path, so a path containing a space (this project's own path, under
-       a "Claude Code" directory, is exactly such a path) gets torn apart
-       at the space and the relaunch fails outright ("can't open file
-       Code/glitch/brain/.venv/Scripts/python.exe" -- everything before
-       the first space silently dropped). subprocess.Popen quotes
-       arguments correctly and doesn't have this bug.
-    2. A process tree running inside a Windows Job Object with "kill all
-       processes when the job closes" semantics (e.g. a sandboxed dev
-       environment) can bring the freshly-spawned child down along with
-       an *externally force-killed* parent unless the child explicitly
-       requests CREATE_BREAKAWAY_FROM_JOB -- harmless to include even
-       when there's no such job to break away from. This does NOT affect
-       the actual restart path below, though: a parent that exits
-       *normally* (this function's own os._exit(0), not an external
-       kill) does not cascade-kill its children via the job either way --
-       confirmed live by letting a spawned child run to completion well
-       after its parent's own normal exit.
-    3. DETACHED_PROCESS (tried first, since it's the textbook flag for
-       "fully independent background process") left the *parent* hung
-       indefinitely before ever reaching os._exit(0) below -- confirmed
-       live, most likely a handle-inheritance interaction with a process
-       that has no console of its own. Explicitly redirecting
-       stdin/stdout/stderr to DEVNULL gets the same practical outcome
-       (the new process doesn't inherit this one's stdio) without it.
-
-    A real (small) gap exists either way between the old process exiting
-    and the new one listening -- the Renderer's reconnect loop
-    (brain_client.js's `connect()`) already tolerates a much longer gap
-    than this on every ordinary restart, so this isn't a new failure mode
-    for it to handle.
-
-    Every connected Renderer just sees this as an ordinary disconnect --
-    their own reconnect loop already handles that unconditionally, and
-    the fresh process's own `ready` handshake naturally re-syncs
-    everything once it's back up. Never returns (the process is replaced
-    or exited before this coroutine's caller would resume).
+    The old process exits right after, and the new one retries its port until
+    the old one lets go (_serve_when_free). Never returns.
     """
     await _debug_log(websocket, "brain", "restarting Brain process...")
     print("[brain] restart requested -- restarting process now")
@@ -2918,7 +2852,6 @@ async def main() -> None:
 
     llm_engines.migrate_roleplay_record()
 
-    _HARNESS_CONFIGS.update(brain_cfg.get("harness") or {})
     # One-time migration: config.yaml's brain.harness block used to be the
     # only way to configure a harness (a small, fixed, code-defined list).
     # Harnesses are open-ended and user-managed via the settings panel now,
@@ -2929,7 +2862,7 @@ async def main() -> None:
     # harness.list_harnesses() is never empty again, so this is skipped on
     # every later restart.
     if not harness.list_harnesses():
-        for key, harness_cfg in _HARNESS_CONFIGS.items():
+        for key, harness_cfg in (brain_cfg.get("harness") or {}).items():
             if not harness_cfg.get("endpoint"):
                 continue
             migrated_name = key.capitalize()
