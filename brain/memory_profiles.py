@@ -13,15 +13,15 @@ Never one of the files in here and can't be saved or deleted, the same role
 llm_engines.NONE_NAME plays for LLM engines.
 """
 
-import json
 from pathlib import Path
 
-from names import sanitize_name
-
-PROFILES_DIR = Path(__file__).parent / "memory_profiles"
-ACTIVE_PATH = Path(__file__).parent / "active_memory_profile.txt"
+from store import Choice, NamedStore
 
 LOCAL_NAME = "Local file"
+
+STORE = NamedStore(Path(__file__).parent / "memory_profiles", kind="memory profile")
+ACTIVE = Choice(Path(__file__).parent / "active_memory_profile.txt", default=LOCAL_NAME)
+set_active = ACTIVE.write
 
 HINDSIGHT = "hindsight"
 MEM0 = "mem0"
@@ -32,21 +32,16 @@ TYPES = {
 }
 
 
-def _path(name: str) -> Path:
-    return PROFILES_DIR / f"{sanitize_name(name, kind='memory profile')}.json"
-
-
 def list_profiles() -> list[dict]:
     """[{"name", "type"}] for every saved profile, by name (LOCAL_NAME not included)."""
-    PROFILES_DIR.mkdir(exist_ok=True)
     profiles = []
-    for path in sorted(PROFILES_DIR.glob("*.json")):
+    for name in STORE.names():
         try:
-            kind = json.loads(path.read_text(encoding="utf-8")).get("type")
+            kind = STORE.read(name).get("type")
         except (OSError, ValueError, AttributeError):
             continue
         if kind in TYPES:
-            profiles.append({"name": path.stem, "type": kind})
+            profiles.append({"name": name, "type": kind})
     return profiles
 
 
@@ -59,23 +54,21 @@ def save_profile(name: str, kind: str, url: str, api_key: str, space: str, repla
         raise ValueError(f"unknown memory type {kind!r}")
     if not url.strip():
         raise ValueError("a memory server needs its URL")
-    path = _path(name)
-    if path.stem.casefold() == LOCAL_NAME.casefold():
+    if STORE.path(name).stem.casefold() == LOCAL_NAME.casefold():
         raise ValueError(f"{LOCAL_NAME!r} is built in and can't be used as a profile name")
-    PROFILES_DIR.mkdir(exist_ok=True)
     profile = {"type": kind, "url": url.strip(), "api_key": api_key.strip(), "space": space.strip() or TYPES[kind]["default_space"]}
-    path.write_text(json.dumps(profile), encoding="utf-8")
-    if replaces and replaces not in (path.stem, LOCAL_NAME):
+    saved = STORE.write(name, profile)
+    if replaces and replaces not in (saved, LOCAL_NAME):
         was_active = read_active() == replaces
-        _path(replaces).unlink(missing_ok=True)
+        STORE.path(replaces).unlink(missing_ok=True)
         if was_active:
-            set_active(path.stem)
-    return path.stem
+            set_active(saved)
+    return saved
 
 
 def read_profile(name: str) -> dict:
     """{"type", "url", "api_key", "space"}. Raises for an unknown or unreadable one."""
-    profile = json.loads(_path(name).read_text(encoding="utf-8"))
+    profile = STORE.read(name)
     if profile.get("type") not in TYPES:
         raise ValueError(f"memory profile {name!r} has an unknown type")
     profile.setdefault("space", TYPES[profile["type"]]["default_space"])
@@ -85,25 +78,18 @@ def read_profile(name: str) -> dict:
 def delete_profile(name: str) -> None:
     if name == LOCAL_NAME:
         raise ValueError(f"{LOCAL_NAME!r} is built in and can't be deleted")
-    _path(name).unlink()
+    STORE.delete(name)
     if read_active() == name:
         set_active(LOCAL_NAME)
 
 
-def set_active(name: str) -> None:
-    ACTIVE_PATH.write_text(name, encoding="utf-8")
-
-
 def has_active() -> bool:
-    return ACTIVE_PATH.exists()
+    return ACTIVE.path.exists()
 
 
 def read_active() -> str:
     """The active profile's name -- LOCAL_NAME if none was picked or it's gone."""
-    try:
-        name = ACTIVE_PATH.read_text(encoding="utf-8").strip()
-    except OSError:
-        return LOCAL_NAME
+    name = ACTIVE.read()
     if name != LOCAL_NAME and not any(p["name"] == name for p in list_profiles()):
         return LOCAL_NAME
-    return name or LOCAL_NAME
+    return name
