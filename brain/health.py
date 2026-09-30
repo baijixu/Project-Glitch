@@ -4,7 +4,6 @@ device when it changes.
 """
 
 import asyncio
-import json
 import socket
 import urllib.parse
 
@@ -34,8 +33,6 @@ ENDPOINT_HEALTH_CHECK_TIMEOUT_SEC = 3
 # speech engines (tts_health) -- two dicts, not one keyed by kind, since a
 # harness and a speech engine could coincidentally share a name.
 LAST_HARNESS_REACHABLE: dict[str, bool | None] = {}
-
-
 LAST_TTS_REACHABLE: dict[str, bool | None] = {}
 
 
@@ -70,7 +67,7 @@ async def send_harness_health(websocket: websockets.ServerConnection) -> None:
     """
     for name in harness.list_harnesses():
         reachable = LAST_HARNESS_REACHABLE[name] if name in LAST_HARNESS_REACHABLE else await _check_harness_health(name)
-        await websocket.send(json.dumps(protocol.harness_health(name, reachable)))
+        await hub.send(websocket, protocol.harness_health(name, reachable))
 
 
 async def send_tts_health(websocket: websockets.ServerConnection) -> None:
@@ -82,7 +79,7 @@ async def send_tts_health(websocket: websockets.ServerConnection) -> None:
     """
     for name in tts_engines.list_engines():
         reachable = LAST_TTS_REACHABLE[name] if name in LAST_TTS_REACHABLE else await _check_tts_health(name)
-        await websocket.send(json.dumps(protocol.tts_health(name, reachable)))
+        await hub.send(websocket, protocol.tts_health(name, reachable))
 
 
 async def _check_harness_health(name: str) -> bool | None:

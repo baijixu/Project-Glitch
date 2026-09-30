@@ -6,6 +6,7 @@ debugging, a background task that can't be garbage-collected mid-way.
 import asyncio
 import ipaddress
 import json
+from collections.abc import Awaitable, Callable
 
 import websockets
 
@@ -32,7 +33,7 @@ MAX_TEXT_FIELD_LENGTH = 100_000
 # ServerConnection objects, not a per-Brain flag, since debugging is a
 # per-device setting (one phone debugging shouldn't spam debug_event
 # messages at a laptop that hasn't asked for them). Membership is added
-# by debugging.handle_set_debug_active and removed both there and in
+# by debugging._set_debug_active and removed both there and in
 # handle_renderer's finally block (a closed connection left in here would
 # just be a dead reference debug_log's own send would silently fail
 # against anyway, but there's no reason to let it accumulate for the life
@@ -53,8 +54,6 @@ RENDERER_CONNECTIONS: set[websockets.ServerConnection] = set()
 # device, and Brain-wide events say which device caused them. Removed when the
 # connection closes.
 DEVICE_NAMES: dict[websockets.ServerConnection, str] = {}
-
-
 MAX_DEVICE_NAME_CHARS = 120
 
 
@@ -87,6 +86,28 @@ def spawn(coro) -> asyncio.Task:
     _BACKGROUND_TASKS.add(task)
     task.add_done_callback(_BACKGROUND_TASKS.discard)
     return task
+
+
+Handler = Callable[[websockets.ServerConnection, dict, "Brain"], Awaitable[None]]
+
+# message type -> the handler that answers it (see server.handle_message). Each
+# module registers the messages it owns with @handles.
+HANDLERS: dict[str, Handler] = {}
+
+
+def handles(*message_types: str) -> Callable[[Handler], Handler]:
+    def register(handler: Handler) -> Handler:
+        for message_type in message_types:
+            assert message_type not in HANDLERS, f"two handlers for {message_type!r}"
+            HANDLERS[message_type] = handler
+        return handler
+
+    return register
+
+
+async def send(websocket: websockets.ServerConnection, message: dict) -> None:
+    """Sends one message to one device."""
+    await websocket.send(json.dumps(message))
 
 
 async def broadcast(message: dict) -> None:
@@ -157,6 +178,13 @@ class Brain:
         self.llm = llm
         self.tts = tts
         self.stt = stt
+        # One reply at a time, across every connected device. She has one shared
+        # conversation, and reply() appends to it before and after the model call
+        # -- two replies running at once (two devices sending together)
+        # interleaved as user, user, her, her and could pair answers with the
+        # wrong questions. A second message waits for the first reply to finish
+        # (server._run_reply_message), and so does her reaching out.
+        self.reply_lock = asyncio.Lock()
 
 
 _LOOPBACK_ADDRESSES = frozenset({"127.0.0.1", "::1", "::ffff:127.0.0.1"})

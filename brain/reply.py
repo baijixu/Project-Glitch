@@ -5,7 +5,6 @@ device, then the context meter, memory and curiosity in the background.
 
 import asyncio
 import base64
-import json
 import tempfile
 import time
 from pathlib import Path
@@ -37,15 +36,31 @@ AUDIO_EXTENSION_BY_MIME = {
     "audio/wav": ".wav",
     "audio/x-wav": ".wav",
 }
-
-
 LESSON_PROMPT_TIMEOUT_SEC = 5
 
 
-async def handle_user_audio(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+@hub.handles(protocol.SET_VOICE_ACTIVE)
+async def _set_voice_active(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    voice_settings.set_voice_active(bool(data.get("active")))
+
+
+@hub.handles(protocol.SET_WEB_SEARCH_ACTIVE)
+async def _set_web_search_active(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    web_search.set_active(bool(data.get("active")))
+
+
+@hub.handles(protocol.USER_TEXT)
+async def _user_text(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    await reply_to(
+        websocket, data.get("text", ""), brain, image_b64=data.get("image_b64"), image_mime=data.get("image_mime", "image/jpeg")
+    )
+
+
+@hub.handles(protocol.USER_AUDIO)
+async def _user_audio(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     audio_b64 = data.get("audio_b64") or ""
     if not audio_b64:
-        await websocket.send(json.dumps(protocol.no_reply()))
+        await hub.send(websocket, protocol.no_reply())
         return
     start = time.monotonic()
     try:
@@ -57,16 +72,17 @@ async def handle_user_audio(websocket: websockets.ServerConnection, data: dict, 
         # message, or the STT engine erroring outright) left the Renderer
         # stuck "awaiting a reply" forever -- Send/camera/desktop/mic all
         # grayed out with nothing actually happening. Confirmed live.
-        await websocket.send(json.dumps(protocol.no_reply()))
+        await hub.send(websocket, protocol.no_reply())
         return
     await hub.debug_log(websocket, "stt", "transcription ok", (time.monotonic() - start) * 1000)
     print(f"[brain] user_audio transcribed: {text!r}")
     if text.strip():
-        await websocket.send(json.dumps(protocol.user_transcript(text)))
+        await hub.send(websocket, protocol.user_transcript(text))
     await reply_to(websocket, text, brain)
 
 
-async def handle_clear_conversation(brain: Brain) -> None:
+@hub.handles(protocol.CLEAR_CONVERSATION)
+async def clear_conversation(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     """The chat history panel's Clear Chat: she starts a fresh conversation too,
     not just the panel. Her long-term memory is untouched -- only the running
     conversation goes. Every connected device clears its panel as well.
@@ -82,7 +98,8 @@ async def handle_clear_conversation(brain: Brain) -> None:
     await hub.broadcast(protocol.conversation_cleared())
 
 
-async def handle_regenerate_last(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+@hub.handles(protocol.REGENERATE_LAST)
+async def regenerate_last(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     """The Renderer's "resend" controls (per-bubble retry, History panel's
     Resend Last) -- re-answers the same prompt without leaving the stale
     reply (and a duplicated question right after it) sitting in context,
@@ -130,7 +147,7 @@ async def reply_to(
         # user_text is the most common way here -- without telling the
         # Renderer, it stays "awaiting a reply" forever with every button
         # grayed out and nothing actually coming. Confirmed live.
-        await websocket.send(json.dumps(protocol.no_reply()))
+        await hub.send(websocket, protocol.no_reply())
         return
     print(f"[brain] user said: {text!r}" + (" (+ image)" if image_b64 else ""))
     curiosity.note_user_message(time.time())  # restarts the hour before she may reach out (see reach_out.reach_out_loop)
@@ -209,7 +226,7 @@ async def reply_to(
         # type just for this. Revisit if/when that actually gets in the way.
         await hub.debug_log(websocket, "llm", f"LLM call failed: {exc!r}", (time.monotonic() - llm_start) * 1000)
         print(f"[brain] LLM call failed: {exc!r}")
-        await websocket.send(json.dumps(protocol.speak_text(f"(couldn't reach the LLM: {exc})")))
+        await hub.send(websocket, protocol.speak_text(f"(couldn't reach the LLM: {exc})"))
         return
     # Never logs reply_text itself -- timing/outcome only, per the
     # Debugging feature's whole point (connection/timing/errors, not
@@ -251,7 +268,7 @@ async def reply_to(
         # same as reply_to's own empty-input guard above is both more
         # honest and skips a TTS call that could never succeed anyway.
         await hub.debug_log(websocket, "llm", "LLM returned an empty reply", (time.monotonic() - llm_start) * 1000)
-        await websocket.send(json.dumps(protocol.no_reply()))
+        await hub.send(websocket, protocol.no_reply())
         return
 
     print(f"[brain] mood: {mood}")
@@ -259,8 +276,8 @@ async def reply_to(
     # the time she starts talking, not lagging a beat behind. Sent even for
     # "neutral" -- the Renderer treats that as "fade every mood expression
     # back to 0", which is exactly right after a mood-carrying reply.
-    await websocket.send(json.dumps(protocol.set_expression(mood, 1.0)))
-    await websocket.send(json.dumps(protocol.speak_text(reply_text)))
+    await hub.send(websocket, protocol.set_expression(mood, 1.0))
+    await hub.send(websocket, protocol.speak_text(reply_text))
     # Only her own conversations go in her chat log. With a harness (Hermes) in
     # control she's working under a different soul and memory -- that side keeps
     # its own session logs, and personal and professional are kept apart on
@@ -306,8 +323,8 @@ async def reply_to(
     await hub.debug_log(websocket, "tts", "TTS synthesis ok", (time.monotonic() - tts_start) * 1000)
 
     audio_b64 = base64.b64encode(wav_bytes).decode("ascii")
-    await websocket.send(json.dumps(protocol.speak_audio(audio_b64, brain.tts.SAMPLE_RATE)))
-    await websocket.send(json.dumps(protocol.viseme_stream(frames)))
+    await hub.send(websocket, protocol.speak_audio(audio_b64, brain.tts.SAMPLE_RATE))
+    await hub.send(websocket, protocol.viseme_stream(frames))
 
 
 # The latest context_usage message, so a device that connects later sees the meter too.

@@ -6,7 +6,7 @@ way, same reasoning as roleplay_active being shared rather than
 per-connection).
 
 Off means Brain still sends set_expression/speak_text for every reply (the
-mood/subtitle/text side keeps working) -- see main.py's _reply_to -- but
+mood/subtitle/text side keeps working) -- see reply.py's reply_to -- but
 skips synthesize()/speak_audio/viseme_stream entirely: a text-only
 conversation instead of a muted one, so there's no TTS compute spent on
 audio nobody wants played.

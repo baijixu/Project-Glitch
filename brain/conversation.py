@@ -115,7 +115,7 @@ def log_marker(text: str, now: datetime | None = None, *, mode: str = MAIN) -> N
 
 
 def log_reach_out(text: str, *, now: datetime | None = None) -> None:
-    """Her message when she spoke first (main.py's _reach_out) -- no "You:" line."""
+    """Her message when she spoke first (reach_out.py's _reach_out) -- no "You:" line."""
     now = now or datetime.now()
     _append(MAIN, f"**{now:%H:%M:%S}** Glitch (reaching out): {text.strip()}\n\n", now)
 

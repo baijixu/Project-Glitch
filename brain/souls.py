@@ -42,8 +42,8 @@ EXAMPLES_HEADER = "## Example dialogue"
 # Reserved name for "no custom soul" -- never a real file in souls/,
 # always offered by the Renderer's dropdown (prepended client-side, same
 # pattern as avatars.py's DEFAULT_AVATAR_NAME), and can't be deleted.
-# Selecting it clears rp_soul.md (never soul.md), which main.py's
-# _effective_soul treats as "no role-play soul, use her main soul" -- so it's what
+# Selecting it clears rp_soul.md (never soul.md), which persona.py's
+# effective_soul treats as "no role-play soul, use her main soul" -- so it's what
 # the active selection falls back to if the soul that *was* active gets
 # deleted, same role DEFAULT_PROFILE_NAME plays in profiles.py.
 DEFAULT_SOUL_NAME = "Default"
@@ -92,7 +92,7 @@ def delete_soul(name: str) -> None:
     -- it isn't a real file, there's nothing to delete, and it must
     always stay selectable as the fallback. Does NOT touch soul.md, rp_soul.md or the
     active-name bookkeeping itself even if the deleted soul happens to be
-    the active one -- main.py's _handle_delete_soul decides whether that
+    the active one -- characters._delete_soul decides whether that
     requires falling back to DEFAULT_SOUL_NAME.
     """
     if name == DEFAULT_SOUL_NAME:
@@ -132,7 +132,7 @@ def read_active_soul_name() -> str:
     """The name last passed to load_soul, or DEFAULT_SOUL_NAME if none
     has ever been explicitly selected -- lets the Renderer's dropdown
     restore the right selection on reconnect, and lets
-    _handle_delete_soul tell whether the soul being deleted is the one
+    characters._delete_soul tell whether the soul being deleted is the one
     currently in effect.
     """
     if ACTIVE_SOUL_NAME_PATH.exists():

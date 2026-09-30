@@ -79,7 +79,7 @@ def _viseme_frames_from_audio(audio: np.ndarray, sample_rate: int) -> list[proto
 class NoneTTS:
     """Placeholder used when tts_engines.NONE_NAME is the active speech
     engine -- i.e. no real engine has been configured/selected yet.
-    Deliberately never produces audio; main.py's _reply_to checks for
+    Deliberately never produces audio; reply.py's reply_to checks for
     this class specifically and skips the synthesize call entirely (the
     same way it already skips when voice is toggled off), so this method
     existing is really just interface parity with RemoteTTS, not
@@ -105,7 +105,7 @@ class RemoteTTS:
     # "af_heart" happen to be real Kokoro values, but this class has no
     # idea whether the endpoint on the other end is even Kokoro; they're
     # last-resort guesses, not assumptions every engine should share.
-    # main.py's _build_tts always prefers the saved engine's own
+    # engines.build_tts always prefers the saved engine's own
     # `model`/`voice` first. Previously "kokoro" was hardcoded directly in
     # synthesize() below with no way to override it at all -- a non-Kokoro
     # OpenAI-compatible TTS server (a real one to plug in, not this

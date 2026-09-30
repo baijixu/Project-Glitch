@@ -41,7 +41,7 @@ def save_engine(name: str, endpoint: str, model: str, api_key: str, provider: st
 
 def read_engine(name: str) -> dict:
     """Returns {"endpoint", "model", "api_key", "provider", "think"} -- used both
-    to connect (main.py's _build_llm) and to pre-fill the Edit dialog, api_key
+    to connect (engines.build_llm) and to pre-fill the Edit dialog, api_key
     included (a single-user local app editing its own saved config). An engine
     saved before provider/think existed reads back as a plain OpenAI-compatible
     one.
@@ -70,7 +70,7 @@ def set_roleplay_engine(name: str) -> None:
 # While role-play has switched her to its own engine: {"previous": the engine to
 # go back to ("" = stay), "engine": the role-play engine, "think": the confirm
 # dialog's choice}. The think choice is applied when that engine is built
-# (main.py's _build_llm) -- never written into the engine's saved settings, which
+# (engines.build_llm) -- never written into the engine's saved settings, which
 # role-play used to overwrite (and then force back to think=True when it ended).
 ROLEPLAY_SESSION_PATH = Path(__file__).parent / "roleplay_session.json"
 # The two-line text file role-play kept before sessions existed (previous engine,

@@ -19,6 +19,7 @@ import lessons
 import llm_engines
 import memory
 import profiles
+import protocol
 import sampling
 import training
 import tts_engines
@@ -39,8 +40,6 @@ RESTART_LOG_PATH = Path(__file__).parent / "restart.log"
 # stays console-only -- including "[brain] user said: ..." and her mood lines,
 # which carry conversation content.
 _CONSOLE_PROBLEM = re.compile(r"couldn't|could not|failed|error|warning|timed out|refused|unreachable", re.I)
-
-
 _CONSOLE_PREFIX = re.compile(r"^\[(\w+)\]\s*")
 
 
@@ -107,12 +106,11 @@ def _brain_version() -> str:
 
 
 _BRAIN_VERSION = _brain_version()
-
-
 _BRAIN_STARTED_AT = time.time()
 
 
-async def handle_set_debug_active(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+@hub.handles(protocol.SET_DEBUG_ACTIVE)
+async def _set_debug_active(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     """Adds/removes this one connection from hub.DEBUG_CONNECTIONS. Turning it on
     also sends a snapshot of how Brain is set up (_debug_snapshot), so a
     downloaded log says which engine, model, settings and features were in play
@@ -181,7 +179,14 @@ async def _debug_snapshot(brain: Brain, current: websockets.ServerConnection | N
     return lines
 
 
-async def handle_restart_brain(websocket: websockets.ServerConnection) -> None:
+@hub.handles(protocol.DEBUG_PING)
+async def _debug_ping(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    """The Renderer measuring its round trip to Brain while debugging."""
+    await hub.send(websocket, protocol.debug_pong(data.get("ts")))
+
+
+@hub.handles(protocol.RESTART_BRAIN)
+async def _restart_brain(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     """Restarts this entire Python process: config.yaml is re-read and every
     engine/soul/profile/harness rebuilt from disk, exactly as a normal launch.
     There's no supervisor process (setup.sh/.bat just run `uv run main.py`),

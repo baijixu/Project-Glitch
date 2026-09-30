@@ -10,7 +10,7 @@ voice file to upload in the first place). What it DOES support natively
 is blending any of its own existing voices by weight (POST /v1/audio/
 voices/combine, its own "voice1(2)+voice2(1)" syntax) and handing back a
 real, correctly-shaped voice file -- this module calls that endpoint
-directly (not through the openai client main.py's RemoteTTS otherwise
+directly (not through the openai client voice/tts.py's RemoteTTS otherwise
 uses; combine isn't part of the OpenAI-compatible surface that treats
 generically) and writes the result into `voices_dir`, the same shared
 folder kokoro-fastapi's own VoiceManager reads from (see

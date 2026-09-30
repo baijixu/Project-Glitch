@@ -4,7 +4,6 @@ server profiles.
 """
 
 import asyncio
-import json
 import time
 
 import websockets
@@ -18,16 +17,6 @@ import profiles
 import protocol
 import training
 from hub import Brain
-
-LESSON_SETTINGS_TYPES = {
-    protocol.SET_LESSONS_ACTIVE,
-    protocol.SET_LESSONS_AUTONOMY,
-    protocol.SAVE_LESSON,
-    protocol.RETIRE_LESSON,
-    protocol.DELETE_LESSON,
-    protocol.RESOLVE_LESSON_PROPOSAL,
-}
-
 
 LESSONS_STATE_TIMEOUT_SEC = 8
 
@@ -49,7 +38,7 @@ async def _lessons_state_message() -> dict:
 
 async def send_lessons_state(websocket: websockets.ServerConnection) -> None:
     try:
-        await websocket.send(json.dumps(await _lessons_state_message()))
+        await hub.send(websocket, await _lessons_state_message())
     except Exception:
         pass  # connection closed before it finished -- nothing to tell
 
@@ -58,7 +47,15 @@ async def _broadcast_lessons_state() -> None:
     await hub.broadcast(await _lessons_state_message())
 
 
-async def handle_lessons_message(msg_type: str, data: dict) -> None:
+@hub.handles(
+    protocol.SET_LESSONS_ACTIVE,
+    protocol.SET_LESSONS_AUTONOMY,
+    protocol.SAVE_LESSON,
+    protocol.RETIRE_LESSON,
+    protocol.DELETE_LESSON,
+    protocol.RESOLVE_LESSON_PROPOSAL,
+)
+async def _lessons(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     """The Settings panel's Behavior learning controls (toggle, autonomy,
     add/edit/retire/delete a lesson, approve/reject a proposal). Every one
     ends by broadcasting the fresh lessons_state to every connected device.
@@ -66,6 +63,7 @@ async def handle_lessons_message(msg_type: str, data: dict) -> None:
     is reported as an "error" lesson_event so the click doesn't just
     silently do nothing.
     """
+    msg_type = data["type"]
     try:
         if msg_type == protocol.SET_LESSONS_ACTIVE:
             lessons.set_active(bool(data.get("active")))
@@ -97,7 +95,8 @@ async def handle_lessons_message(msg_type: str, data: dict) -> None:
     await _broadcast_lessons_state()
 
 
-async def handle_rate_reply(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+@hub.handles(protocol.RATE_REPLY)
+async def _rate_reply(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     """A thumbs up/down on one of her replies. The rating itself is always
     logged locally (lessons.log_rating); learning from it only happens when
     the feature is on, role-play is off (in-character replies shouldn't
@@ -151,14 +150,6 @@ async def _learn_from_rating(
     await _broadcast_lessons_state()
 
 
-MEMORY_PROFILE_TYPES = (
-    protocol.SET_MEMORY_PROFILE,
-    protocol.SAVE_MEMORY_PROFILE,
-    protocol.DELETE_MEMORY_PROFILE,
-    protocol.GET_MEMORY_PROFILE,
-)
-
-
 def memory_profiles_message(error: str = "") -> dict:
     types = [{"type": kind, **info} for kind, info in memory_profiles.TYPES.items()]
     return protocol.memory_profiles(memory_profiles.list_profiles(), memory_profiles.read_active(), types, error)
@@ -175,19 +166,40 @@ async def activate_memory() -> str:
         return f"Couldn't reach that memory server ({type(exc).__name__}). It's saved; check the URL and key."
 
 
-async def handle_memory_profile_message(websocket: websockets.ServerConnection, msg_type: str, data: dict) -> None:
+@hub.handles(protocol.SET_MEMORY_ACTIVE)
+async def _set_memory_active(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    memory.set_memory_active(bool(data.get("active")))
+
+
+@hub.handles(protocol.CLEAR_MEMORY)
+async def _clear_memory(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    await memory.clear()
+    brain.llm.set_memory("")
+
+
+@hub.handles(protocol.GET_MEMORY_CONTENT)
+async def _get_memory_content(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    await hub.send(websocket, protocol.memory_content(await memory.read_entries()))
+
+
+@hub.handles(protocol.GET_MEMORY_PROFILE)
+async def _get_memory_profile(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    name = str(data.get("name") or "").strip()
+    try:
+        profile = memory_profiles.read_profile(name)
+    except (OSError, ValueError):
+        profile = {}
+    await hub.send(websocket, protocol.memory_profile_content(name, profile))
+
+
+@hub.handles(protocol.SET_MEMORY_PROFILE, protocol.SAVE_MEMORY_PROFILE, protocol.DELETE_MEMORY_PROFILE)
+async def _change_memory_profile(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     """Settings -> Memory: pick, save, edit or delete a memory backend profile
     (memory_profiles.py). Every device's list updates; a refusal or an
     unreachable server is only told to the device that asked.
     """
+    msg_type = data["type"]
     name = str(data.get("name") or "").strip()
-    if msg_type == protocol.GET_MEMORY_PROFILE:
-        try:
-            profile = memory_profiles.read_profile(name)
-        except (OSError, ValueError):
-            profile = {}
-        await websocket.send(json.dumps(protocol.memory_profile_content(name, profile)))
-        return
     error = ""
     reconnect = False
     try:
@@ -209,7 +221,7 @@ async def handle_memory_profile_message(websocket: websockets.ServerConnection, 
             reconnect = memory_profiles.read_active() == name
             memory_profiles.delete_profile(name)
     except (OSError, ValueError) as exc:
-        await websocket.send(json.dumps(memory_profiles_message(str(exc) if isinstance(exc, ValueError) else "No such memory profile.")))
+        await hub.send(websocket, memory_profiles_message(str(exc) if isinstance(exc, ValueError) else "No such memory profile."))
         return
     if reconnect:
         error = await activate_memory()
@@ -217,7 +229,7 @@ async def handle_memory_profile_message(websocket: websockets.ServerConnection, 
         await hub.debug_broadcast("memory", f"memory backend: {memory.active_description()}")
     await hub.broadcast(memory_profiles_message())
     if error:
-        await websocket.send(json.dumps(memory_profiles_message(error)))
+        await hub.send(websocket, memory_profiles_message(error))
     await hub.broadcast(training_state_message())
     await _broadcast_lessons_state()
 
@@ -225,6 +237,12 @@ async def handle_memory_profile_message(websocket: websockets.ServerConnection, 
 def training_state_message(error: str = "") -> dict:
     available = memory.server_configured()
     return protocol.training_state(available, training.read_active(), training.read_pending(), error)
+
+
+@hub.handles(protocol.SET_TRAINING_ACTIVE)
+async def _set_training_active(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    training.set_active(bool(data.get("active")))
+    await hub.broadcast(training_state_message())
 
 
 async def _propose_memory(
@@ -260,7 +278,8 @@ async def _propose_memory(
         await hub.debug_log(websocket, "training", "nothing worth proposing", (time.monotonic() - start) * 1000)
 
 
-async def handle_resolve_memory_proposal(data: dict) -> None:
+@hub.handles(protocol.RESOLVE_MEMORY_PROPOSAL)
+async def resolve_memory_proposal(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     """Approve (with the user's edited wording and importance) or reject one queued memory.
     Approval retains it to Hindsight first and only then removes it from the queue, so a
     failed save leaves it waiting (and says why) instead of losing it.
@@ -359,4 +378,4 @@ async def maybe_retain_memory(
     # another device to have switched engines or plugged in a harness.
     brain.llm.set_memory(memory.read_local_block())
     await hub.debug_log(websocket, "memory", "learned something new", (time.monotonic() - start) * 1000)
-    await websocket.send(json.dumps(protocol.memory_learned(fact)))
+    await hub.send(websocket, protocol.memory_learned(fact))

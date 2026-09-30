@@ -3,7 +3,6 @@ her main soul.md/user.md, notes, avatars and chat logs, and the role-play toggle
 """
 
 import base64
-import json
 
 import websockets
 
@@ -19,7 +18,17 @@ import protocol
 import souls
 from hub import Brain
 
-async def handle_save_profile(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+
+def profiles_message() -> dict:
+    return protocol.profiles(profiles.list_profiles(), profiles.read_active_profile_name())
+
+
+def souls_message() -> dict:
+    return protocol.souls(souls.list_souls(), souls.read_active_soul_name())
+
+
+@hub.handles(protocol.SAVE_PROFILE)
+async def _save_profile(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     name = data.get("name", "")
     content = data.get("content", "")
     if not name.strip() or not content.strip() or hub.fields_too_long(name, content):
@@ -30,20 +39,22 @@ async def handle_save_profile(websocket: websockets.ServerConnection, data: dict
         print(f"[brain] couldn't save profile {name!r}: {exc!r}")
         return
     print(f"[brain] saved profile {name!r}")
-    await hub.broadcast(protocol.profiles(profiles.list_profiles(), profiles.read_active_profile_name()))
+    await hub.broadcast(profiles_message())
 
 
-async def handle_get_profile(websocket: websockets.ServerConnection, data: dict) -> None:
+@hub.handles(protocol.GET_PROFILE)
+async def _get_profile(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     name = data.get("name", "")
     try:
         content = profiles.read_profile(name)
     except (ValueError, OSError) as exc:
         print(f"[brain] couldn't read profile {name!r}: {exc!r}")
         return
-    await websocket.send(json.dumps(protocol.profile_content(name, content)))
+    await hub.send(websocket, protocol.profile_content(name, content))
 
 
-async def handle_delete_profile(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+@hub.handles(protocol.DELETE_PROFILE)
+async def _delete_profile(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     name = data.get("name", "")
     try:
         profiles.delete_profile(name)
@@ -59,10 +70,11 @@ async def handle_delete_profile(websocket: websockets.ServerConnection, data: di
         if profiles.read_roleplay_active():
             brain.llm.set_persona(content)
         print(f"[brain] active profile was deleted -- reset to {profiles.DEFAULT_PROFILE_NAME!r}")
-    await hub.broadcast(protocol.profiles(profiles.list_profiles(), profiles.read_active_profile_name()))
+    await hub.broadcast(profiles_message())
 
 
-async def handle_save_soul(websocket: websockets.ServerConnection, data: dict) -> None:
+@hub.handles(protocol.SAVE_SOUL)
+async def _save_soul(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     name = data.get("name", "")
     description = data.get("description", "")
     examples = data.get("examples", "")
@@ -74,47 +86,61 @@ async def handle_save_soul(websocket: websockets.ServerConnection, data: dict) -
         print(f"[brain] couldn't save soul {name!r}: {exc!r}")
         return
     print(f"[brain] saved soul {name!r}")
-    await hub.broadcast(protocol.souls(souls.list_souls(), souls.read_active_soul_name()))
+    await hub.broadcast(souls_message())
 
 
-def handle_load_soul(data: dict, brain: Brain) -> None:
+@hub.handles(protocol.LOAD_SOUL)
+async def load_soul(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     name = data.get("name", "")
     try:
-        content = souls.load_soul(name)
+        souls.load_soul(name)
     except (ValueError, OSError) as exc:
         print(f"[brain] couldn't load soul {name!r}: {exc!r}")
-        return
-    if profiles.read_roleplay_active():
-        # Not `content` directly: loading "Default" clears the RP soul,
-        # which means "no RP soul -- use her main soul", not "no soul".
-        brain.llm.set_soul(persona.effective_soul())
-        print(f"[brain] loaded soul {name!r}")
     else:
-        # Still recorded above (in rp_soul.md, never her main soul.md) -- just
-        # not applied while role-play is off, same as handle_load_profile, and
-        # the saved scene (with the old character) isn't resumed.
-        conversation.clear_state(conversation.ROLEPLAY)
-        print(f"[brain] selected soul {name!r} (role-play is off, not applied)")
+        if profiles.read_roleplay_active():
+            # effective_soul, not the loaded content: loading "Default" clears the
+            # RP soul, which means "no RP soul -- use her main soul", not "no soul".
+            brain.llm.set_soul(persona.effective_soul())
+            print(f"[brain] loaded soul {name!r}")
+        else:
+            # Still recorded above (in rp_soul.md, never her main soul.md) -- just
+            # not applied while role-play is off, same as load_profile, and the
+            # saved scene (with the old character) isn't resumed.
+            conversation.clear_state(conversation.ROLEPLAY)
+            print(f"[brain] selected soul {name!r} (role-play is off, not applied)")
+    await hub.broadcast(souls_message())
 
 
-async def handle_get_soul(websocket: websockets.ServerConnection, data: dict) -> None:
+@hub.handles(protocol.GET_SOUL)
+async def _get_soul(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     name = data.get("name", "")
     try:
         description, examples = souls.read_soul(name)
     except (ValueError, OSError) as exc:
         print(f"[brain] couldn't read soul {name!r}: {exc!r}")
         return
-    await websocket.send(json.dumps(protocol.soul_content(name, description, examples)))
+    await hub.send(websocket, protocol.soul_content(name, description, examples))
 
 
-def handle_save_notes(data: dict) -> None:
+@hub.handles(protocol.GET_NOTES)
+async def _get_notes(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    await hub.send(websocket, protocol.notes_content(notes.read_notes()))
+
+
+@hub.handles(protocol.SAVE_NOTES)
+async def _save_notes(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     content = data.get("content", "")
-    if hub.fields_too_long(content):
-        return
-    notes.write_notes(content)
+    if not hub.fields_too_long(content):
+        notes.write_notes(content)
 
 
-def handle_save_soul_and_user(data: dict, brain: Brain) -> None:
+@hub.handles(protocol.GET_SOUL_AND_USER)
+async def _get_soul_and_user(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    await hub.send(websocket, protocol.soul_and_user_content(souls.read_main_soul(), profiles.read_main_user()))
+
+
+@hub.handles(protocol.SAVE_SOUL_AND_USER)
+async def save_soul_and_user(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     """Manual-edit escape hatch (Settings' soul/user editor) -- writes her
     MAIN soul (soul.md) and main user.md directly, bypassing the named saved
     soul/profile system entirely. This is the only thing that ever writes
@@ -135,7 +161,8 @@ def handle_save_soul_and_user(data: dict, brain: Brain) -> None:
     print("[brain] soul.md/user.md updated via manual editor")
 
 
-async def handle_delete_soul(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+@hub.handles(protocol.DELETE_SOUL)
+async def _delete_soul(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     name = data.get("name", "")
     try:
         souls.delete_soul(name)
@@ -143,23 +170,24 @@ async def handle_delete_soul(websocket: websockets.ServerConnection, data: dict,
         print(f"[brain] couldn't delete soul {name!r}: {exc!r}")
         return
     print(f"[brain] deleted soul {name!r}")
-    # Same reasoning as handle_delete_profile: don't leave rp_soul.md/the
+    # Same reasoning as _delete_profile: don't leave rp_soul.md/the
     # LLM pointing at a soul that no longer exists.
     if souls.read_active_soul_name() == name:
         souls.load_soul(souls.DEFAULT_SOUL_NAME)
         if profiles.read_roleplay_active():
             brain.llm.set_soul(persona.effective_soul())
         print(f"[brain] active soul was deleted -- reset to {souls.DEFAULT_SOUL_NAME!r}")
-    await hub.broadcast(protocol.souls(souls.list_souls(), souls.read_active_soul_name()))
+    await hub.broadcast(souls_message())
 
 
-async def handle_save_avatar(websocket: websockets.ServerConnection, data: dict) -> None:
+@hub.handles(protocol.SAVE_AVATAR)
+async def _save_avatar(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     name = data.get("name", "")
     data_b64 = data.get("data_b64", "")
     kind = data.get("kind", "vrm")
     # Only the name is length-checked here, not data_b64 (the avatar's raw
     # bytes) -- that's a real, deliberately large payload already bounded
-    # by websockets.serve's own max_size in main() below, not a free-text
+    # by websockets.serve's own max_size in main.py, not a free-text
     # field this cap is meant for. `kind` is checked against
     # avatars.AVATAR_KINDS rather than trusted outright -- avatars.save_avatar
     # already re-validates it too (defense in depth, not redundant: this
@@ -175,10 +203,11 @@ async def handle_save_avatar(websocket: websockets.ServerConnection, data: dict)
         return
     avatars.set_active_avatar(name)
     print(f"[brain] saved and activated avatar {name!r} ({kind}, {len(avatar_bytes)} bytes)")
-    await websocket.send(json.dumps(protocol.avatars(avatars.list_avatars())))
+    await hub.send(websocket, protocol.avatars(avatars.list_avatars()))
 
 
-async def handle_load_avatar(websocket: websockets.ServerConnection, data: dict) -> None:
+@hub.handles(protocol.LOAD_AVATAR)
+async def _load_avatar(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     name = data.get("name", "")
     if not name.strip():
         return
@@ -195,18 +224,20 @@ async def handle_load_avatar(websocket: websockets.ServerConnection, data: dict)
         return
     print(f"[brain] activated avatar {name!r} ({kind}), sending {len(avatar_bytes)} bytes")
     data_b64 = base64.b64encode(avatar_bytes).decode("ascii")
-    await websocket.send(json.dumps(protocol.avatar_data(name, data_b64, kind)))
+    await hub.send(websocket, protocol.avatar_data(name, data_b64, kind))
 
 
-async def handle_manage_avatar(websocket: websockets.ServerConnection, msg_type: str, data: dict) -> None:
+@hub.handles(protocol.RENAME_AVATAR, protocol.DELETE_AVATAR)
+async def _manage_avatar(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     """Rename or delete a saved avatar (Settings -> Avatar's ✏️/🗑️). Every device
     gets the new list; one that was showing the avatar updates its name (rename)
     or goes back to the built-in Glitch (delete). A refused change (the built-in
     avatar, a name already taken) just re-sends the unchanged list to the asker.
     """
     name = str(data.get("name") or "")
+    renaming = data["type"] == protocol.RENAME_AVATAR
     try:
-        if msg_type == protocol.RENAME_AVATAR:
+        if renaming:
             new_name = str(data.get("new_name") or "")
             if hub.fields_too_long(new_name):
                 raise ValueError("that name is too long")
@@ -218,11 +249,12 @@ async def handle_manage_avatar(websocket: websockets.ServerConnection, msg_type:
             print(f"[brain] deleted avatar {name!r}")
             await hub.broadcast(protocol.avatars_changed(avatars.list_avatars(), deleted=name))
     except (ValueError, OSError) as exc:
-        print(f"[brain] couldn't {'rename' if msg_type == protocol.RENAME_AVATAR else 'delete'} avatar {name!r}: {exc!r}")
-        await websocket.send(json.dumps(protocol.avatars(avatars.list_avatars())))
+        print(f"[brain] couldn't {'rename' if renaming else 'delete'} avatar {name!r}: {exc!r}")
+        await hub.send(websocket, protocol.avatars(avatars.list_avatars()))
 
 
-async def handle_chat_logs_message(websocket: websockets.ServerConnection, msg_type: str, data: dict) -> None:
+@hub.handles(protocol.GET_CHAT_LOGS, protocol.GET_CHAT_LOG, protocol.DELETE_CHAT_LOG)
+async def _chat_logs(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     """Settings -> Chat Logs: list a mode's days, read one, or delete one. Only
     her daily logs in brain/chat_logs/ (regular) and chat_logs/roleplay/ -- the
     file is picked by mode and a plain date, never by a path from the Renderer.
@@ -230,14 +262,14 @@ async def handle_chat_logs_message(websocket: websockets.ServerConnection, msg_t
     """
     mode = conversation.ROLEPLAY if data.get("mode") == conversation.ROLEPLAY else conversation.MAIN
     day = str(data.get("date") or "")
-    if msg_type == protocol.GET_CHAT_LOGS:
-        await websocket.send(json.dumps(protocol.chat_logs(mode, conversation.list_logs(mode))))
-    elif msg_type == protocol.GET_CHAT_LOG:
+    if data["type"] == protocol.GET_CHAT_LOGS:
+        await hub.send(websocket, protocol.chat_logs(mode, conversation.list_logs(mode)))
+    elif data["type"] == protocol.GET_CHAT_LOG:
         try:
             content, error = conversation.read_log(mode, day), ""
         except (ValueError, OSError) as exc:
             content, error = "", str(exc)
-        await websocket.send(json.dumps(protocol.chat_log_content(mode, day, content, error)))
+        await hub.send(websocket, protocol.chat_log_content(mode, day, content, error))
     else:
         try:
             conversation.delete_log(mode, day)
@@ -247,32 +279,46 @@ async def handle_chat_logs_message(websocket: websockets.ServerConnection, msg_t
         await hub.broadcast(protocol.chat_logs(mode, conversation.list_logs(mode)))
 
 
-def handle_load_profile(data: dict, brain: Brain) -> None:
+@hub.handles(protocol.LOAD_PROFILE)
+async def load_profile(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     name = data.get("name", "")
     try:
         content = profiles.load_profile(name)
     except (ValueError, OSError) as exc:
         print(f"[brain] couldn't load profile {name!r}: {exc!r}")
-        return
-    if profiles.read_roleplay_active():
-        brain.llm.set_persona(content)
-        print(f"[brain] loaded profile {name!r}")
     else:
-        # Still recorded in rp_user.md above -- just not applied to the LLM
-        # while role-play is toggled off (see handle_set_roleplay_active). The
-        # saved scene was with a different character, so it isn't resumed.
-        conversation.clear_state(conversation.ROLEPLAY)
-        print(f"[brain] selected profile {name!r} (role-play is off, not applied)")
+        if profiles.read_roleplay_active():
+            brain.llm.set_persona(content)
+            print(f"[brain] loaded profile {name!r}")
+        else:
+            # Still recorded in rp_user.md above -- just not applied to the LLM
+            # while role-play is toggled off (see set_roleplay_active). The
+            # saved scene was with a different character, so it isn't resumed.
+            conversation.clear_state(conversation.ROLEPLAY)
+            print(f"[brain] selected profile {name!r} (role-play is off, not applied)")
+    await hub.broadcast(profiles_message())
 
 
-def handle_set_roleplay_active(data: dict, brain: Brain) -> None:
+@hub.handles(protocol.SET_ROLEPLAY_ACTIVE)
+async def set_roleplay_active(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     """The role-play toggle. On: if a role-play engine is set (Settings), remembers
     her current engine and switches to it, with thinking as the Renderer's confirm
     dialog chose -- otherwise she stays on her current engine -- and resumes the
     last role-play scene. Off: puts her back on the engine she had before, if role-
     play switched, and brings the normal conversation back. The two conversations
     are saved separately (brain/conversation.py), so neither wipes the other.
+    Every device hears the new state and engine.
     """
+    _toggle_roleplay(data, brain)
+    active = profiles.read_roleplay_active()
+    engine = llm_engines.read_active_engine_name()
+    device = hub.DEVICE_NAMES.get(websocket, "unknown device")
+    await hub.debug_broadcast("roleplay", f"role-play {'on' if active else 'off'} (from {device}), LLM engine now {engine!r}")
+    await hub.broadcast(protocol.roleplay_state(active))
+    await hub.broadcast(protocol.llm_engines(llm_engines.list_engines(), engine))
+
+
+def _toggle_roleplay(data: dict, brain: Brain) -> None:
     active = bool(data.get("active"))
     was_active = profiles.read_roleplay_active()
     profiles.set_roleplay_active(active)

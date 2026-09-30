@@ -11,14 +11,14 @@ Three parts. The first two feed the prompt LocalLLM builds each turn:
   training is on), with her question alongside it for context -- see
   answered_question(). A question is never kept or asked twice.
 * Reaching out -- after an hour with no message from the user, she speaks
-  first, once (main.py's reach-out loop; should_reach_out here). If he
+  first, once (reach_out.py's _reach_out_loop; should_reach_out here). If he
   doesn't reply she stays quiet; his next message starts the hour again.
   She uses a question from the open list if there is one.
 
 There is no list of forbidden topics: the user was clear he doesn't mind what
 she asks, only that she doesn't repeat herself.
 
-Off during role-play (main.py clears it, same as memory and lessons) -- a
+Off during role-play (reply.py clears it, same as memory and lessons) -- a
 scene has its own story, and real-life questions would break it. The user's
 own thumbs up/down on a question flows through the lessons system, so "stop
 asking about X" is learned the same way as any other preference.
@@ -83,7 +83,7 @@ _events: list[str] = []  # what curiosity decided this turn, for the debug log (
 
 def take_events() -> list[str]:
     """What curiosity decided since the last call -- no question text, just the
-    decisions -- for main.py's debug log. Cleared by reading."""
+    decisions -- for the debug log. Cleared by reading."""
     events = list(_events)
     _events.clear()
     return events

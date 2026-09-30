@@ -13,36 +13,26 @@ import time
 import websockets
 from websockets.exceptions import ConnectionClosed
 
-import characters
-import curiosity
-import debugging
-import engines
+# Each of these registers the messages it handles (hub.handles).
+import characters  # noqa: F401
+import debugging  # noqa: F401
+import engines  # noqa: F401
 import handshake
 import hub
-import learning
-import llm_engines
-import memory
-import notes
-import profiles
+import learning  # noqa: F401
 import protocol
-import reach_out
-import reply
-import souls
-import training
-import voice_settings
-import web_search
+import reach_out  # noqa: F401
+import reply  # noqa: F401
 from hub import Brain
 
 PING_INTERVAL_SEC = 15
 
 
-# A restart (see debugging.handle_restart_brain) starts the replacement Brain while the old
+# A restart (see debugging._restart_brain) starts the replacement Brain while the old
 # one is still exiting, so the port can briefly still be taken. Rather than the
 # replacement dying on the first "address already in use", it retries for up to
 # this long.
 SERVE_BIND_ATTEMPTS = 30
-
-
 SERVE_BIND_RETRY_SEC = 1.0
 
 
@@ -63,8 +53,6 @@ AUTH_TIMEOUT_SEC = 10
 # consume a message once triggered, it fails immediately in _authenticate.
 # When it runs out, that device starts over from zero.
 AUTH_MAX_FAILURES = 5
-
-
 AUTH_LOCKOUT_SEC = 60
 
 
@@ -83,7 +71,7 @@ async def handle_renderer(websocket: websockets.ServerConnection, brain: Brain, 
     # the chat loop below already handles quietly, not a "connection handler
     # failed" traceback.
     try:
-        authenticated = await _authenticate(websocket, auth_token)
+        authenticated = await _authenticate(websocket, auth_token, brain)
     except ConnectionClosed:
         print("[brain] renderer disconnected during the startup handshake")
         return
@@ -162,32 +150,16 @@ def _peek_message_type(raw: str) -> str | None:
         return None
 
 
-# One reply at a time, across every connected device. She has one shared
-# conversation (see Brain's docstring), and reply() appends to it before and
-# after the model call -- two replies running at once (two devices sending
-# together) interleaved as user, user, her, her and could pair answers with the
-# wrong questions. A second message now waits for the first reply to finish;
-# Stop cancels a waiting one as well as a running one. One lock per event loop
-# (created on first use) -- an asyncio.Lock can't be shared across loops.
-_REPLY_LOCKS: dict[asyncio.AbstractEventLoop, asyncio.Lock] = {}
-
-
-def reply_lock() -> asyncio.Lock:
-    loop = asyncio.get_running_loop()
-    if loop not in _REPLY_LOCKS:
-        _REPLY_LOCKS[loop] = asyncio.Lock()
-    return _REPLY_LOCKS[loop]
-
-
 async def _run_reply_message(websocket: websockets.ServerConnection, raw: str, brain: Brain) -> None:
     """handle_message for a reply-generating message, run as its own task
     (see handle_renderer) -- so an exception here is reported instead of
     vanishing as an unretrieved task exception the way it otherwise would.
-    Waits its turn behind any reply already in progress (reply_lock).
+    Waits its turn behind any reply already in progress (Brain.reply_lock);
+    Stop cancels a waiting one as well as a running one.
     """
     try:
         queued_at = time.monotonic()
-        async with reply_lock():
+        async with brain.reply_lock:
             waited = time.monotonic() - queued_at
             if waited > 0.5:  # another reply (or her reaching out) was still going
                 await hub.debug_log(websocket, "brain", f"waited {waited:.1f}s for another reply to finish first", waited * 1000)
@@ -214,7 +186,7 @@ def _stop_replies(reply_tasks: set[asyncio.Task], brain: Brain) -> None:
     print("[brain] reply stopped by renderer")
 
 
-async def _authenticate(websocket: websockets.ServerConnection, auth_token: str | None) -> bool:
+async def _authenticate(websocket: websockets.ServerConnection, auth_token: str | None, brain: Brain) -> bool:
     """Gates every message type on this connection, not just the ones that
     happen to check a credential themselves -- the whole protocol is only
     reachable after this passes. Requires the connection's very first
@@ -248,169 +220,43 @@ async def _authenticate(websocket: websockets.ServerConnection, auth_token: str 
     # This first message doubles as the normal `ready` handshake -- handle
     # it now rather than dropping it, so an authenticated Renderer still
     # gets its profiles/souls/avatars lists exactly as before.
-    await handshake.handle_ready(websocket, data)
+    await handshake.handle_ready(websocket, data, brain)
     return True
 
 
 async def ping_loop(websocket: websockets.ServerConnection) -> None:
     while True:
         await asyncio.sleep(PING_INTERVAL_SEC)
-        await websocket.send(json.dumps(protocol.ping()))
+        await hub.send(websocket, protocol.ping())
 
 
 async def handle_message(websocket: websockets.ServerConnection, raw: str, brain: Brain) -> None:
+    """Routes one message to the handler its module registered for its type (hub.handles)."""
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
         print(f"[brain] ignoring non-JSON message: {raw!r}")
         return
+    handler = hub.HANDLERS.get(data.get("type"))
+    if handler is None:
+        print(f"[brain] ignoring unknown message type: {data.get('type')!r}")
+        return
+    await handler(websocket, data, brain)
 
-    msg_type = data.get("type")
 
-    if msg_type == protocol.READY:
-        await handshake.handle_ready(websocket, data)
-    elif msg_type == protocol.PONG:
-        pass
-    elif msg_type == protocol.ANIMATION_FINISHED:
-        print(f"[brain] animation finished: {data.get('name')!r}")
-    elif msg_type == protocol.ERROR:
-        print(f"[brain] renderer reported error: {data.get('message')!r}")
-    elif msg_type == protocol.USER_TEXT:
-        await reply.reply_to(
-            websocket,
-            data.get("text", ""),
-            brain,
-            image_b64=data.get("image_b64"),
-            image_mime=data.get("image_mime", "image/jpeg"),
-        )
-    elif msg_type == protocol.USER_AUDIO:
-        await reply.handle_user_audio(websocket, data, brain)
-    elif msg_type == protocol.CLEAR_CONVERSATION:
-        await reply.handle_clear_conversation(brain)
-    elif msg_type == protocol.REGENERATE_LAST:
-        await reply.handle_regenerate_last(websocket, data, brain)
-    elif msg_type == protocol.SAVE_PROFILE:
-        await characters.handle_save_profile(websocket, data, brain)
-    elif msg_type == protocol.LOAD_PROFILE:
-        characters.handle_load_profile(data, brain)
-        await hub.broadcast(protocol.profiles(profiles.list_profiles(), profiles.read_active_profile_name()))
-    elif msg_type == protocol.GET_PROFILE:
-        await characters.handle_get_profile(websocket, data)
-    elif msg_type == protocol.DELETE_PROFILE:
-        await characters.handle_delete_profile(websocket, data, brain)
-    elif msg_type == protocol.SAVE_SOUL:
-        await characters.handle_save_soul(websocket, data)
-    elif msg_type == protocol.LOAD_SOUL:
-        characters.handle_load_soul(data, brain)
-        await hub.broadcast(protocol.souls(souls.list_souls(), souls.read_active_soul_name()))
-    elif msg_type == protocol.GET_SOUL:
-        await characters.handle_get_soul(websocket, data)
-    elif msg_type == protocol.DELETE_SOUL:
-        await characters.handle_delete_soul(websocket, data, brain)
-    elif msg_type == protocol.SAVE_AVATAR:
-        await characters.handle_save_avatar(websocket, data)
-    elif msg_type == protocol.LOAD_AVATAR:
-        await characters.handle_load_avatar(websocket, data)
-    elif msg_type in (protocol.RENAME_AVATAR, protocol.DELETE_AVATAR):
-        await characters.handle_manage_avatar(websocket, msg_type, data)
-    elif msg_type in (protocol.GET_CHAT_LOGS, protocol.GET_CHAT_LOG, protocol.DELETE_CHAT_LOG):
-        await characters.handle_chat_logs_message(websocket, msg_type, data)
-    elif msg_type == protocol.SET_ROLEPLAY_ACTIVE:
-        characters.handle_set_roleplay_active(data, brain)
-        await hub.debug_broadcast(
-            "roleplay",
-            f"role-play {'on' if profiles.read_roleplay_active() else 'off'} (from {hub.DEVICE_NAMES.get(websocket, 'unknown device')}), "
-            f"LLM engine now {llm_engines.read_active_engine_name()!r}",
-        )
-        await hub.broadcast(protocol.roleplay_state(profiles.read_roleplay_active()))
-        await hub.broadcast(protocol.llm_engines(llm_engines.list_engines(), llm_engines.read_active_engine_name()))
-    elif msg_type == protocol.SET_ROLEPLAY_ENGINE:
-        try:
-            llm_engines.set_roleplay_engine(str(data.get("name") or ""))
-        except (ValueError, OSError) as exc:
-            print(f"[brain] couldn't set the role-play engine: {exc!r}")
-        await hub.broadcast(protocol.roleplay_engine(llm_engines.read_roleplay_engine()))
-    elif msg_type == protocol.SET_VOICE_ACTIVE:
-        voice_settings.set_voice_active(bool(data.get("active")))
-    elif msg_type == protocol.SET_WEB_SEARCH_ACTIVE:
-        web_search.set_active(bool(data.get("active")))
-    elif msg_type == protocol.SET_TRAINING_ACTIVE:
-        training.set_active(bool(data.get("active")))
-        await hub.broadcast(learning.training_state_message())
-    elif msg_type == protocol.RESOLVE_MEMORY_PROPOSAL:
-        await learning.handle_resolve_memory_proposal(data)
-    elif msg_type == protocol.SET_CURIOSITY_ACTIVE:
-        curiosity.set_active(bool(data.get("active")))
-        await reach_out.broadcast_curiosity_timer()
-    elif msg_type == protocol.TEST_REACH_OUT:
-        await reach_out.handle_test_reach_out(websocket, brain)
-    elif msg_type in (protocol.SET_SAMPLING_PROFILE, protocol.SAVE_SAMPLING_PROFILE, protocol.DELETE_SAMPLING_PROFILE):
-        await engines.handle_sampling_message(websocket, msg_type, data)
-    elif msg_type == protocol.SET_MEMORY_ACTIVE:
-        memory.set_memory_active(bool(data.get("active")))
-    elif msg_type == protocol.CLEAR_MEMORY:
-        await memory.clear()
-        brain.llm.set_memory("")
-    elif msg_type == protocol.GET_MEMORY_CONTENT:
-        await websocket.send(json.dumps(protocol.memory_content(await memory.read_entries())))
-    elif msg_type == protocol.RATE_REPLY:
-        await learning.handle_rate_reply(websocket, data, brain)
-    elif msg_type in learning.LESSON_SETTINGS_TYPES:
-        await learning.handle_lessons_message(msg_type, data)
-    elif msg_type in learning.MEMORY_PROFILE_TYPES:
-        await learning.handle_memory_profile_message(websocket, msg_type, data)
-    elif msg_type == protocol.GET_SOUL_AND_USER:
-        await websocket.send(
-            json.dumps(protocol.soul_and_user_content(souls.read_main_soul(), profiles.read_main_user()))
-        )
-    elif msg_type == protocol.SAVE_SOUL_AND_USER:
-        characters.handle_save_soul_and_user(data, brain)
-    elif msg_type == protocol.GET_NOTES:
-        await websocket.send(json.dumps(protocol.notes_content(notes.read_notes())))
-    elif msg_type == protocol.SAVE_NOTES:
-        characters.handle_save_notes(data)
-    elif msg_type == protocol.SAVE_TTS_ENGINE:
-        await engines.handle_save_tts_engine(websocket, data)
-    elif msg_type == protocol.LOAD_TTS_ENGINE:
-        await engines.handle_load_tts_engine(websocket, data, brain)
-    elif msg_type == protocol.GET_TTS_ENGINE:
-        await engines.handle_get_tts_engine(websocket, data)
-    elif msg_type == protocol.DELETE_TTS_ENGINE:
-        await engines.handle_delete_tts_engine(websocket, data, brain)
-    elif msg_type == protocol.GET_TTS_VOICES:
-        await engines.handle_get_tts_voices(websocket, data)
-    elif msg_type == protocol.SET_TTS_VOICE:
-        await engines.handle_set_tts_voice(websocket, data, brain)
-    elif msg_type == protocol.COMBINE_KOKORO_VOICE:
-        await engines.handle_combine_kokoro_voice(websocket, data, brain)
-    elif msg_type == protocol.SAVE_LLM_ENGINE:
-        await engines.handle_save_llm_engine(websocket, data)
-    elif msg_type == protocol.LOAD_LLM_ENGINE:
-        await engines.handle_load_llm_engine(websocket, data, brain)
-    elif msg_type == protocol.GET_LLM_ENGINE:
-        await engines.handle_get_llm_engine(websocket, data)
-    elif msg_type == protocol.DELETE_LLM_ENGINE:
-        await engines.handle_delete_llm_engine(websocket, data, brain)
-    elif msg_type == protocol.GET_LLM_MODELS:
-        await engines.handle_get_llm_models(websocket, data)
-    elif msg_type == protocol.SET_HARNESS_ACTIVE:
-        await engines.handle_set_harness_active(websocket, data, brain)
-    elif msg_type == protocol.SELECT_HARNESS:
-        await engines.handle_select_harness(websocket, data)
-    elif msg_type == protocol.SAVE_HARNESS:
-        await engines.handle_save_harness(websocket, data)
-    elif msg_type == protocol.GET_HARNESS:
-        await engines.handle_get_harness(websocket, data)
-    elif msg_type == protocol.DELETE_HARNESS:
-        await engines.handle_delete_harness(websocket, data, brain)
-    elif msg_type == protocol.SET_DEBUG_ACTIVE:
-        await debugging.handle_set_debug_active(websocket, data, brain)
-    elif msg_type == protocol.DEBUG_PING:
-        await websocket.send(json.dumps(protocol.debug_pong(data.get("ts"))))
-    elif msg_type == protocol.RESTART_BRAIN:
-        await debugging.handle_restart_brain(websocket)
-    else:
-        print(f"[brain] ignoring unknown message type: {msg_type!r}")
+@hub.handles(protocol.PONG)
+async def _pong(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    pass
+
+
+@hub.handles(protocol.ANIMATION_FINISHED)
+async def _animation_finished(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    print(f"[brain] animation finished: {data.get('name')!r}")
+
+
+@hub.handles(protocol.ERROR)
+async def _renderer_error(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    print(f"[brain] renderer reported error: {data.get('message')!r}")
 
 
 async def serve_when_free(handler, host: str, port: int, attempts: int = SERVE_BIND_ATTEMPTS, **serve_kwargs):

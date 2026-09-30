@@ -5,7 +5,6 @@ proposing questions she might ask after a reply.
 
 import asyncio
 import base64
-import json
 import time
 
 import websockets
@@ -18,7 +17,6 @@ import persona
 import profiles
 import protocol
 import sampling
-import server
 import voice_settings
 from hub import Brain
 from voice import NoneTTS
@@ -68,10 +66,10 @@ async def reach_out_loop(brain: Brain) -> None:
                 and curiosity.read_active()
                 and not profiles.read_roleplay_active()
                 and hub.RENDERER_CONNECTIONS
-                and not server.reply_lock().locked()
+                and not brain.reply_lock.locked()
                 and curiosity.should_reach_out(time.time())
             ):
-                async with server.reply_lock():
+                async with brain.reply_lock:
                     await _reach_out(brain)
         except Exception as exc:  # never let one bad attempt stop the loop
             print(f"[brain] reaching out failed: {exc!r}")
@@ -101,7 +99,14 @@ async def broadcast_curiosity_timer(only_if_changed: bool = False) -> None:
     await hub.broadcast(message)
 
 
-async def handle_test_reach_out(websocket: websockets.ServerConnection, brain: Brain) -> None:
+@hub.handles(protocol.SET_CURIOSITY_ACTIVE)
+async def _set_curiosity_active(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    curiosity.set_active(bool(data.get("active")))
+    await broadcast_curiosity_timer()
+
+
+@hub.handles(protocol.TEST_REACH_OUT)
+async def _test_reach_out(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     """Settings -> Curiosity's Test button: she reaches out right now, the same
     way she would after an hour (a check-in -- her saved questions are kept for
     the real thing), and then waits for a reply like after any reach-out.
@@ -111,12 +116,12 @@ async def handle_test_reach_out(websocket: websockets.ServerConnection, brain: B
         problem = "She can't reach out while a harness is in control, or with no LLM set up."
     elif profiles.read_roleplay_active():
         problem = "She doesn't reach out during role-play."
-    elif server.reply_lock().locked():
+    elif brain.reply_lock.locked():
         problem = "She's in the middle of a reply -- try again in a moment."
     if problem:
-        await websocket.send(json.dumps(curiosity_timer_message(problem)))
+        await hub.send(websocket, curiosity_timer_message(problem))
         return
-    async with server.reply_lock():
+    async with brain.reply_lock:
         await _reach_out(brain, test=True)
 
 

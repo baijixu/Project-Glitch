@@ -7,7 +7,7 @@ Settings -> Memory); activate() connects to it. Kinds of backend:
 
 - "local" (the built-in "Local file" -- nothing to set up): one fact per
   line in memory.md, extracted by a lightweight extra LLM call after every
-  reply (see main.py's _maybe_retain_memory), and re-injected as one static
+  reply (see learning.maybe_retain_memory), and re-injected as one static
   block every turn regardless of what's being asked.
 - a memory server someone runs themselves -- "hindsight"
   (https://pypi.org/project/hindsight-client/) or "mem0"
@@ -599,7 +599,7 @@ async def _mem0_recall(query: str) -> str:
     return "\n".join(f"- {_dated(item['memory'], item.get('updated_at') or item.get('created_at'))}" for item in chosen)
 
 
-# -- Unified entry points (main.py calls these, provider-agnostic) ----------
+# -- Unified entry points (reply.py and learning.py call these, provider-agnostic) ----------
 
 
 async def retain_exchange(user_text: str, reply_text: str, asked: str = "") -> None:

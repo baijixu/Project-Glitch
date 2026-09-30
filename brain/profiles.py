@@ -70,7 +70,7 @@ def load_profile(name: str) -> str:
     user's main file. Always writes rp_user.md
     regardless of the role-play toggle (set_roleplay_active) -- selecting
     a profile while role-play is off just queues it for whenever the user
-    turns it back on; main.py's _handle_load_profile is what actually
+    turns it back on; characters.load_profile is what actually
     decides whether to apply it to the LLM right now.
 
     DEFAULT_PROFILE_NAME is special-cased to empty content rather than a
@@ -95,8 +95,8 @@ def delete_profile(name: str) -> None:
     DEFAULT_PROFILE_NAME -- it isn't a real file, there's nothing to
     delete, and it must always stay selectable as the fallback. Does NOT
     touch user.md, rp_user.md or the active-name bookkeeping itself even if the
-    deleted profile happens to be the active one -- main.py's
-    _handle_delete_profile decides whether that requires falling back to
+    deleted profile happens to be the active one -- characters.py's
+    _delete_profile decides whether that requires falling back to
     DEFAULT_PROFILE_NAME, since only it knows whether role-play is
     currently on (and so whether the LLM's persona needs updating too).
     """
@@ -135,7 +135,7 @@ def read_active_profile_name() -> str:
     """The name last passed to load_profile, or DEFAULT_PROFILE_NAME if
     none has ever been explicitly selected -- lets the Renderer's dropdown
     restore the right selection on reconnect instead of always resetting
-    to nothing, and lets _handle_delete_profile tell whether the profile
+    to nothing, and lets characters._delete_profile tell whether the profile
     being deleted is the one currently in effect.
     """
     if ACTIVE_PROFILE_NAME_PATH.exists():
@@ -148,8 +148,8 @@ def set_roleplay_active(active: bool) -> None:
     system prompt (see llm/client.py's set_persona) or ignored in favor of
     plain soul-only behavior -- independent of *which* profile is
     selected, so switching this off and back on doesn't lose the user's
-    dropdown pick (see load_profile's docstring and main.py's
-    _handle_set_roleplay_active).
+    dropdown pick (see load_profile's docstring and characters.py's
+    set_roleplay_active).
     """
     ROLEPLAY_ACTIVE_PATH.write_text("1" if active else "0", encoding="utf-8")
 

@@ -12,7 +12,7 @@ whichever one is active:
 
 Only LocalLLM (and so OllamaLLM) has a conversation of its own
 (`owns_conversation`); on the others the prompt setters do nothing. The
-history is saved to disk by main.py (on_history_change, brain/conversation.py).
+history is saved to disk through on_history_change (engines.build_llm, brain/conversation.py).
 """
 
 import json
@@ -377,7 +377,7 @@ _LESSON_SYSTEM_PROMPT = (
     "Never guess a new lesson from a bare rating."
 )
 
-# The one tool offered when web search is on (main.py's _reply_to passes
+# The one tool offered when web search is on (reply.py's reply_to passes
 # web_search_enabled through from web_search.read_active()) -- standard
 # OpenAI function-calling shape, which Ollama's native /api/chat also
 # accepts verbatim (confirmed live), so this single definition covers
@@ -453,7 +453,7 @@ def _reply_content(message) -> str:
     reasoning never substituting as the reply) would be a legitimate
     feature; silently promoting scratch thoughts to "what she said" is not
     that, it's worse than the empty-reply case it's trying to avoid.
-    main.py's _reply_to already treats an empty result as "nothing to
+    reply.py's reply_to already treats an empty result as "nothing to
     say" and sends no_reply -- the per-model reasoning-token cap (set
     server-side, e.g. in LM Studio) is what actually bounds how often that
     happens, not this function.
@@ -600,9 +600,9 @@ class LocalLLM(ChatBackend):
         state) so a new prompt part only has to be added in one place.
         """
         self._history: list[dict] = []
-        # Told about every change to _history (main.py saves it to disk).
+        # Told about every change to _history (engines.build_llm saves it to disk).
         self._on_history_change = on_history_change
-        # Prompt parts, each set by main.py (see _system_prompt/_turn_notes).
+        # Prompt parts, each set by reply.py (see _system_prompt/_turn_notes).
         self._persona = ""
         self._soul = ""
         self._memory = ""
@@ -638,7 +638,7 @@ class LocalLLM(ChatBackend):
 
     def cancel_reply(self) -> None:
         """Marks whatever reply() call is currently in flight as abandoned
-        (the Renderer's Stop button, main.py's stop_reply). The HTTP request
+        (the Renderer's Stop button, server.py's _stop_replies). The HTTP request
         itself can't be aborted from here -- it runs in a worker thread
         (asyncio.to_thread) that can't be killed -- so it still finishes in
         the background; this just makes reply() throw away its result
@@ -727,7 +727,7 @@ class LocalLLM(ChatBackend):
         assistant's own tool-call turn plus each tool's result, then calls
         again, until a plain text answer comes back or
         MAX_TOOL_ITERATIONS is hit (treated the same as any other empty
-        reply -- main.py's _reply_to already sends no_reply for that).
+        reply -- reply.py's reply_to already sends no_reply for that).
         `messages` itself is never mutated -- the loop works on its own
         copy, so a tool-calling detour never pollutes what reply() ends up
         appending to self._history (only the clean final text does).
@@ -813,7 +813,7 @@ class LocalLLM(ChatBackend):
         """Sets what the user wrote about themselves (brain/profiles.py's main
         user.md -- their own file, not a role-play profile). Like set_lessons,
         deliberately does NOT clear _history: it's additive context, not an
-        identity change. Set fresh every turn by main.py's _reply_to, and ""
+        identity change. Set fresh every turn by reply.py's reply_to, and ""
         during role-play.
         """
         self._user_info = user_info.strip()
@@ -828,13 +828,13 @@ class LocalLLM(ChatBackend):
     def set_curiosity(self, curiosity_block: str) -> None:
         """Sets this turn's curiosity guidance (brain/curiosity.py). Like
         set_lessons, deliberately does NOT clear _history -- additive context.
-        Set fresh every turn by main.py's _reply_to, and "" during role-play.
+        Set fresh every turn by reply.py's reply_to, and "" during role-play.
         """
         self._curiosity = curiosity_block.strip()
 
     def set_sampling(self, values: dict) -> None:
         """Sets the sampling settings for her replies (brain/sampling.py's
-        active profile). Set fresh every turn by main.py's _reply_to, so a
+        active profile). Set fresh every turn by reply.py's reply_to, so a
         profile switched in Settings applies from the very next reply. Doesn't
         touch _history: these change how words are picked, not the prompt.
         """
@@ -1015,8 +1015,8 @@ class LocalLLM(ChatBackend):
         """Answers the user's message. The reply's text has the mood tag
         stripped out (never shown/spoken); its mood is one of VALID_MOODS.
 
-        image_b64, when given (a camera/desktop snapshot -- see main.py's
-        _reply_to), turns this turn's content into the standard OpenAI
+        image_b64, when given (a camera/desktop snapshot -- see reply.py's
+        reply_to), turns this turn's content into the standard OpenAI
         multimodal list, so any vision-capable model behind this endpoint sees
         it. There's no "does this engine support vision" flag: an endpoint that
         can't handle images fails the way a bad model string does (caught by
@@ -1107,8 +1107,8 @@ class LocalLLM(ChatBackend):
             return "unknown"
 
     def reach_out(self, question: str | None = None) -> Reply:
-        """She speaks first -- nothing new from the user for a while (main.py's
-        reach-out loop). The instruction goes in as an app note after the
+        """She speaks first -- nothing new from the user for a while (reach_out.py's
+        _reach_out_loop). The instruction goes in as an app note after the
         conversation (the model needs a final user turn) and isn't kept: only her
         message is added to _history, right after her last reply. Two of her turns
         in a row is fine for this model's chat template (checked live), and she
@@ -1185,7 +1185,7 @@ class LocalLLM(ChatBackend):
         self._history[:] = list(messages)[-MAX_HISTORY_MESSAGES:]  # the token trim runs on the next reply
 
     def _history_changed(self) -> None:
-        """Tells whoever is listening (main.py saves it to disk) that _history
+        """Tells whoever is listening (engines.build_llm saves it to disk) that _history
         changed. Never lets a failure there break a reply.
         """
         if self._on_history_change is None:
@@ -1203,7 +1203,7 @@ class LocalLLM(ChatBackend):
         Handles two shapes at the tail of history: a complete
         user-then-assistant pair (the ordinary case -- an empty or
         nonsensical reply still gets appended as a real, if unsatisfying,
-        assistant turn, see main.py's _reply_to), and a dangling lone user
+        assistant turn, see reply.py's reply_to), and a dangling lone user
         turn with no assistant after it (reply() appends the user turn
         *before* calling _complete, so a request that raises -- a
         connection error, say -- leaves exactly this shape). Popping just
@@ -1214,7 +1214,7 @@ class LocalLLM(ChatBackend):
         repeating himself" problem this method exists to avoid in the
         first place.
 
-        Used by main.py's regenerate_last: popping first means the
+        Used by reply.py's regenerate_last: popping first means the
         follow-up reply() call this feeds into starts from the exact same
         state as the original attempt, rather than piling another user
         turn on top of a stale one -- which is what simply resending the

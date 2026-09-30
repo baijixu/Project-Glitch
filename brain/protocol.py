@@ -149,8 +149,8 @@ def debug_pong(ts) -> dict:
 def debug_event(category: str, message: str, ms: float | None = None) -> dict:
     """Diagnostic-only: connection/timing/error info for the debug log
     (brain_client.js's Debugging toggle) -- never conversation content.
-    Only sent to a connection that's turned debugging on (see main.py's
-    _DEBUG_CONNECTIONS), and only ever describes *that Brain instance's*
+    Only sent to a connection that's turned debugging on (see hub.py's
+    DEBUG_CONNECTIONS), and only ever describes *that Brain instance's*
     own external calls (LLM/TTS/STT/harness), not anything said. `ms` is
     omitted (not 0 or null) when a category has no meaningful duration
     (e.g. a refusal that never made a call at all).
@@ -321,8 +321,8 @@ def memory_content(entries: list[str]) -> dict:
 
 def memory_learned(fact: str) -> dict:
     """Sent once, right when brain/memory.py's "local" provider actually
-    gains a new fact -- not on every extraction attempt (see main.py's
-    _maybe_retain_memory), only when something new was genuinely added.
+    gains a new fact -- not on every extraction attempt (see learning.py's
+    maybe_retain_memory), only when something new was genuinely added.
     Never sent for the "hindsight" provider: its own retain() decides
     what's worth keeping server-side and doesn't hand back the specific
     extracted fact synchronously the way local extraction does. Lets the
@@ -471,7 +471,7 @@ def harness_health(name: str, reachable: bool | None) -> dict:
     not active (available, not currently in use) or active without this
     having reconfirmed reachability yet (still counts as reachable -- an
     active connection already proves it). Sent periodically to every
-    connected Renderer (see main.py's _health_check_loop), not just on
+    connected Renderer (see health.py's health_check_loop), not just on
     request, so the indicator light updates even with no settings panel
     open to trigger it.
 

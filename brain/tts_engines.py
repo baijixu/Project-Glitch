@@ -48,7 +48,7 @@ def save_engine(name: str, endpoint: str, api_key: str, voice: str = "", voices_
 
 def read_engine(name: str) -> dict:
     """Returns {"endpoint", "api_key", "voice", "model", "voices_dir",
-    "custom_voices"} -- used both to connect (main.py's _build_tts) and to
+    "custom_voices"} -- used both to connect (engines.build_tts) and to
     pre-fill the Edit dialog, api_key included (a single-user local app editing
     its own saved config). Engines saved before the last four fields existed
     lack them, so callers .get() them.

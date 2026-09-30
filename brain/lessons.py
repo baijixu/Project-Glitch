@@ -14,7 +14,7 @@ so this whole feature is unavailable while the memory provider is "local".
 A retired directive vanishes from Hindsight's list(), so retired lessons are
 also recorded locally (RETIRED_PATH) -- the only place they can still be seen.
 
-Flow: a rating comes in (main.py's rate_reply) -> logged to RATINGS_LOG_PATH
+Flow: a rating comes in (learning.py's _rate_reply) -> logged to RATINGS_LOG_PATH
 (local, gitignored -- also exactly the dataset a LoRA would need someday) ->
 LocalLLM.propose_lesson asks the model what, if anything, that rating says ->
 parse_distillation validates the answer -> handle_action applies it or queues
