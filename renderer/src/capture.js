@@ -46,6 +46,8 @@ export class Capture {
     this._chunks = [];
     this._alwaysOn = null; // {stream, audioCtx, analyser, timer, speaking, silenceSince} while listening
     this._pendingVoice = null; // the history entry waiting for its transcript
+    this._attached = null; // send(caption) for a picture or file waiting on Send
+    this._placeholder = app.inputEl?.placeholder || "";
 
     $("camera-vision-button")?.addEventListener("click", () => this._captureVision("camera"));
     $("desktop-vision-button")?.addEventListener("click", () => this._captureVision("desktop"));
@@ -54,6 +56,11 @@ export class Capture {
       const file = this.fileInputEl.files?.[0];
       this.fileInputEl.value = ""; // so picking the same file again still fires "change"
       this._attachFile(file);
+    });
+    // Backspace in an empty text box (or Escape) drops an attached picture or file.
+    app.inputEl?.addEventListener("keydown", (e) => {
+      const remove = e.key === "Escape" || (e.key === "Backspace" && !app.inputEl.value);
+      if (remove && this._attached) this._attach(null);
     });
 
     // Push-to-talk: hold, speak, release. Pointer events cover mouse and touch;
@@ -80,6 +87,26 @@ export class Capture {
   // Recording or listening -- the chat bar stays up meanwhile.
   get busy() {
     return this.mediaRecorder?.state === "recording" || !!this._alwaysOn;
+  }
+
+  // Send/Enter with a picture or file attached: it goes with `caption` (may be
+  // empty). False when nothing's attached.
+  sendAttached(caption) {
+    const send = this._attached;
+    if (!send) return false;
+    this._attach(null);
+    send(caption);
+    return true;
+  }
+
+  // Holds a picture or file until Send, so there's a chance to type about it.
+  // A newer one replaces it; null drops it.
+  _attach(label, send) {
+    this._attached = send || null;
+    const input = this._app.inputEl;
+    if (!input) return;
+    input.placeholder = send ? `${label} attached -- add a message and send (backspace removes it)` : this._placeholder;
+    if (send) input.focus();
   }
 
   // Brain's user_transcript: the voice message's placeholder becomes its words.
@@ -121,8 +148,8 @@ export class Capture {
   // ---- Pictures -------------------------------------------------------------------
 
   // One frame from the camera (getUserMedia) or the screen (getDisplayMedia --
-  // its picker is the permission prompt), sent with whatever's typed as the
-  // caption. The stream stops straight away: a snapshot, not a feed.
+  // its picker is the permission prompt), attached until Send. The stream stops
+  // straight away: a snapshot, not a feed.
   async _captureVision(source) {
     if (!this._app.canSendReply()) return;
     const desktop = source === "desktop";
@@ -240,14 +267,14 @@ export class Capture {
 
   _sendPicture(dataUrl, source) {
     const imageB64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
-    const text = this._app.inputEl?.value.trim() || "";
-    const placeholders = { desktop: "🖥️ (screen)", upload: "📎 (photo)" };
-    this._app.sendForReply(
-      { type: "user_text", text, image_b64: imageB64, image_mime: "image/jpeg" },
-      `sent user_text with ${source} image (${Math.round(imageB64.length / 1024)} KB)`,
-    );
-    this._app.history.add("user", text || placeholders[source] || "📷 (photo)", dataUrl);
-    this._app.inputEl.value = "";
+    const label = { desktop: "🖥️ (screen)", upload: "📎 (photo)" }[source] || "📷 (photo)";
+    this._attach(label, (text) => {
+      this._app.sendForReply(
+        { type: "user_text", text, image_b64: imageB64, image_mime: "image/jpeg" },
+        `sent user_text with ${source} image (${Math.round(imageB64.length / 1024)} KB)`,
+      );
+      this._app.history.add("user", text || label, dataUrl);
+    });
   }
 
   // 📎: a picture goes the same way as a snapshot; a text file's content goes
@@ -280,14 +307,14 @@ export class Capture {
     }
     const truncated = content.length > MAX_UPLOADED_TEXT_CHARS;
     if (truncated) content = content.slice(0, MAX_UPLOADED_TEXT_CHARS);
-    const caption = this._app.inputEl?.value.trim() || "";
     const attachment = `Attached file "${file.name}"${truncated ? " (truncated)" : ""}:\n\n${content}`;
-    this._app.sendForReply(
-      { type: "user_text", text: caption ? `${caption}\n\n${attachment}` : attachment },
-      `sent user_text with attached text file (${content.length} chars${truncated ? ", truncated" : ""})`,
-    );
-    this._app.history.add("user", `${caption ? caption + " " : ""}📎 ${file.name}`);
-    this._app.inputEl.value = "";
+    this._attach(`📎 ${file.name}`, (caption) => {
+      this._app.sendForReply(
+        { type: "user_text", text: caption ? `${caption}\n\n${attachment}` : attachment },
+        `sent user_text with attached text file (${content.length} chars${truncated ? ", truncated" : ""})`,
+      );
+      this._app.history.add("user", `${caption ? caption + " " : ""}📎 ${file.name}`);
+    });
   }
 
   // ---- Voice ----------------------------------------------------------------------

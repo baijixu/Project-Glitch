@@ -284,7 +284,8 @@ export class BrainClient {
 
   _sendInput() {
     if (this._awaitingReply) return;
-    const text = this.inputEl?.value.trim();
+    const text = this.inputEl?.value.trim() || "";
+    if (this.capture.sendAttached(text)) return void (this.inputEl.value = "");
     if (!text) return;
     this.sendForReply({ type: "user_text", text }, `sent user_text (${text.length} chars)`);
     this.history.add("user", text);

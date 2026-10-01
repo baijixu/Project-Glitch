@@ -557,6 +557,9 @@ class ChatBackend:
     def pop_last_exchange(self) -> str | None:
         return None
 
+    def last_role(self) -> str | None:
+        return None
+
     def recent_replies(self, count: int) -> list[str]:
         return []
 
@@ -1194,6 +1197,10 @@ class LocalLLM(ChatBackend):
             self._on_history_change(self._history)
         except Exception as exc:
             print(f"[llm] couldn't save the conversation: {exc!r}")
+
+    def last_role(self) -> str | None:
+        """Who spoke last in her conversation ("user"/"assistant"), None if empty."""
+        return self._history[-1].get("role") if self._history else None
 
     def pop_last_exchange(self) -> str | None:
         """Removes the most recent turn from history and returns the user

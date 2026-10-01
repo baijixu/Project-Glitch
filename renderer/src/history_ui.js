@@ -1,6 +1,6 @@
 // The conversation on screen: the History panel (kept across a reload in
 // localStorage), the optional Chat Bubbles Over Avatar, and what can be done to
-// a message there -- resend, edit the latest, rate her replies, clear.
+// a message there -- resend, edit or delete the latest, rate her replies, clear.
 //
 // Brain keeps its own copy of the conversation (brain/conversation.py); this is
 // only the view of it. Text here is what was said, so it only ever goes into the
@@ -32,7 +32,7 @@ export class HistoryUI {
     this.rateModal = new Modal("rate-modal-backdrop", { onClose: () => (this._rating = null) });
     this.editModal = new Modal("edit-message-modal-backdrop", { onClose: () => (this._editing = null) });
     this._rateControls = new WeakMap(); // entry -> repaint its 👍/👎
-    this._userBubbles = new WeakMap(); // entry -> its History bubble, for editing
+    this._groups = new WeakMap(); // entry -> its History group, for editing or removing it
     this._rating = null; // {entry, rating} while the reason pop-up is open
     this._editing = null; // the entry being edited
 
@@ -167,7 +167,7 @@ export class HistoryUI {
     if (!this._app.canSendReply() || !this._isLatest(entry)) return;
     this._removeStaleReply(entry);
     entry.text = text;
-    const bubble = this._userBubbles.get(entry);
+    const bubble = this._groups.get(entry)?.querySelector(".history-bubble");
     if (bubble?.lastChild) bubble.lastChild.nodeValue = text;
     const overlayBubble = this.overlayActive ? this.overlayEl?.lastElementChild : null;
     if (overlayBubble?.classList.contains("user") && overlayBubble.lastChild) overlayBubble.lastChild.nodeValue = text;
@@ -175,14 +175,34 @@ export class HistoryUI {
     this._app.sendForReply({ type: "regenerate_last", text, edited: true }, `sent regenerate_last (${text.length} chars, edited)`);
   }
 
+  // 🗑️ on the latest user bubble: a mis-send or an accidental camera shot goes
+  // from the screen and from her conversation (delete_last), with her reply.
+  _delete(entry) {
+    if (!this._app.canSendReply()) return;
+    if (!this._isLatest(entry)) return this._app.flashStatus("Only your latest message can be deleted", 2500);
+    const index = this.entries.indexOf(entry);
+    const answered = this.entries[index + 1]?.role === "glitch";
+    this._removeStaleReply(entry);
+    this.entries.splice(index, 1);
+    this._groups.get(entry)?.remove();
+    const overlayBubble = this.overlayActive && entry.text ? this.overlayEl?.lastElementChild : null;
+    if (overlayBubble?.classList.contains("user")) overlayBubble.remove();
+    this._save();
+    this._app.send({ type: "delete_last", answered });
+    // The message before it is the latest again -- its buttons come back.
+    const previous = this._groups.get(this._lastEntry("user"));
+    for (const button of previous?.querySelectorAll(".history-retry-button") || []) button.hidden = false;
+  }
+
   // Her reply to `entry` (the latest exchange), if there is one: from the panel,
-  // the bubbles and the stored history. Bubbles aren't tracked per entry, but
-  // the stale reply is always the newest one.
+  // the bubbles and the stored history. Over-avatar bubbles aren't tracked per
+  // entry, but the stale one is always the newest.
   _removeStaleReply(entry) {
     const index = this.entries.indexOf(entry);
-    if (index === -1 || this.entries[index + 1]?.role !== "glitch") return;
+    const reply = this.entries[index + 1];
+    if (index === -1 || reply?.role !== "glitch") return;
     this.entries.splice(index + 1, 1);
-    this.listEl?.lastElementChild?.remove();
+    this._groups.get(reply)?.remove(); // not just the last one: a "🧠 Learned" line can come after it
     if (this.overlayActive) this.overlayEl?.lastElementChild?.remove();
     this._save();
   }
@@ -278,21 +298,27 @@ export class HistoryUI {
 
     const meta = document.createElement("div");
     meta.className = "history-meta";
-    // ↻ and ✏️ only on the latest user message.
+    // ↻, ✏️ and 🗑️ only on the latest user message.
     if (role === "user") for (const button of this.listEl.querySelectorAll(".history-retry-button")) button.hidden = true;
     meta.appendChild(Object.assign(document.createElement("div"), { className: "history-time", textContent: timeText }));
-    // Not on a picture message: only its caption could be resent.
-    if (role === "user" && text && !thumbnailUrl) {
+    // ↻ and ✏️ not on a picture message: only its caption could be resent. 🗑️ is,
+    // an accidental camera shot being the main reason for it.
+    if (role === "user") {
       for (const [label, title, extraClass, action] of [
-        ["↻", "Resend this message", "", () => this._retry(entry)],
-        ["✏️", "Edit this message (your latest one only)", " history-edit-button", () => this._edit(entry)],
+        ...(text && !thumbnailUrl
+          ? [
+              ["↻", "Resend this message", "", () => this._retry(entry)],
+              ["✏️", "Edit this message (your latest one only)", " history-edit-button", () => this._edit(entry)],
+            ]
+          : []),
+        ["🗑️", "Delete this message (your latest one only)", " history-delete-button", () => this._delete(entry)],
       ]) {
         const button = Object.assign(document.createElement("button"), { className: `history-retry-button${extraClass}`, textContent: label, title });
         button.addEventListener("click", action);
         meta.appendChild(button);
       }
-      this._userBubbles.set(entry, bubble);
     }
+    this._groups.set(entry, group);
     if (role === "glitch" && text) meta.appendChild(this._buildRateControls(entry));
     group.appendChild(meta);
 

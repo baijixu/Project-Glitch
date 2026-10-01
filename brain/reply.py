@@ -122,6 +122,16 @@ async def regenerate_last(websocket: websockets.ServerConnection, data: dict, br
     await reply_to(websocket, text, brain)
 
 
+@hub.handles(protocol.DELETE_LAST)
+async def delete_last(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    """The 🗑️ on the user's latest message: drops it (and her reply, if the
+    Renderer showed one) from her context. Pops only when the tail matches --
+    a Stop before the turn reached history leaves an older exchange there."""
+    expected = "assistant" if data.get("answered") else "user"
+    if brain.llm.last_role() == expected:
+        brain.llm.pop_last_exchange()
+
+
 def _transcribe(stt: FasterWhisperSTT, audio_b64: str, mime_type: str) -> str:
     audio_bytes = base64.b64decode(audio_b64)
     suffix = AUDIO_EXTENSION_BY_MIME.get(mime_type.split(";")[0].strip(), ".webm")
