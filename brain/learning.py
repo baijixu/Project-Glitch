@@ -4,6 +4,7 @@ server profiles.
 """
 
 import asyncio
+import re
 import time
 
 import websockets
@@ -254,12 +255,14 @@ async def _propose_memory(
     outcome and never surfaces.
     """
     start = time.monotonic()
-    # Their own user.md goes in too, so she can call them by name rather than "the user".
-    user_info = persona.effective_user_info()
+    # Only their name from user.md, so she can call them by it. The whole profile
+    # went in before, and a 9B filed her own answers under its likes: her "I've got
+    # a thing for the Bronze Age" came back as Josh's, 5 of 5, because it lists history.
+    name = re.search(r"name\s*(?::|is)\s*([^\n.,]+)", persona.effective_user_info(), re.IGNORECASE)
     known = "\n".join(
         part
         for part in (
-            f"The human's own description of themselves:\n{user_info}" if user_info else "",
+            f"The human is called {name.group(1).strip()}." if name else "",
             brain.llm.memory_block,
             *(f"- {p['fact']}" for p in training.read_pending()),
         )
