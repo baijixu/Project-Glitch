@@ -74,7 +74,7 @@ TURN_NOTES_HEADER = (
     "did not write these and can't see them."
 )
 
-_MOOD_TAG = re.compile(r"\[mood:\s*(\w+)\]\s*$", re.IGNORECASE)
+_MOOD_TAG = re.compile(r"\[mood:\s*(\w+)\]", re.IGNORECASE)
 
 
 # The passage of time. Each message in her history carries when it was said
@@ -468,12 +468,13 @@ def _reply_content(message) -> str:
 def _extract_mood(text: str) -> tuple[str, str]:
     """Returns (mood, text_with_tag_removed). Falls back to "neutral" if the
     model forgot the tag or used something outside VALID_MOODS, rather than
-    erroring -- a missing/malformed tag shouldn't break the reply.
+    erroring -- a missing/malformed tag shouldn't break the reply. Small
+    models sometimes tag mid-reply too: every tag is removed, the last one wins.
     """
-    match = _MOOD_TAG.search(text)
-    if not match:
+    tags = _MOOD_TAG.findall(text)
+    if not tags:
         return "neutral", text.strip()
-    mood = match.group(1).lower()
+    mood = tags[-1].lower()
     if mood not in VALID_MOODS:
         mood = "neutral"
     return mood, _MOOD_TAG.sub("", text).strip()
