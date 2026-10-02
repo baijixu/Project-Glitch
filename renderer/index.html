@@ -546,11 +546,10 @@
         <input
           id="llm-engine-model"
           type="text"
-          list="llm-engine-model-options"
           placeholder="whatever the endpoint has loaded"
           autocomplete="off"
         />
-        <datalist id="llm-engine-model-options"></datalist>
+        <select id="llm-engine-model-options" class="settings-select" hidden></select>
         <button id="fetch-llm-models-button" type="button" class="modal-button secondary">
           Fetch available models
         </button>

@@ -191,6 +191,10 @@ export class LlmEnginesUI {
     $("fetch-llm-models-button")?.addEventListener("click", () => this._fetchModels());
     // On blur too: typing an endpoint and tabbing to Model has real choices waiting.
     this.endpointEl?.addEventListener("blur", () => this._fetchModels());
+    // Picking a fetched model fills the Model field (still typeable for anything else).
+    this.modelOptionsEl?.addEventListener("change", () => {
+      if (this.modelOptionsEl.value) $("llm-engine-model").value = this.modelOptionsEl.value;
+    });
   }
 
   get handlers() {
@@ -234,7 +238,9 @@ export class LlmEnginesUI {
 
   _showModelOptions(models) {
     if (!this.modelOptionsEl) return;
-    this.modelOptionsEl.replaceChildren(...models.map((model) => Object.assign(document.createElement("option"), { value: model })));
+    const option = (value, text) => Object.assign(document.createElement("option"), { value, textContent: text });
+    this.modelOptionsEl.replaceChildren(option("", `Pick one of ${models.length} available models`), ...models.map((m) => option(m, m)));
+    this.modelOptionsEl.hidden = !models.length;
   }
 }
 
