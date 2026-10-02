@@ -80,8 +80,13 @@ def parse_fact(raw: str) -> str | None:
     if not match:
         return None
     try:
-        fact = json.loads(match.group(0)).get("fact")
+        answer = json.loads(match.group(0))
+        fact = answer.get("fact")
     except (ValueError, AttributeError):
+        return None
+    # Her own "will this matter in a month?" check, answered before the fact --
+    # a small model asked for a fact otherwise writes one for anything ("lol nice").
+    if not str(answer.get("matters_in_a_month", "yes")).strip().lower().startswith("yes"):
         return None
     if not isinstance(fact, str):
         return None

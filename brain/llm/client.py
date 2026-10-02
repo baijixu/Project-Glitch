@@ -303,12 +303,15 @@ MAX_MEMORY_PROPOSAL_TOKENS = 2000  # same reasoning-model budget, for training m
 
 _MEMORY_PROPOSAL_SYSTEM_PROMPT = (
     "You are Glitch, an AI companion, deciding what to remember from your latest exchange with the "
-    "person you talk to. In the exchange, 'User' is that person -- a human -- and 'Assistant' is you. "
+    "person you talk to. In the exchange, 'The human' is that person and 'Glitch (you)' is you."
     "Write at most ONE new memory, in YOUR OWN VOICE, as a single self-contained sentence: 'I', 'me' "
     "and 'my' always mean you, Glitch. Call the human by their name if it appears in what you already "
     "know (for example their own description of themselves), otherwise 'the user'. Examples: "
     "\"Sam is moving to a new apartment next month.\" / \"I promised Sam I'd help them name their new "
-    "game.\" / \"I've realized I like quiet late-night chats more than busy ones.\"\n\n"
+    "game.\" / \"I'd rather tell Sam a hard truth than agree just to keep things easy, because agreeing "
+    "felt hollow.\"\n\n"
+    "When it's about you, say why (\"because ...\") -- a bare event (\"I told Sam X\") is not a memory, "
+    "the value behind it can be.\n\n"
     "Worth remembering about the human: facts they stated about their real life -- who they are, what "
     "they are building or working on, plans, preferences, interests, decisions, or corrections they "
     "gave you. When they engage with a topic (news, sports, music), record THAT they discussed it or "
@@ -321,7 +324,9 @@ _MEMORY_PROPOSAL_SYSTEM_PROMPT = (
     "states; anything already known; or anything you are not sure was really said. Never mix up who "
     "said what -- what the human said about themselves is about them, not you. Most exchanges have "
     "nothing worth keeping -- that is the usual answer.\n\n"
-    "Reply with ONLY a JSON object: {\"fact\": \"...\"} or {\"fact\": null}."
+    "Answer the check first: will this still matter in a month -- does it change what you know about who "
+    "they are, or show what you value, believe, or how you've changed? Reply with ONLY a JSON object: "
+    "{\"matters_in_a_month\": \"yes or no, and why in a few words\", \"fact\": \"...\" or null}."
 )
 
 _QUESTION_SYSTEM_PROMPT = (
@@ -857,14 +862,14 @@ class LocalLLM(ChatBackend):
         it an answer like "anime stuff mostly" has nothing to be about.
         Separate from _history/_system_prompt, same as maybe_extract_memory.
         """
-        before = f"Assistant (asking): {asked}\n" if asked else ""
+        before = f"Glitch (you, asking): {asked}\n" if asked else ""
         messages = [
             {"role": "system", "content": _MEMORY_PROPOSAL_SYSTEM_PROMPT},
             {
                 "role": "user",
                 "content": (
                     f"Already known or already proposed:\n{known or '(nothing yet)'}\n\n"
-                    f"Latest exchange:\n{before}User: {user_text}\nAssistant: {reply_text or '(reply omitted)'}"
+                    f"Latest exchange:\n{before}The human: {user_text}\nGlitch (you): {reply_text or '(reply omitted)'}"
                 ),
             },
         ]
