@@ -457,8 +457,12 @@ def _reply_content(message) -> str:
     say" and sends no_reply -- the per-model reasoning-token cap (set
     server-side, e.g. in LM Studio) is what actually bounds how often that
     happens, not this function.
+
+    Some models (seen with an uncensored Qwen3.5-9B GGUF) also write their
+    thinking into `content` itself, ending it with "</think>" -- only what
+    comes after the last one is her reply.
     """
-    return (message.content or "").strip()
+    return (message.content or "").rsplit("</think>", 1)[-1].strip()
 
 
 def _extract_mood(text: str) -> tuple[str, str]:
