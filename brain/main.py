@@ -58,6 +58,7 @@ import engines
 import harness
 import health
 import hub
+import journal
 import learning
 import llm_engines
 import memory
@@ -185,6 +186,7 @@ async def main() -> None:
         print(f"[brain] couldn't split role-play out of the older chat logs: {exc!r}")
     hub.spawn(health.health_check_loop())
     hub.spawn(reach_out.reach_out_loop(brain))
+    hub.spawn(journal.journal_loop(brain))
     listener = await server.serve_when_free(
         lambda ws: server.handle_renderer(ws, brain, auth_token),
         host,

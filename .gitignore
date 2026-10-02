@@ -57,6 +57,9 @@ brain/harnesses/
 # category as user.md/memory.md above, never read by the LLM.
 brain/notes.md
 
+# Her nightly journal (brain/journal.py) -- personal content, same reasoning.
+brain/self/
+
 # Scratch dump of Kokoro's own OpenAPI spec from investigating its API --
 # not read by any code, just a reference file, not project source.
 brain/_kokoro_openapi.json

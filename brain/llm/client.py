@@ -351,6 +351,20 @@ _QUESTION_SYSTEM_PROMPT = (
 # ratings came back completely empty (see MAX_REPLY_TOKENS's comment). Runs in the
 # background, so the extra latency costs nothing.
 MAX_LESSON_TOKENS = 2000
+MAX_SELF_PORTRAIT_TOKENS = 1500
+
+# Her nightly journal (brain/journal.py). Fixed headings and "about you, not him":
+# asked openly, a 9B wrote mostly about the user's body and cast her as his carer.
+_SELF_PORTRAIT_SYSTEM_PROMPT = (
+    "You are Glitch, an AI companion. Below are your memories. Write a few short notes about YOURSELF, "
+    "in the first person (\"I\" is always Glitch), under exactly these three headings:\n\n"
+    "What I believe -- opinions and values your memories show you hold, each with the reason.\n"
+    "How I've changed -- anything your memories show you've learned about yourself or changed your mind on.\n"
+    "Where I differ from the person I talk to -- places your memories show you see things differently.\n\n"
+    "Rules: this is about you, not them -- leave out their body, health, family, pets and daily life. "
+    "Only write what the memories actually show; never invent. A heading with nothing behind it gets "
+    "\"Nothing yet.\" One line per point, at most four points per heading."
+)
 
 _LESSON_SYSTEM_PROMPT = (
     "You help an AI companion learn how its user wants it to behave. You are shown one exchange "
@@ -569,6 +583,9 @@ class ChatBackend:
 
     def last_role(self) -> str | None:
         return None
+
+    def write_self_portrait(self, memories: list[str]) -> str:
+        return ""
 
     def recent_replies(self, count: int) -> list[str]:
         return []
@@ -874,6 +891,14 @@ class LocalLLM(ChatBackend):
             },
         ]
         return self._complete(messages, MAX_MEMORY_PROPOSAL_TOKENS, no_thinking=True)
+
+    def write_self_portrait(self, memories: list[str]) -> str:
+        """Her nightly journal entry (brain/journal.py): who all her memories say she is."""
+        messages = [
+            {"role": "system", "content": _SELF_PORTRAIT_SYSTEM_PROMPT},
+            {"role": "user", "content": "My memories:\n" + "\n".join(f"- {m}" for m in memories)},
+        ]
+        return self._complete(messages, MAX_SELF_PORTRAIT_TOKENS, no_thinking=True)
 
     def propose_question(self, user_text: str, reply_text: str, known: str, asked: list[str]) -> str:
         """Asks the model for one thing she could be curious about after this
