@@ -115,6 +115,19 @@ def get_pending(proposal_id: str) -> dict | None:
     return next((p for p in _read() if p["id"] == proposal_id), None)
 
 
+def drop_latest_from(source: str) -> bool:
+    """Drops the newest proposal made from this message -- its reply was regenerated,
+    edited or deleted away, so what it proposed was never really said."""
+    pending = _read()
+    key = source.strip()[:200]
+    index = next((i for i in range(len(pending) - 1, -1, -1) if pending[i]["source"] == key), None)
+    if index is None:
+        return False
+    del pending[index]
+    _write(pending)
+    return True
+
+
 def remove_pending(proposal_id: str) -> bool:
     pending = _read()
     kept = [p for p in pending if p["id"] != proposal_id]
