@@ -30,9 +30,11 @@ LOG_DIR = _DIR / "chat_logs"
 # (Settings -> Chat Logs). Older logs had both in one file, role-play lines
 # tagged "(role-play)" -- split_mixed_logs() moves those out once.
 ROLEPLAY_LOG_DIR = LOG_DIR / "roleplay"
+# Her nightly journal (journal.py), read from the same Settings section.
+JOURNAL_LOG_DIR = _DIR / "self"
 BACKUP_DIR = _DIR / "backups"
 
-MAIN, ROLEPLAY = "main", "roleplay"
+MAIN, ROLEPLAY, JOURNAL = "main", "roleplay", "journal"
 PICTURE_NOTE = "[picture]"
 
 
@@ -91,7 +93,7 @@ def clear_state(mode: str) -> None:
 
 
 def _log_dir(mode: str) -> Path:
-    return ROLEPLAY_LOG_DIR if mode == ROLEPLAY else LOG_DIR
+    return {ROLEPLAY: ROLEPLAY_LOG_DIR, JOURNAL: JOURNAL_LOG_DIR}.get(mode, LOG_DIR)
 
 
 def _append(mode: str, text: str, now: datetime) -> None:
@@ -136,7 +138,7 @@ _DAY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 def _day_path(mode: str, day: str) -> Path:
     """The log file for one day. Only a plain YYYY-MM-DD date is accepted, so a
     request can never reach a file outside the log folder."""
-    if mode not in (MAIN, ROLEPLAY) or not isinstance(day, str) or not _DAY.match(day):
+    if mode not in (MAIN, ROLEPLAY, JOURNAL) or not isinstance(day, str) or not _DAY.match(day):
         raise ValueError(f"not a chat log: {mode!r} {day!r}")
     return _log_dir(mode) / f"{day}.md"
 

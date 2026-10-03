@@ -11,10 +11,11 @@ import asyncio
 from datetime import datetime
 from pathlib import Path
 
+import conversation
 import memory
 from hub import Brain
 
-JOURNAL_DIR = Path(__file__).parent / "self"
+JOURNAL_DIR = conversation.JOURNAL_LOG_DIR
 JOURNAL_HOUR = 3  # local time
 CHECK_SEC = 30 * 60
 

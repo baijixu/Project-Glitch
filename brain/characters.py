@@ -256,11 +256,11 @@ async def _manage_avatar(websocket: websockets.ServerConnection, data: dict, bra
 @hub.handles(protocol.GET_CHAT_LOGS, protocol.GET_CHAT_LOG, protocol.DELETE_CHAT_LOG)
 async def _chat_logs(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     """Settings -> Chat Logs: list a mode's days, read one, or delete one. Only
-    her daily logs in brain/chat_logs/ (regular) and chat_logs/roleplay/ -- the
+    her daily logs in brain/chat_logs/ (regular), chat_logs/roleplay/ and her journal (self/) -- the
     file is picked by mode and a plain date, never by a path from the Renderer.
     A deletion goes to every device, so their lists stay in step.
     """
-    mode = conversation.ROLEPLAY if data.get("mode") == conversation.ROLEPLAY else conversation.MAIN
+    mode = data.get("mode") if data.get("mode") in (conversation.ROLEPLAY, conversation.JOURNAL) else conversation.MAIN
     day = str(data.get("date") or "")
     if data["type"] == protocol.GET_CHAT_LOGS:
         await hub.send(websocket, protocol.chat_logs(mode, conversation.list_logs(mode)))

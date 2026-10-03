@@ -1,12 +1,13 @@
 // Settings -> Chat Logs: read or delete her daily chat logs (brain/chat_logs/,
-// role-play in chat_logs/roleplay/ -- see brain/conversation.py). Self-contained
+// role-play in chat_logs/roleplay/ -- see brain/conversation.py) and her nightly
+// journal (brain/self/, brain/journal.py). Self-contained
 // like SamplingUI: finds its own elements by id, only needs `send`, and redraws
 // from each `chat_logs` / `chat_log_content` message Brain sends.
 //
 // A log is the user's own conversation, so it's only ever put on the page as
 // text (textContent), never as HTML.
 
-const MODE_NAMES = { main: "Chat", roleplay: "Role-play" };
+const MODE_NAMES = { main: "Chat", roleplay: "Role-play", journal: "Journal" };
 // Where a new entry starts in a log -- same shape as conversation.py's _ENTRY_START.
 const MESSAGE_LINE = /^\*\*(\d{2}:\d{2}:\d{2})\*\* ([^:]+): ?(.*)$/;
 const NOTE_LINE = /^\*(\d{2}:\d{2}:\d{2}) -- (.*)\*$/;
@@ -22,7 +23,7 @@ export class ChatLogsUI {
     this.backdropEl = $("chat-log-modal-backdrop");
     this.titleEl = $("chat-log-modal-title");
     this.bodyEl = $("chat-log-body");
-    this._days = { main: [], roleplay: [] };
+    this._days = { main: [], roleplay: [], journal: [] };
 
     this.modeEl?.addEventListener("change", () => this.refresh());
     this.dayEl?.addEventListener("change", () => this._updateButtons());
@@ -36,7 +37,7 @@ export class ChatLogsUI {
   }
 
   get _mode() {
-    return this.modeEl?.value === "roleplay" ? "roleplay" : "main";
+    return this.modeEl?.value in MODE_NAMES ? this.modeEl.value : "main";
   }
 
   // Asks Brain for the current mode's list -- when Settings opens, and when the
@@ -46,7 +47,7 @@ export class ChatLogsUI {
   }
 
   handleList(data) {
-    this._days[data.mode === "roleplay" ? "roleplay" : "main"] = data.days || [];
+    this._days[data.mode in MODE_NAMES ? data.mode : "main"] = data.days || [];
     this._render();
   }
 
@@ -55,8 +56,10 @@ export class ChatLogsUI {
       window.alert(`Couldn't open that log: ${data.error}`);
       return;
     }
-    this.titleEl.textContent = `${MODE_NAMES[data.mode] || "Chat"} log -- ${_prettyDate(data.date)}`;
-    this.bodyEl.replaceChildren(..._renderLog(data.content || ""));
+    const what = data.mode === "journal" ? "Journal" : `${MODE_NAMES[data.mode] || "Chat"} log`;
+    this.titleEl.textContent = `${what} -- ${_prettyDate(data.date)}`;
+    // A journal entry is her own notes, not messages -- shown as written.
+    this.bodyEl.replaceChildren(...(data.mode === "journal" ? _renderJournal(data.content || "") : _renderLog(data.content || "")));
     this.backdropEl.hidden = false;
     this.bodyEl.scrollTop = 0;
   }
@@ -119,6 +122,13 @@ function _prettyDate(date) {
 
 function _prettySize(bytes) {
   return bytes >= 1024 ? `${Math.round(bytes / 1024)} KB` : `${bytes} B`;
+}
+
+function _renderJournal(text) {
+  const div = document.createElement("div");
+  div.className = "chat-log-text";
+  div.textContent = text.replace(/^# .*\n+/, "").trim() || "This entry is empty.";
+  return [div];
 }
 
 // The log's lines as elements: one block per message (time, who, what they
