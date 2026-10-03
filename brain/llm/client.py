@@ -409,7 +409,8 @@ WEB_SEARCH_TOOL = {
         "description": (
             "Search the web for current information. Use this for anything that could have "
             "changed since training, recent events, or a specific fact worth checking rather "
-            "than guessing at."
+            "than guessing at. Never for your own opinions or feelings, or about the person "
+            "you're talking to -- the web doesn't know those."
         ),
         "parameters": {
             "type": "object",
@@ -483,6 +484,20 @@ def _reply_content(message) -> str:
     comes after the last one is her reply.
     """
     return (message.content or "").rsplit("</think>", 1)[-1].strip()
+
+
+_TEXT_TOOL_CALL = re.compile(r"<function=([\w.-]+)>(.*?)</function>", re.DOTALL)
+_TEXT_TOOL_PARAM = re.compile(r"<parameter=([\w.-]+)>\s*(.*?)\s*</parameter>", re.DOTALL)
+
+
+def _text_tool_calls(text: str) -> list[dict]:
+    """Tool calls a model wrote into its reply as text (Qwen's <function=...>
+    <parameter=...> form) instead of returning them as tool calls -- seen with an
+    uncensored Qwen3.5-9B on LM Studio, which then showed up in the chat as-is."""
+    return [
+        {"id": f"text-call-{i}", "name": name, "arguments": dict(_TEXT_TOOL_PARAM.findall(body))}
+        for i, (name, body) in enumerate(_TEXT_TOOL_CALL.findall(text))
+    ]
 
 
 def _extract_mood(text: str) -> tuple[str, str]:
@@ -729,11 +744,23 @@ class LocalLLM(ChatBackend):
             except ValueError:
                 arguments = {}
             tool_calls.append({"id": call.id, "name": call.function.name, "arguments": arguments})
+        content, raw_message = _reply_content(message), message.model_dump(exclude_none=True)
+        if tools and not tool_calls and (tool_calls := _text_tool_calls(content)):
+            # Written out as text instead -- run it like a real one, and never show it.
+            content = ""
+            raw_message = {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {"id": c["id"], "type": "function", "function": {"name": c["name"], "arguments": json.dumps(c["arguments"])}}
+                    for c in tool_calls
+                ],
+            }
         usage = getattr(response, "usage", None)
         return {
-            "content": _reply_content(message),
+            "content": content,
             "tool_calls": tool_calls,
-            "raw_message": message.model_dump(exclude_none=True),
+            "raw_message": raw_message,
             "usage": {
                 "prompt": getattr(usage, "prompt_tokens", None),
                 "completion": getattr(usage, "completion_tokens", None),

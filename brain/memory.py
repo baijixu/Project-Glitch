@@ -58,6 +58,11 @@ MAX_MEMORY_CHARS = 2000
 # provider's own MAX_MEMORY_CHARS cap -- plenty for what's actually
 # relevant to one message, not a dump of the whole bank.
 RECALL_MAX_TOKENS = 800
+# The token budget alone didn't make recall selective: her short approved facts
+# fit 34 of 40 into it, so every message got nearly her whole memory (and the
+# user's surgery and pups came up whatever he asked). Results come ranked, so
+# only the top few are kept.
+RECALL_LIMIT = 8
 CORE_RECALL_MAX_TOKENS = 300  # the always-shown "core" facts (retain_fact / brain/training.py)
 
 # Steers what Hindsight's server-side extraction keeps from each retained
@@ -499,7 +504,7 @@ async def recall_relevant(query: str) -> str:
     lines = [_dated(text, when) for text, when in core]
     lines += [
         _dated(result.text, getattr(result, "mentioned_at", None))
-        for result in response.results
+        for result in response.results[:RECALL_LIMIT]
         if result.text not in core_texts
     ]
     return "\n".join(f"- {line}" for line in lines)
