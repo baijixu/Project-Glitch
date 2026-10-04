@@ -898,7 +898,7 @@ class LocalLLM(ChatBackend):
         """
         self._sampling = dict(values or {})
 
-    def propose_memory(self, user_text: str, reply_text: str, known: str, asked: str = "") -> str:
+    def propose_memory(self, user_text: str, reply_text: str, known: str, asked: str = "", name: str = "", pronouns: tuple[str, str] = ("their", "they")) -> str:
         """Training mode (brain/training.py): asks the model for at most one fact from
         this exchange worth remembering -- returns its raw answer (JSON, see
         _MEMORY_PROPOSAL_SYSTEM_PROMPT) for training.parse_fact to validate. `known`
@@ -907,14 +907,21 @@ class LocalLLM(ChatBackend):
         it an answer like "anime stuff mostly" has nothing to be about.
         Separate from _history/_system_prompt, same as maybe_extract_memory.
         """
-        before = f"Glitch (you, asking): {asked}\n" if asked else ""
+        # "<name> said / You answered" plus who-it's-about, on 23 of his real questions to her:
+        # 22-23 came out as hers (was 12 with "The human / Glitch (you)"), and his own facts stayed his.
+        # The pronoun mattered: "his ... he" got 22-23, "their" or repeating the name only 17.
+        name = name or "The human"
+        before = f"You asked: {asked}\n" if asked else ""
         messages = [
             {"role": "system", "content": _MEMORY_PROPOSAL_SYSTEM_PROMPT},
             {
                 "role": "user",
                 "content": (
                     f"Already known or already proposed:\n{known or '(nothing yet)'}\n\n"
-                    f"Latest exchange:\n{before}The human: {user_text}\nGlitch (you): {reply_text or '(reply omitted)'}"
+                    f"Latest exchange:\n{before}{name} said: {user_text}\nYou answered: {reply_text or '(reply omitted)'}\n\n"
+                    f"Write the memory about whoever it is about: your own opinion or taste from your answer starts "
+                    f"with \"I\"; something {name} said about {pronouns[0]} own life starts with \"{name}\". Your reaction to "
+                    f"what {pronouns[1]} said is never a memory."
                 ),
             },
         ]
