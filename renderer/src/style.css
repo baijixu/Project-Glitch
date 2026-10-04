@@ -1210,6 +1210,10 @@ body.overlay-chat-active #overlay-edit-button {
   color: #8a8fa0;
 }
 
+.training-conflict {
+  color: #e0b050;
+}
+
 .lesson-meta {
   display: flex;
   align-items: center;

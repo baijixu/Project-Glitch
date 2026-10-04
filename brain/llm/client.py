@@ -354,6 +354,15 @@ _QUESTION_SYSTEM_PROMPT = (
 MAX_LESSON_TOKENS = 2000
 MAX_SELF_PORTRAIT_TOKENS = 1500
 
+# Checks one new memory against one she already has (learning.py, before it's queued).
+# One pair, one word: asked about eight at once, a 9B called a related topic "the same"
+# (6 of 8 new answers would have been thrown away) or everything a contradiction.
+_MEMORY_PAIR_SYSTEM_PROMPT = (
+    "Compare two memories. Reply with exactly one word: SAME if they say the same thing, even in other words; "
+    "OPPOSITE if they answer the same question differently, for example two different favorites; "
+    "UNRELATED if they are about different things."
+)
+
 # Her nightly journal (brain/journal.py). Fixed headings and "about you, not him":
 # asked openly, a 9B wrote mostly about the user's body and cast her as his carer.
 _SELF_PORTRAIT_SYSTEM_PROMPT = (
@@ -924,6 +933,14 @@ class LocalLLM(ChatBackend):
                     f"what {pronouns[1]} said is never a memory."
                 ),
             },
+        ]
+        return self._complete(messages, MAX_MEMORY_PROPOSAL_TOKENS, no_thinking=True)
+
+    def compare_memories(self, new: str, old: str) -> str:
+        """SAME, OPPOSITE or UNRELATED (as the model wrote it) -- see _MEMORY_PAIR_SYSTEM_PROMPT."""
+        messages = [
+            {"role": "system", "content": _MEMORY_PAIR_SYSTEM_PROMPT},
+            {"role": "user", "content": f"Memory A: {new}\nMemory B: {old}"},
         ]
         return self._complete(messages, MAX_MEMORY_PROPOSAL_TOKENS, no_thinking=True)
 

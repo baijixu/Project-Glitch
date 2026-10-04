@@ -95,6 +95,13 @@ export class TrainingUI {
       source.textContent = `From: "${proposal.source}"`;
       row.appendChild(source);
     }
+    // She thinks this disagrees with something she already remembers -- ask her which she means.
+    if (proposal.conflict) {
+      const conflict = document.createElement("div");
+      conflict.className = "lesson-reason training-conflict";
+      conflict.textContent = `⚠ Contradicts: "${proposal.conflict}". Ask her which she means.`;
+      row.appendChild(conflict);
+    }
 
     const meta = document.createElement("div");
     meta.className = "lesson-meta";
