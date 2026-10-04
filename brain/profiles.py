@@ -145,7 +145,7 @@ def read_active_profile_name() -> str:
 
 def set_roleplay_active(active: bool) -> None:
     """Whether the selected profile is actually layered into the LLM's
-    system prompt (see llm/client.py's set_persona) or ignored in favor of
+    system prompt (see llm.py's set_persona) or ignored in favor of
     plain soul-only behavior -- independent of *which* profile is
     selected, so switching this off and back on doesn't lose the user's
     dropdown pick (see load_profile's docstring and characters.py's

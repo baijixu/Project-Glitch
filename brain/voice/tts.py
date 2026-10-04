@@ -96,7 +96,7 @@ class RemoteTTS:
     """Speech via an HTTP TTS engine (brain/tts_engines.py) rather than a
     model loaded in-process -- anything speaking the OpenAI-compatible
     /v1/audio/speech shape works, using the openai client the exact same
-    way llm/client.py's LocalLLM already does for a local LLM endpoint
+    way llm.py's LocalLLM already does for a local LLM endpoint
     (openai>=1.0 is already a dependency; no new HTTP library needed).
     """
 

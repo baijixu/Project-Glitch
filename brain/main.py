@@ -12,7 +12,7 @@ user_text / user_audio (-> STT) / regenerate_last
   -> server.handle_renderer starts it as its own task, queued behind any
      reply already running (one at a time across every device)
   -> reply.reply_to: recall memories, set user.md, lessons and curiosity on
-     the LLM, then brain.llm.reply (llm/client.py) in a worker thread
+     the LLM, then brain.llm.reply (llm.py) in a worker thread
   -> set_expression + speak_text back to the device, the chat log, the context
      meter, then memory saving / training proposals / curiosity in the
      background (hub.spawn), then TTS -> speak_audio + viseme_stream.
@@ -32,7 +32,7 @@ Where things live
   debugging.py .. the debug log and Restart Brain
 
 There's ONE Brain and ONE conversation shared by every connected device (see
-hub.Brain), and brain.llm can be any ChatBackend (llm/client.py) -- her own
+hub.Brain), and brain.llm can be any ChatBackend (llm.py) -- her own
 LocalLLM/OllamaLLM, a HarnessLLM or a NoneLLM. Every one takes the same calls;
 features that are hers alone (memory, lessons, curiosity, her chat log) check
 brain.llm.owns_conversation.
@@ -52,7 +52,6 @@ sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 import asyncio
 
-import conversation
 import debugging
 import engines
 import harness
@@ -61,7 +60,6 @@ import hub
 import journal
 import learning
 import llm_engines
-import memory
 import reach_out
 import server
 import tts_engines
@@ -97,12 +95,9 @@ async def main() -> None:
     engines.DEFAULT_LLM_CONFIG.update(endpoint=llm_cfg.get("endpoint"), model=llm_cfg.get("model"), api_key=llm_cfg.get("api_key"))
 
     # Her memory backend: the active memory profile (Settings -> Memory,
-    # memory_profiles.py), or the built-in local file. The Hindsight connection
-    # saved before profiles existed -- or config.yaml's brain.hindsight block,
-    # a one-time seed -- becomes a profile the first time (memory.migrate).
-    # An unreachable server (off, or on a machine that's asleep) must not stop
-    # Brain from starting: memory calls fail softly per turn instead.
-    memory.migrate(brain_cfg.get("hindsight") or {})
+    # memory_profiles.py), or the built-in local file. An unreachable server
+    # (off, or on a machine that's asleep) must not stop Brain from starting:
+    # memory calls fail softly per turn instead.
     if problem := await learning.activate_memory():
         print(f"[brain] WARNING: {problem} Starting without it.")
 
@@ -115,30 +110,9 @@ async def main() -> None:
     if web_search_cfg.get("searxng_url"):
         web_search.configure(web_search_cfg["searxng_url"], web_search_cfg.get("trusted_domains") or [])
 
-    llm_engines.migrate_roleplay_record()
-
-    # One-time migration: config.yaml's brain.harness block used to be the
-    # only way to configure a harness (a small, fixed, code-defined list).
-    # Harnesses are open-ended and user-managed via the settings panel now,
-    # same as LLM/TTS engines -- if nothing's been saved that way yet, seed
-    # the saved-harness list from whatever's in config.yaml so an existing
-    # setup (e.g. Hermes) isn't silently dropped by this change. Runs at
-    # most once in practice: after the first real save through the app,
-    # harness.list_harnesses() is never empty again, so this is skipped on
-    # every later restart.
-    if not harness.list_harnesses():
-        for key, harness_cfg in (brain_cfg.get("harness") or {}).items():
-            if not harness_cfg.get("endpoint"):
-                continue
-            migrated_name = key.capitalize()
-            harness.save_harness(
-                migrated_name, harness_cfg["endpoint"], harness_cfg.get("model") or "", harness_cfg.get("api_key") or ""
-            )
-            print(f"[brain] migrated config.yaml's brain.harness.{key} to a saved harness named {migrated_name!r}")
-
     # A harness connection (brain/harness.py) persists across restarts the
-    # same as a saved profile/soul/engine -- but its config.yaml block
-    # might be gone or edited since, so this falls back to her own LLM
+    # same as a saved profile/soul/engine -- but the saved harness might be
+    # gone or edited since, so this falls back to her own LLM
     # engine rather than assuming it's still good.
     active_harness_name = harness.read_active_harness()
     harness_llm = engines.build_harness_llm(active_harness_name) if active_harness_name else None
@@ -170,20 +144,12 @@ async def main() -> None:
     # (llm.reply's blocking call, run via asyncio.to_thread) for longer
     # than that, and the library's own automatic keepalive ping/pong gave
     # up and force-closed the connection with 1011 "keepalive ping
-    # timeout" -- well before llm.client.REQUEST_TIMEOUT_SEC's own
+    # timeout" -- well before llm.REQUEST_TIMEOUT_SEC's own
     # timeout ever got a chance to fire and surface a proper error to the
     # user. Set comfortably above REQUEST_TIMEOUT_SEC so a slow-or-hung
     # LLM call gets to time out on its own terms instead of the transport
     # silently dying underneath it first.
     print(f"[brain] listening on ws://{host}:{port}")
-    # One-time: older chat logs had role-play mixed in; move it to its own folder
-    # (a copy of each changed file goes to brain/backups/ first).
-    try:
-        split = conversation.split_mixed_logs()
-        if split:
-            print(f"[brain] moved role-play out of {split} older chat log(s) into chat_logs/roleplay/")
-    except OSError as exc:
-        print(f"[brain] couldn't split role-play out of the older chat logs: {exc!r}")
     hub.spawn(health.health_check_loop())
     hub.spawn(reach_out.reach_out_loop(brain))
     hub.spawn(journal.journal_loop(brain))

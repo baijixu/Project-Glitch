@@ -20,12 +20,6 @@ call uv sync
 if errorlevel 1 exit /b 1
 popd
 
-echo Setting up renderer shell...
-pushd renderer\shell
-call uv sync
-if errorlevel 1 exit /b 1
-popd
-
 echo Setting up renderer...
 pushd renderer
 call npm install

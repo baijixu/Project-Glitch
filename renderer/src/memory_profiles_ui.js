@@ -9,12 +9,13 @@
 // only offered for the Local file: on a server, clearing means deleting her
 // whole bank or user there -- that's left to the server's own tools.
 
+import { $, Modal } from "./ui.js";
+
 const LOCAL_NAME = "Local file";
 
 export class MemoryProfilesUI {
   constructor({ send }) {
     this._send = send;
-    const $ = (id) => document.getElementById(id);
     this.selectEl = $("memory-profile-select");
     this.editButtonEl = $("edit-memory-profile-button");
     this.newButtonEl = $("new-memory-profile-button");
@@ -22,7 +23,7 @@ export class MemoryProfilesUI {
     this.errorEl = $("memory-profile-error");
     this.downloadButtonEl = $("download-memory-button");
     this.clearButtonEl = $("clear-memory-button");
-    this.backdropEl = $("memory-profile-modal-backdrop");
+    this.modal = new Modal("memory-profile-modal-backdrop");
     this.titleEl = $("memory-profile-modal-title");
     this.nameEl = $("memory-profile-name");
     this.backendEl = $("memory-profile-backend");
@@ -45,11 +46,8 @@ export class MemoryProfilesUI {
     });
     this.deleteButtonEl?.addEventListener("click", () => this._delete());
     this.backendEl?.addEventListener("change", () => this._renderBackendFields());
-    $("memory-profile-cancel-button")?.addEventListener("click", () => this.close());
+    $("memory-profile-cancel-button")?.addEventListener("click", () => this.modal.close());
     $("memory-profile-save-button")?.addEventListener("click", () => this._save());
-    this.backdropEl?.addEventListener("click", (e) => {
-      if (e.target === this.backdropEl) this.close();
-    });
     this._render();
   }
 
@@ -78,14 +76,6 @@ export class MemoryProfilesUI {
   setLocked(locked) {
     this._locked = locked;
     this._updateButtons();
-  }
-
-  isOpen() {
-    return !!this.backdropEl && !this.backdropEl.hidden;
-  }
-
-  close() {
-    if (this.backdropEl) this.backdropEl.hidden = true;
   }
 
   _render() {
@@ -122,7 +112,7 @@ export class MemoryProfilesUI {
   }
 
   _openModal(profile) {
-    if (!this.backdropEl) return;
+    if (!this.modal.el) return;
     this._editing = profile;
     this.titleEl.textContent = profile ? "Edit Memory Backend" : "New Memory Backend";
     this.backendEl.replaceChildren();
@@ -138,7 +128,7 @@ export class MemoryProfilesUI {
     this.apiKeyEl.value = profile?.api_key || "";
     this.spaceEl.value = profile?.space || "";
     this._renderBackendFields();
-    this.backdropEl.hidden = false;
+    this.modal.open();
     this.nameEl.focus();
   }
 
@@ -167,7 +157,7 @@ export class MemoryProfilesUI {
       api_key: this.apiKeyEl.value.trim(),
       space: this.spaceEl.value.trim(),
     });
-    this.close();
+    this.modal.close();
   }
 
   _delete() {

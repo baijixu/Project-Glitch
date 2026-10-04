@@ -135,7 +135,6 @@ Two independent programs and one small protocol between them:
 | A vision-capable model | Camera, screen and picture understanding |
 | An agent harness with an OpenAI-compatible endpoint, e.g. [Hermes Agent](https://github.com/NousResearch/hermes-agent) or [OpenClaw](https://docs.openclaw.ai/) | The harness mode |
 | [Tailscale](https://tailscale.com) | Reaching her securely from your phone away from home |
-| Linux only: `python3-gi` and `gir1.2-webkit2-4.1` | The optional native window (`pywebview`) |
 
 **Hardware.** The Brain runs on CPU (speech recognition is pinned to CPU on purpose). What you need is set by your LLM:
 a small quantized model runs on a modest GPU; bigger ones need more VRAM. Expect a few GB of downloads on first setup
@@ -182,8 +181,6 @@ npm run dev
 
 Go to **https://localhost:5173** in your browser. You'll see a certificate warning, because the dev server uses a
 self-signed certificate (HTTPS is required so the browser allows camera and microphone). Choose *Advanced → Continue*.
-
-Prefer a native window? With the dev server running: `cd renderer/shell && uv run launch.py`.
 
 ## First run: getting her talking
 
@@ -497,7 +494,7 @@ brain/                 Python backend (WebSocket server)
   reach_out.py         curiosity's reaching out and its countdown
   handshake.py health.py debugging.py persona.py   what a new device gets, status
                        lights, the debug log, which soul/user info apply
-  llm/                 LLM clients (OpenAI-compatible, Ollama native, agent harness)
+  llm.py               LLM clients (OpenAI-compatible, Ollama native, agent harness)
   voice/               speech-to-text and text-to-speech
   conversation.py      saving/restoring the conversation, daily chat logs
   memory.py            memory backends (local file / Hindsight / Mem0), core-fact recall
@@ -514,7 +511,6 @@ brain/                 Python backend (WebSocket server)
 renderer/              Vite + three.js front end
   src/                 brain_client.js (connection, chat box, her face and voice) and
                        one module per feature -- see the map at the top of brain_client.js
-  shell/               optional pywebview native window
   assets/Glitch.vrm    default avatar
 tools/                 backup_local_state.py
 config.example.yaml    copy to config.yaml
@@ -547,7 +543,7 @@ SPEC.md                original design notes
 Built on [three.js](https://threejs.org), [@pixiv/three-vrm](https://github.com/pixiv/three-vrm), [Vite](https://vitejs.dev),
 [faster-whisper](https://github.com/SYSTRAN/faster-whisper), [Kokoro](https://github.com/hexgrad/kokoro) and
 [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI), [Hindsight](https://pypi.org/project/hindsight-client/),
-[SearXNG](https://docs.searxng.org/), [pywebview](https://pywebview.flowrl.com), [uv](https://docs.astral.sh/uv/), and optionally
+[SearXNG](https://docs.searxng.org/), [uv](https://docs.astral.sh/uv/), and optionally
 [Hermes Agent](https://github.com/NousResearch/hermes-agent), [OpenClaw](https://docs.openclaw.ai/) and [Tailscale](https://tailscale.com).
 
 ## License

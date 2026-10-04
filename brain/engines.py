@@ -44,7 +44,7 @@ def build_llm(name: str) -> ChatBackend:
     block (DEFAULT_LLM_CONFIG) for llm_engines.NONE_NAME, or a saved
     engine's endpoint/model/api_key otherwise. Always re-primes the fresh
     instance with whatever soul/profile is currently active -- persona/
-    soul state lives on the instance itself (llm/client.py), not
+    soul state lives on the instance itself (llm.py), not
     externally, so a new instance (main.py's startup, or a live
     load_llm_engine switch) would otherwise silently drop who Glitch
     currently is. Falls back to NONE_NAME if the named engine's saved

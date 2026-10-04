@@ -26,7 +26,6 @@ brain.llm block, not a crash.
 """
 
 import asyncio
-import json
 from datetime import datetime
 from pathlib import Path
 
@@ -38,16 +37,10 @@ from hindsight_client import Hindsight
 
 MEMORY_PATH = Path(__file__).parent / "memory.md"
 MEMORY_ACTIVE_PATH = Path(__file__).parent / "memory_active.txt"
-# Before memory profiles: which backend was picked, and the one Hindsight
-# connection. Only read now, to turn them into a profile once (see migrate()).
-PROVIDER_PATH = Path(__file__).parent / "memory_provider.txt"
-HINDSIGHT_CONFIG_PATH = Path(__file__).parent / "hindsight_config.json"
 
 LOCAL_PROVIDER = "local"
 HINDSIGHT_PROVIDER = memory_profiles.HINDSIGHT
 MEM0_PROVIDER = memory_profiles.MEM0
-# The name migrate() gives the Hindsight connection saved before profiles.
-MIGRATED_HINDSIGHT_NAME = "Hindsight"
 
 # Over this many chars, the local provider's oldest entries are just
 # dropped (FIFO) rather than intelligently merged -- a deliberate
@@ -70,37 +63,8 @@ CORE_RECALL_MAX_TOKENS = 300  # the always-shown "core" facts (retain_fact / bra
 # everything -- a live bank filled up with descriptions of camera frames,
 # news headlines from searches, and endless restatements of what Glitch
 # herself is, none of which is a memory of the *user*. Applied by
-# ensure_bank() when the bank has no mission or still has an earlier default
-# of ours, so it never overwrites one someone set by hand.
-_MISSION_V1 = (
-    "Keep only durable, useful facts about the user: who they are, what they are building or "
-    "working on, their preferences and interests, people in their life, decisions they have made, "
-    "and corrections they have given the assistant. Do not keep: descriptions of images, screens "
-    "or camera frames; news headlines or search results (unless the user expressed an opinion or "
-    "interest in them); anything about the assistant itself, such as what it is or what it can do; "
-    "small talk; or temporary states and debugging chatter."
-)
-
-_MISSION_V2 = (
-    "Keep only durable, useful facts about the user: who they are, what they are building or "
-    "working on, their preferences and interests, people in their life, decisions they have made, "
-    "and corrections they have given the assistant. When the user engages with a topic (news, "
-    "sports, music, anything), record THAT they discussed it, asked about it, or how they feel about "
-    "it -- never the facts of the topic itself, such as what was announced or who won. A topic the "
-    "assistant brings up that the user never engages with is not worth keeping. Do not keep: "
-    "descriptions of images, screens or camera frames; news headlines or search results; anything "
-    "about the assistant itself, such as what it is or what it can do; small talk; or temporary "
-    "states and debugging chatter."
-)
-
-_MISSION_V2_ROLES = (
-    _MISSION_V2
-    + " In what you are given, 'User' is the human and 'Glitch' is the AI assistant, two different "
-    "beings. Attribute every statement to whoever actually said it: never record something the "
-    "assistant said, did, wore or pretended as a fact about the user, and never record the user's "
-    "name, life or traits as the assistant's."
-)
-
+# ensure_bank() when the bank has no mission, so it never overwrites one
+# someone set by hand.
 # Her memories are hers, written in her own voice: "I" is Glitch, the human is named. That
 # also lets durable things about herself (opinions, promises) be kept, which the earlier
 # missions excluded outright -- scene/role-play actions and clothing still never are.
@@ -154,8 +118,6 @@ APPROVED_FACT_CONTEXT = "Glitch's own memory, in her voice: 'I' and 'my' mean Gl
 # Earlier versions of the default above. A bank still carrying one of these
 # was never customized, so ensure_bank() upgrades it to the current default --
 # anything else there was written by hand and is left alone.
-_PREVIOUS_DEFAULT_MISSIONS = (_MISSION_V1, _MISSION_V2, _MISSION_V2_ROLES)
-
 _client: Hindsight | None = None
 _bank_id = ""
 _mem0: "Mem0Client | None" = None
@@ -190,33 +152,6 @@ def server_configured() -> bool:
     if provider == HINDSIGHT_PROVIDER:
         return hindsight_configured()
     return provider == MEM0_PROVIDER and _mem0 is not None
-
-
-def migrate(seed: dict | None = None) -> None:
-    """Once, on the first start with memory profiles: the Hindsight connection
-    saved before them (hindsight_config.json, or config.yaml's brain.hindsight
-    `seed` on a machine that never saved one) becomes the "Hindsight" profile,
-    active if Hindsight was the backend -- or if no backend was ever picked,
-    so a connection someone set up isn't left unused.
-    """
-    if memory_profiles.has_active() or memory_profiles.list_profiles():
-        return
-    try:
-        old = json.loads(HINDSIGHT_CONFIG_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        old = {}
-    old = old if isinstance(old, dict) and old.get("api_url") else (seed or {})
-    if not old.get("api_url"):
-        return
-    name = memory_profiles.save_profile(
-        MIGRATED_HINDSIGHT_NAME, HINDSIGHT_PROVIDER, old["api_url"], old.get("api_key") or "", old.get("bank_id") or ""
-    )
-    try:
-        picked = PROVIDER_PATH.read_text(encoding="utf-8").strip()
-    except OSError:
-        picked = ""
-    memory_profiles.set_active(name if picked in ("", HINDSIGHT_PROVIDER) else memory_profiles.LOCAL_NAME)
-    print(f"[memory] saved the Hindsight connection as the memory profile {name!r}")
 
 
 async def activate() -> None:
@@ -361,10 +296,9 @@ async def ensure_bank() -> None:
 
 
 async def _apply_default_retain_mission() -> None:
-    """Sets RETAIN_MISSION on the bank unless it already has a retain_mission
-    of someone's own -- one that is neither empty, nor the current default,
-    nor an earlier default of ours (those get upgraded). Same for
-    OBSERVATIONS_MISSION (set only when the bank has none). Best-effort: a
+    """Sets RETAIN_MISSION on a bank that has no retain_mission -- one already
+    there is the current default or someone's own, left alone either way. Same
+    for OBSERVATIONS_MISSION. Best-effort: a
     server that has bank-config writes disabled
     (HINDSIGHT_API_ENABLE_BANK_CONFIG_API=false) just keeps its own extraction
     behavior -- that must never stop the bank from being usable.
@@ -372,10 +306,8 @@ async def _apply_default_retain_mission() -> None:
     try:
         config = await _client.aget_bank_config(_bank_id)
         overrides = config.get("overrides") or {}
-        current = overrides.get("retain_mission")
-        if not (current and current != RETAIN_MISSION and current not in _PREVIOUS_DEFAULT_MISSIONS):
-            if current != RETAIN_MISSION:  # (otherwise written by hand -- not ours to change)
-                await _client.aupdate_bank_config(_bank_id, retain_mission=RETAIN_MISSION)
+        if not overrides.get("retain_mission"):
+            await _client.aupdate_bank_config(_bank_id, retain_mission=RETAIN_MISSION)
         if not overrides.get("observations_mission"):
             await _client.aupdate_bank_config(_bank_id, observations_mission=OBSERVATIONS_MISSION)
     except Exception as exc:

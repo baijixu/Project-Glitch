@@ -27,12 +27,10 @@ STATE_PATH = _DIR / "conversation.json"  # normal chat (the original file name, 
 ROLEPLAY_STATE_PATH = _DIR / "conversation_roleplay.json"
 LOG_DIR = _DIR / "chat_logs"
 # Role-play gets its own folder, so the two can be read and deleted separately
-# (Settings -> Chat Logs). Older logs had both in one file, role-play lines
-# tagged "(role-play)" -- split_mixed_logs() moves those out once.
+# (Settings -> Chat Logs).
 ROLEPLAY_LOG_DIR = LOG_DIR / "roleplay"
 # Her nightly journal (journal.py), read from the same Settings section.
 JOURNAL_LOG_DIR = _DIR / "self"
-BACKUP_DIR = _DIR / "backups"
 
 MAIN, ROLEPLAY, JOURNAL = "main", "roleplay", "journal"
 PICTURE_NOTE = "[picture]"
@@ -41,7 +39,7 @@ PICTURE_NOTE = "[picture]"
 def _storable(message: dict) -> dict:
     """A history message with any image replaced by PICTURE_NOTE."""
     content = message.get("content")
-    when = {"at": message["at"]} if isinstance(message.get("at"), str) else {}  # when it was said (llm/client.py)
+    when = {"at": message["at"]} if isinstance(message.get("at"), str) else {}  # when it was said (llm.py)
     if not isinstance(content, list):
         return {"role": message.get("role"), "content": content, **when}
     text = "\n".join(part.get("text", "") for part in content if part.get("type") == "text").strip()
@@ -165,51 +163,3 @@ def delete_log(mode: str, day: str) -> None:
         raise ValueError(f"there's no {mode} log for {day}")
     path.unlink()
 
-
-# Where a new entry starts in a log: a timestamped message, or a "---" /
-# "*time -- note*" marker. A message's own text can span several lines (and
-# blank lines), so everything up to the next one of these belongs to it.
-_ENTRY_START = re.compile(r"^(\*\*\d{2}:\d{2}:\d{2}\*\* |---$|\*\d{2}:\d{2}:\d{2} -- )")
-_ROLEPLAY_TAG = re.compile(r"^(\*\*\d{2}:\d{2}:\d{2}\*\* (?:You|Glitch)) \(role-play\):")
-
-
-def split_mixed_logs() -> int:
-    """One-time move of role-play lines out of older mixed logs into the
-    role-play folder (their "(role-play)" tag dropped -- the folder says it now).
-    Each file is copied to backups/ before it's changed. Returns how many files
-    were split; files with no role-play in them are left alone.
-    """
-    split = 0
-    if not LOG_DIR.exists():
-        return 0
-    for path in sorted(LOG_DIR.glob("*.md")):
-        text = path.read_text(encoding="utf-8")
-        if "(role-play):" not in text:
-            continue
-        backup = BACKUP_DIR / "chat_logs_before_roleplay_split"
-        backup.mkdir(parents=True, exist_ok=True)
-        (backup / path.name).write_text(text, encoding="utf-8")
-        header, entries, current = [], [], None
-        for line in text.split("\n"):
-            if _ENTRY_START.match(line):
-                current = [line]
-                entries.append(current)
-            elif current is None:
-                header.append(line)
-            else:
-                current.append(line)
-        main_part, roleplay_part = [], []
-        for entry in entries:
-            tagged = _ROLEPLAY_TAG.match(entry[0])
-            if tagged:
-                roleplay_part.append([_ROLEPLAY_TAG.sub(r"\1:", entry[0])] + entry[1:])
-            else:
-                main_part.append(entry)
-        path.write_text("\n".join(header + [line for e in main_part for line in e]).rstrip("\n") + "\n\n", encoding="utf-8")
-        ROLEPLAY_LOG_DIR.mkdir(parents=True, exist_ok=True)
-        target = ROLEPLAY_LOG_DIR / path.name
-        existing = target.read_text(encoding="utf-8") if target.exists() else f"# Role-play log -- {path.stem}\n\n"
-        moved = "\n".join(line for e in roleplay_part for line in e).rstrip("\n") + "\n\n"
-        target.write_text(existing + moved, encoding="utf-8")
-        split += 1
-    return split

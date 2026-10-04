@@ -104,7 +104,7 @@ def search(query: str) -> list[dict]:
     sources first, user-uploaded platforms last, SearXNG's own order kept
     within each group -- or [] if never configured or the request failed for
     any reason. Ranked across everything SearXNG returned (not just its first
-    few), so a trusted source further down can still make the cut. llm/client.py's
+    few), so a trusted source further down can still make the cut. llm.py's
     tool-calling loop turns an empty list into a plain "no results"
     message for the model rather than raising, so a flaky search backend
     degrades the answer, not the whole reply.

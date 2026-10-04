@@ -36,7 +36,7 @@ brain:
   #   # provider entirely for a plain OpenAI-compatible endpoint (LM Studio,
   #   # llama-server, or Ollama without needing think control).
   #   # provider: ollama
-  #   # think: false # only read when provider: ollama -- suppresses reasoning for models that support it (see llm/client.py's OllamaLLM)
+  #   # think: false # only read when provider: ollama -- suppresses reasoning for models that support it (see llm.py's OllamaLLM)
   # Optional -- memory servers are added in Settings -> Memory backend now
   # (Hindsight or Mem0, each with its own URL, API key and bank / user id).
   # This block is only a one-time seed: a Hindsight server here is saved as

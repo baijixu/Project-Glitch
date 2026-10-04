@@ -1,10 +1,10 @@
 """Glitch's saved LLM engines (Settings -> LLM). Each engine is one JSON file
 in llm_engines/ (see store.py) with what LocalLLM needs to connect
-(llm/client.py): `endpoint`, `model` (empty lets the server use whatever it
+(llm.py): `endpoint`, `model` (empty lets the server use whatever it
 has loaded), an optional `api_key`, and for Ollama `provider`/`think`.
 
 NONE_NAME is reserved: config.yaml's optional brain.llm block, or no LLM at
-all if that's empty -- see llm/client.py's NoneLLM for what runs then.
+all if that's empty -- see llm.py's NoneLLM for what runs then.
 """
 
 import json
@@ -31,7 +31,7 @@ set_active_engine_name = ACTIVE.write
 def save_engine(name: str, endpoint: str, model: str, api_key: str, provider: str = "openai", think: bool = False) -> None:
     """provider is "openai" (any OpenAI-compatible endpoint -- LM Studio,
     llama-server, Ollama's own /v1 compat layer) or "ollama" (Ollama's
-    *native* /api/chat -- see llm/client.py's OllamaLLM for why that
+    *native* /api/chat -- see llm.py's OllamaLLM for why that
     distinction is load-bearing: only the native API actually honors
     `think`). think is only meaningful for provider "ollama"; saved as
     given either way, so re-opening the editor doesn't lose the value.
@@ -73,9 +73,6 @@ def set_roleplay_engine(name: str) -> None:
 # (engines.build_llm) -- never written into the engine's saved settings, which
 # role-play used to overwrite (and then force back to think=True when it ended).
 ROLEPLAY_SESSION_PATH = Path(__file__).parent / "roleplay_session.json"
-# The two-line text file role-play kept before sessions existed (previous engine,
-# then the role-play engine) -- converted once at startup, see migrate_roleplay_record.
-_LEGACY_ROLEPLAY_RECORD_PATH = Path(__file__).parent / "roleplay_previous_engine.txt"
 
 
 def start_roleplay_session(previous: str, engine: str, think: bool) -> None:
@@ -96,21 +93,3 @@ def end_roleplay_session() -> dict:
     ROLEPLAY_SESSION_PATH.unlink(missing_ok=True)
     return session
 
-
-def migrate_roleplay_record() -> None:
-    """One-time: turns the old two-line record into a session. The old code had
-    already written role-play's think choice into the engine's saved settings,
-    so that's where the session's think comes from.
-    """
-    try:
-        lines = _LEGACY_ROLEPLAY_RECORD_PATH.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return
-    previous = lines[0].strip() if lines else ""
-    engine = lines[1].strip() if len(lines) > 1 else ""
-    try:
-        think = bool(read_engine(engine)["think"]) if engine else False
-    except (ValueError, OSError):
-        think = False
-    start_roleplay_session(previous, engine, think)
-    _LEGACY_ROLEPLAY_RECORD_PATH.unlink()

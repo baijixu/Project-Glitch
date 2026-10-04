@@ -2,11 +2,10 @@
 plugged into one instead of her own soul/profile/LLM engine. Each harness is
 one JSON file in harnesses/ (see store.py): `endpoint`, `model` and `api_key`
 for an OpenAI-compatible /v1/chat/completions -- e.g. Hermes Agent
-(https://github.com/NousResearch/hermes-agent). main.py's one-time migration
-seeds this list from config.yaml's older brain.harness block.
+(https://github.com/NousResearch/hermes-agent).
 
 While one is active, Brain still does STT/TTS/lipsync as usual -- only "what
-does she say" changes, to a relay through llm/client.py's HarnessLLM. Which
+does she say" changes, to a relay through llm.py's HarnessLLM. Which
 one is active is kept here, so the connection survives a Brain restart.
 """
 

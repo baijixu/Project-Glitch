@@ -4,7 +4,7 @@ top_k, min_p, presence/repeat penalty) sent with each of her replies.
 Why here and not in LM Studio/Ollama: both servers take these values on every
 request and use them over their own saved defaults for that one request, so a
 profile switch applies from her very next reply without touching the server.
-Only her replies use them (see llm/client.py's reply); the short background
+Only her replies use them (see llm.py's reply); the short background
 calls (memory/question/lesson proposals) keep the server's defaults, since
 they need predictable JSON rather than personality.
 

@@ -16,18 +16,6 @@ fi
 echo "Setting up brain..."
 (cd brain && uv sync)
 
-echo "Setting up renderer shell..."
-(cd renderer/shell && uv sync)
-
-if [ "$(uname)" = "Linux" ]; then
-    echo
-    echo "Linux note: pywebview needs the system WebKitGTK libraries --"
-    echo "pip can't install them -- on Debian/Ubuntu:"
-    echo "    sudo apt install python3-gi gir1.2-webkit2-4.1"
-    echo "See SPEC.md section 7 for other distros."
-    echo
-fi
-
 echo "Setting up renderer..."
 (cd renderer && npm install)
 

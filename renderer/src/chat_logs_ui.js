@@ -7,6 +7,8 @@
 // A log is the user's own conversation, so it's only ever put on the page as
 // text (textContent), never as HTML.
 
+import { $, Modal } from "./ui.js";
+
 const MODE_NAMES = { main: "Chat", roleplay: "Role-play", journal: "Journal" };
 // Where a new entry starts in a log -- same shape as conversation.py's _ENTRY_START.
 const MESSAGE_LINE = /^\*\*(\d{2}:\d{2}:\d{2})\*\* ([^:]+): ?(.*)$/;
@@ -15,12 +17,11 @@ const NOTE_LINE = /^\*(\d{2}:\d{2}:\d{2}) -- (.*)\*$/;
 export class ChatLogsUI {
   constructor({ send }) {
     this._send = send;
-    const $ = (id) => document.getElementById(id);
     this.modeEl = $("chat-logs-mode");
     this.dayEl = $("chat-logs-day");
     this.readButtonEl = $("chat-logs-read-button");
     this.deleteButtonEl = $("chat-logs-delete-button");
-    this.backdropEl = $("chat-log-modal-backdrop");
+    this.modal = new Modal("chat-log-modal-backdrop");
     this.titleEl = $("chat-log-modal-title");
     this.bodyEl = $("chat-log-body");
     this._days = { main: [], roleplay: [], journal: [] };
@@ -29,10 +30,7 @@ export class ChatLogsUI {
     this.dayEl?.addEventListener("change", () => this._updateButtons());
     this.readButtonEl?.addEventListener("click", () => this._read());
     this.deleteButtonEl?.addEventListener("click", () => this._delete());
-    $("chat-log-close-button")?.addEventListener("click", () => this.close());
-    this.backdropEl?.addEventListener("click", (e) => {
-      if (e.target === this.backdropEl) this.close();
-    });
+    $("chat-log-close-button")?.addEventListener("click", () => this.modal.close());
     this._render();
   }
 
@@ -60,16 +58,8 @@ export class ChatLogsUI {
     this.titleEl.textContent = `${what} -- ${_prettyDate(data.date)}`;
     // A journal entry is her own notes, not messages -- shown as written.
     this.bodyEl.replaceChildren(...(data.mode === "journal" ? _renderJournal(data.content || "") : _renderLog(data.content || "")));
-    this.backdropEl.hidden = false;
+    this.modal.open();
     this.bodyEl.scrollTop = 0;
-  }
-
-  close() {
-    if (this.backdropEl) this.backdropEl.hidden = true;
-  }
-
-  isOpen() {
-    return !!this.backdropEl && !this.backdropEl.hidden;
   }
 
   _render() {

@@ -2,7 +2,7 @@
 learned from thumbs up/down on her replies and fed back into her prompt.
 
 Not weight training -- a lesson is just a rule that gets added to her system
-prompt each turn (llm/client.py's set_lessons), so a change takes effect on
+prompt each turn (llm.py's set_lessons), so a change takes effect on
 her very next reply and every lesson is visible, editable and reversible.
 Her soul (soul.md) is never touched; lessons sit alongside it.
 

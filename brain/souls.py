@@ -18,7 +18,7 @@ Two separate files, never mixed up:
 
 They used to be one file (soul.md), so loading a role-play soul silently
 overwrote her permanent personality -- keeping them apart is the point.
-Either way, the personality replaces llm/client.py's DEFAULT_PERSONALITY,
+Either way, the personality replaces llm.py's DEFAULT_PERSONALITY,
 and the mood-tag instruction stays fixed underneath whichever is active,
 since the Renderer's expression system depends on it regardless of who
 Glitch is currently supposed to be.

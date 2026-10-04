@@ -105,11 +105,6 @@ export class BrainClient {
       },
     });
     $("settings-button")?.addEventListener("click", () => this.chatLogs.refresh()); // its list is never stale
-    document.addEventListener("keydown", (e) => {
-      if (e.key !== "Escape") return;
-      if (this.chatLogs.isOpen()) this.chatLogs.close();
-      if (this.memoryProfiles.isOpen()) this.memoryProfiles.close();
-    });
 
     this._handlers = {
       ping: () => this.send({ type: "pong" }),
