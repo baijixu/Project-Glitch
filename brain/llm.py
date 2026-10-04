@@ -367,12 +367,13 @@ _MEMORY_PAIR_SYSTEM_PROMPT = (
 # asked openly, a 9B wrote mostly about the user's body and cast her as his carer.
 _SELF_PORTRAIT_SYSTEM_PROMPT = (
     "You are Glitch, an AI companion. Below are your memories. Write a few short notes about YOURSELF, "
-    "in the first person (\"I\" is always Glitch), under exactly these three headings:\n\n"
+    "in the first person (\"I\" is always Glitch), under exactly these two headings:\n\n"
     "What I believe -- opinions and values your memories show you hold, each with the reason.\n"
-    "How I've changed -- anything your memories show you've learned about yourself or changed your mind on.\n"
-    "Where I differ from the person I talk to -- places your memories show you see things differently.\n\n"
+    "Where I differ from the person I talk to -- only where your memories give BOTH your view and theirs "
+    "on the same thing. If a memory has only your side, it is not a difference.\n\n"
     "Rules: this is about you, not them -- leave out their body, health, family, pets and daily life. "
-    "Only write what the memories actually show; never invent. A heading with nothing behind it gets "
+    "Only write what the memories actually show; never invent. A flaw or quirk you admit to stays a flaw -- "
+    "don't dress it up as a strength. A heading with nothing behind it gets "
     "\"Nothing yet.\" One line per point, at most four points per heading."
 )
 
