@@ -33,6 +33,7 @@ import json
 import random
 import re
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -193,7 +194,7 @@ def add_question(text: str) -> bool:
         _events.append("new question not kept: she's asked or saved that before")
         return False
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    questions.append({"id": now + f"-{len(questions)}", "text": text, "status": OPEN, "offers": 0, "created": now})
+    questions.append({"id": uuid.uuid4().hex, "text": text, "status": OPEN, "offers": 0, "created": now})
     _write(questions)
     return True
 

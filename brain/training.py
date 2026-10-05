@@ -21,6 +21,7 @@ gitignored.
 
 import json
 import re
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -105,7 +106,7 @@ def add_pending(fact: str, source: str = "") -> dict | None:
     if _norm(fact) in {_norm(p["fact"]) for p in pending}:
         return None
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    item = {"id": f"{now}-{len(pending)}", "fact": fact, "source": source.strip()[:200], "created": now}
+    item = {"id": uuid.uuid4().hex, "fact": fact, "source": source.strip()[:200], "created": now}
     pending.append(item)
     _write(pending)
     return item
