@@ -170,6 +170,7 @@ async def activate_memory() -> str:
 @hub.handles(protocol.SET_MEMORY_ACTIVE)
 async def _set_memory_active(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     memory.set_memory_active(bool(data.get("active")))
+    await hub.broadcast(protocol.memory_state(memory.read_memory_active()))
 
 
 @hub.handles(protocol.CLEAR_MEMORY)

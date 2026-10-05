@@ -162,8 +162,9 @@ def debug_event(category: str, message: str, ms: float | None = None) -> dict:
     return payload
 
 
-def speak_text(text: str) -> dict:
-    return {"type": SPEAK_TEXT, "text": text}
+def speak_text(text: str, reach_out: bool = False) -> dict:
+    """`reach_out`: she spoke first -- not the reply a device may be waiting for."""
+    return {"type": SPEAK_TEXT, "text": text, **({"reach_out": True} if reach_out else {})}
 
 
 def speak_audio(audio_b64: str, sample_rate: int) -> dict:

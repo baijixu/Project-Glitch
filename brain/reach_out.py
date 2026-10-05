@@ -102,6 +102,7 @@ async def broadcast_curiosity_timer(only_if_changed: bool = False) -> None:
 @hub.handles(protocol.SET_CURIOSITY_ACTIVE)
 async def _set_curiosity_active(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     curiosity.set_active(bool(data.get("active")))
+    await hub.broadcast(protocol.curiosity_state(curiosity.read_active()))
     await broadcast_curiosity_timer()
 
 
@@ -153,7 +154,7 @@ async def _reach_out(brain: Brain, *, test: bool = False) -> None:
         f"to {len(hub.RENDERER_CONNECTIONS)} device(s))",
     )
     await hub.broadcast(protocol.set_expression(mood, 1.0))
-    await hub.broadcast(protocol.speak_text(text))
+    await hub.broadcast(protocol.speak_text(text, reach_out=True))
     conversation.log_reach_out(text)
     if not voice_settings.read_voice_active() or isinstance(brain.tts, NoneTTS):
         return

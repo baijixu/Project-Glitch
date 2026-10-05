@@ -112,7 +112,8 @@ export class BrainClient {
       speak_text: (data) => {
         this._pendingSpeakText = data.text;
         this.history.add("glitch", data.text);
-        this._replyArrived(`reply received (${data.text.length} chars)`);
+        // Her reaching out isn't the answer this device may be waiting for.
+        if (!data.reach_out) this._replyArrived(`reply received (${data.text.length} chars)`);
       },
       // Sent instead of speak_text when she had nothing to say (a blank voice
       // message, an empty reply) -- said so, rather than looking broken.
@@ -439,10 +440,15 @@ export class BrainClient {
     const source = this.audioContext.createBufferSource();
     source.buffer = audioBuffer;
     source.connect(this.audioContext.destination);
+    // A new reply cuts off one still playing, instead of the two talking over each other.
+    const previous = this._source;
+    this._source = source;
+    previous?.stop();
     this.playbackStartTime = this.audioContext.currentTime;
     this.lipSyncActive = true;
     this._startSubtitleStream(this._pendingSpeakText, audioBuffer.duration);
     source.onended = () => {
+      if (this._source !== source) return; // cut off by a newer one, which is still talking
       this.lipSyncActive = false;
       this.vrm.expressionManager?.setValue("aa", 0);
       this._resetMoodImmediate();

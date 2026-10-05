@@ -43,11 +43,13 @@ LESSON_PROMPT_TIMEOUT_SEC = 5
 @hub.handles(protocol.SET_VOICE_ACTIVE)
 async def _set_voice_active(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     voice_settings.set_voice_active(bool(data.get("active")))
+    await hub.broadcast(protocol.voice_state(voice_settings.read_voice_active()))
 
 
 @hub.handles(protocol.SET_WEB_SEARCH_ACTIVE)
 async def _set_web_search_active(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     web_search.set_active(bool(data.get("active")))
+    await hub.broadcast(protocol.web_search_state(web_search.read_active()))
 
 
 @hub.handles(protocol.USER_TEXT)
