@@ -197,13 +197,15 @@ async def _save_avatar(websocket: websockets.ServerConnection, data: dict, brain
         return
     try:
         avatar_bytes = base64.b64decode(data_b64)
-        avatars.save_avatar(name, avatar_bytes, kind)
+        saved = avatars.save_avatar(name, avatar_bytes, kind)
     except (ValueError, OSError) as exc:
         print(f"[brain] couldn't save avatar {name!r}: {exc!r}")
         return
-    avatars.set_active_avatar(name)
-    print(f"[brain] saved and activated avatar {name!r} ({kind}, {len(avatar_bytes)} bytes)")
-    await hub.send(websocket, protocol.avatars(avatars.list_avatars()))
+    avatars.set_active_avatar(saved)
+    print(f"[brain] saved and activated avatar {saved!r} ({kind}, {len(avatar_bytes)} bytes)")
+    # `renamed`: the Renderer shows the file's own name until told the one it was saved
+    # under ("my.avatar" -> "myavatar"). Every device, so their lists stay in step.
+    await hub.broadcast(protocol.avatars_changed(avatars.list_avatars(), renamed={"from": name, "to": saved}))
 
 
 @hub.handles(protocol.LOAD_AVATAR)

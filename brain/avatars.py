@@ -52,7 +52,8 @@ def list_avatars() -> list[dict]:
     return sorted(entries, key=lambda e: e["name"])
 
 
-def save_avatar(name: str, data: bytes, kind: str) -> None:
+def save_avatar(name: str, data: bytes, kind: str) -> str:
+    """Returns the name it was saved under (sanitized)."""
     if kind not in AVATAR_KINDS:
         raise ValueError(f"unknown avatar kind {kind!r}")
     AVATARS_DIR.mkdir(exist_ok=True)
@@ -67,6 +68,7 @@ def save_avatar(name: str, data: bytes, kind: str) -> None:
         if other_kind != kind:
             (AVATARS_DIR / f"{safe_name}.{other_kind}").unlink(missing_ok=True)
     (AVATARS_DIR / f"{safe_name}.{kind}").write_bytes(data)
+    return safe_name
 
 
 def read_avatar(name: str) -> tuple[bytes, str]:

@@ -102,7 +102,13 @@ export class AvatarsUI {
   // already here), then saved to Brain.
   async _import(file, kind) {
     const buffer = await file.arrayBuffer();
-    this._onAvatarSwap?.(buffer, kind);
+    try {
+      await this._onAvatarSwap?.(buffer, kind);
+    } catch (err) {
+      // Not saved: a broken file made active left every later load stuck on "Loading avatar...".
+      this._app.log("avatar", `import failed: ${err.message || err}`);
+      return this._app.flashStatus(`Couldn't load that ${kind.toUpperCase()} file`, 4000);
+    }
     const name = file.name.replace(new RegExp(`\\.${kind}$`, "i"), "");
     this.active = name;
     this._render(this._saved);
