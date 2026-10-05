@@ -7,6 +7,7 @@ time across every device, so Stop can cancel them.
 
 import asyncio
 import errno
+import hmac
 import json
 import time
 
@@ -231,7 +232,8 @@ async def _authenticate(websocket: websockets.ServerConnection, auth_token: str 
     except json.JSONDecodeError:
         _record_auth_failure(ip)
         return False
-    if data.get("type") != protocol.READY or data.get("token") != auth_token:
+    token = str(data.get("token") or "").encode()
+    if data.get("type") != protocol.READY or not hmac.compare_digest(token, auth_token.encode()):
         _record_auth_failure(ip)
         return False
     _AUTH_FAILURES.pop(ip, None)
