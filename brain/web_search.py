@@ -116,7 +116,8 @@ def search(query: str) -> list[dict]:
         response.raise_for_status()
         results = response.json().get("results") or []
     except Exception as exc:
-        print(f"[web_search] search failed for {query!r}: {exc!r}")
+        # No query or URL: a "failed" line is copied into the debug log, which never carries what was said.
+        print(f"[web_search] search failed: {type(exc).__name__}")
         return []
     print(f"[web_search] {query!r} -> {len(results)} result(s)")
     ranked = [
