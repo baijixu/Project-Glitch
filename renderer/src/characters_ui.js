@@ -38,8 +38,8 @@ export class CharactersUI {
     this.engineSelectEl = $("roleplay-engine-select");
     this.confirmThinkEl = $("roleplay-confirm-think-toggle");
     this.confirmModal = new Modal("roleplay-confirm-modal-backdrop");
-    // On until Brain's roleplay_state says otherwise (profiles.py's default).
-    this.active = true;
+    // Off until Brain's roleplay_state says otherwise (profiles.py's default).
+    this.active = false;
     this._engine = ""; // "" = keep her current engine (llm_engines.read_roleplay_engine)
     this._engineNames = [];
     this._locked = false;

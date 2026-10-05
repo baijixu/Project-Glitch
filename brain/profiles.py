@@ -155,10 +155,10 @@ def set_roleplay_active(active: bool) -> None:
 
 
 def read_roleplay_active() -> bool:
-    """Defaults to True (role-play on) when never explicitly set -- matches
-    this feature's pre-existing behavior, where a profile in user.md was
-    always applied with no way to turn it off.
+    """Defaults to False (role-play off) when never explicitly set -- it used to
+    default on, so a fresh install started in role-play with her memory, user.md,
+    lessons and curiosity all silently paused.
     """
     if ROLEPLAY_ACTIVE_PATH.exists():
         return ROLEPLAY_ACTIVE_PATH.read_text(encoding="utf-8").strip() != "0"
-    return True
+    return False
