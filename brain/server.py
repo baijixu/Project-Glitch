@@ -96,6 +96,9 @@ async def handle_renderer(websocket: websockets.ServerConnection, brain: Brain, 
                 task = asyncio.create_task(_run_reply_message(websocket, raw, brain))
                 reply_tasks.add(task)
                 task.add_done_callback(reply_tasks.discard)
+            elif msg_type in _WAITS_FOR_REPLY_TYPES:
+                # Not a reply, so Stop doesn't cancel it -- it just goes after the one running.
+                hub.spawn(_run_reply_message(websocket, raw, brain))
             else:
                 # A handler that raises (a bug, or a message with a missing or
                 # wrong-typed field) is logged and the connection carries on --
@@ -141,6 +144,21 @@ def _record_auth_failure(ip: str) -> None:
 
 
 _REPLY_MESSAGE_TYPES = {protocol.USER_TEXT, protocol.USER_AUDIO, protocol.REGENERATE_LAST}
+
+# Messages that change her mode, engine, persona or history. Run mid-reply, they
+# swapped the conversation under the model call: a role-play reply landed in her
+# real conversation, chat log and memory. So they wait for the reply in progress.
+_WAITS_FOR_REPLY_TYPES = {
+    protocol.SET_ROLEPLAY_ACTIVE,
+    protocol.LOAD_LLM_ENGINE,
+    protocol.SET_HARNESS_ACTIVE,
+    protocol.LOAD_SOUL,
+    protocol.LOAD_PROFILE,
+    protocol.DELETE_SOUL,
+    protocol.DELETE_PROFILE,
+    protocol.DELETE_LLM_ENGINE,
+    protocol.DELETE_HARNESS,
+}
 
 
 def _peek_message_type(raw: str) -> str | None:
