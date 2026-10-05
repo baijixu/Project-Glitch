@@ -445,16 +445,25 @@ def _describe(action: dict) -> str:
 async def resolve_pending(proposal_id: str, approve: bool) -> str | None:
     """The user's answer to a queued proposal. Removes it either way;
     applies it only on approve. Returns the applied description, or None if
-    rejected/unknown.
+    rejected/unknown. An approval that can't reach Hindsight stays queued -- it
+    used to be dropped first and lost.
     """
-    pending = read_pending()
-    proposal = next((p for p in pending if p["id"] == proposal_id), None)
+    proposal = next((p for p in read_pending() if p["id"] == proposal_id), None)
     if proposal is None:
         return None
-    _write_json(PENDING_PATH, [p for p in pending if p["id"] != proposal_id])
-    if not approve:
-        return None
-    return await _apply(proposal)
+    applied = None
+    if approve:
+        try:
+            applied = await _apply(proposal)
+        except LookupError:
+            _drop_pending(proposal_id)  # its lesson is gone -- nothing left to approve
+            raise
+    _drop_pending(proposal_id)
+    return applied
+
+
+def _drop_pending(proposal_id: str) -> None:
+    _write_json(PENDING_PATH, [p for p in read_pending() if p["id"] != proposal_id])
 
 
 # -- State for the Settings panel ---------------------------------------------
