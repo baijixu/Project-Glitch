@@ -10,9 +10,9 @@ Three parts. The first two feed the prompt LocalLLM builds each turn:
   The answer goes through memory like anything else (memory review, when
   training is on), with her question alongside it for context -- see
   answered_question(). A question is never kept or asked twice.
-* Reaching out -- after an hour with no message from the user, she speaks
+* Reaching out -- after 15 to 60 minutes (random) with no message from the user, she speaks
   first, once (reach_out.py's _reach_out_loop; should_reach_out here). If he
-  doesn't reply she stays quiet; his next message starts the hour again.
+  doesn't reply she stays quiet; his next message starts a new wait.
   She uses a question from the open list if there is one.
 
 There is no list of forbidden topics: the user was clear he doesn't mind what
@@ -30,6 +30,7 @@ so with frequent restarts she rarely got as far as thinking up a new question.
 """
 
 import json
+import random
 import re
 import time
 from datetime import datetime, timezone
@@ -46,7 +47,7 @@ MAX_QUESTION_CHARS = 200
 OFFER_EVERY_TURNS = 6  # at least this many of the user's messages between questions she's nudged to ask
 PROPOSE_EVERY_TURNS = 8  # how often the background "what am I curious about?" call runs
 MAX_OFFERS_UNUSED = 3  # closed unasked if offered this many times and she never worked it in
-REACH_OUT_AFTER_SEC = 60 * 60  # an hour with no message from him before she speaks first
+REACH_OUT_AFTER_SEC = (15 * 60, 60 * 60)  # quiet from him before she speaks first: a random wait in this range, new each time he speaks
 _STOPWORDS = frozenset(
     "the a an and or of to in on at for with your you you're youre is are was were be do does did it its this that "
     "what whats how when where which who why about into from more been have has had will would could can just like "
@@ -97,7 +98,7 @@ _answered: str = ""  # the question his current message is answering, if she ask
 
 
 def _pacing() -> dict:
-    """{turns_since_offer, turns_since_propose, last_user_at, reached_out} -- kept on
+    """{turns_since_offer, turns_since_propose, last_user_at, reached_out, wait_sec} -- kept on
     disk so a Brain restart doesn't reset them. A fresh start is ready to offer a
     question right away (the first one needn't wait)."""
     try:
@@ -109,6 +110,7 @@ def _pacing() -> dict:
     data.setdefault("turns_since_propose", 0)
     data.setdefault("last_user_at", None)
     data.setdefault("reached_out", False)
+    data.setdefault("wait_sec", REACH_OUT_AFTER_SEC[1])
     return data
 
 
@@ -326,21 +328,22 @@ def answered_question() -> str:
 
 
 def note_user_message(now: float) -> None:
-    """He said something: the hour starts again, and she may reach out once more."""
+    """He said something: a new random wait starts, and she may reach out once more."""
     pacing = _pacing()
     pacing["last_user_at"] = now
     pacing["reached_out"] = False
+    pacing["wait_sec"] = random.randint(*REACH_OUT_AFTER_SEC)
     _save_pacing(pacing)
 
 
 def restart_quiet_hour(now: float) -> None:
     """Clear Chat: whatever she said to reach out is gone from the conversation,
-    so she's no longer waiting on a reply to it -- the hour starts again now."""
+    so she's no longer waiting on a reply to it -- a new wait starts now."""
     note_user_message(now)
 
 
 def should_reach_out(now: float) -> bool:
-    """True once an hour has passed since his last message and she hasn't reached
+    """True once her wait has passed since his last message and she hasn't reached
     out since. Nothing to measure from yet (a fresh install) starts the clock now.
     """
     pacing = _pacing()
@@ -348,7 +351,7 @@ def should_reach_out(now: float) -> bool:
         pacing["last_user_at"] = now
         _save_pacing(pacing)
         return False
-    return not pacing["reached_out"] and now - pacing["last_user_at"] >= REACH_OUT_AFTER_SEC
+    return not pacing["reached_out"] and now - pacing["last_user_at"] >= pacing["wait_sec"]
 
 
 def reach_out_due() -> float | None:
@@ -357,7 +360,7 @@ def reach_out_due() -> float | None:
     pacing = _pacing()
     if pacing["reached_out"]:
         return None
-    return (pacing["last_user_at"] or time.time()) + REACH_OUT_AFTER_SEC
+    return (pacing["last_user_at"] or time.time()) + pacing["wait_sec"]
 
 
 def question_to_reach_out_with() -> dict | None:

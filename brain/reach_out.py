@@ -1,4 +1,4 @@
-"""Curiosity's speaking-first half: after an hour of quiet she reaches out
+"""Curiosity's speaking-first half: after a quiet spell (15-60 minutes, random) she reaches out
 once (_reach_out_loop), the Settings countdown to it, its Test button, and
 proposing questions she might ask after a reply.
 """
@@ -52,7 +52,7 @@ REACH_OUT_CHECK_SEC = 60  # how often the reach-out loop looks at the clock
 
 
 async def reach_out_loop(brain: Brain) -> None:
-    """Curiosity's third part: after an hour with no message from him, she speaks
+    """Curiosity's third part: after a random 15-60 minutes with no message from him, she speaks
     first -- once, until he replies (brain/curiosity.py's should_reach_out). Only
     for her own LLM (not a harness), with curiosity on, role-play off, a device
     connected to hear it, and no reply already in progress.
@@ -108,7 +108,7 @@ async def _set_curiosity_active(websocket: websockets.ServerConnection, data: di
 @hub.handles(protocol.TEST_REACH_OUT)
 async def _test_reach_out(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     """Settings -> Curiosity's Test button: she reaches out right now, the same
-    way she would after an hour (a check-in -- her saved questions are kept for
+    way she would after a quiet spell (a check-in -- her saved questions are kept for
     the real thing), and then waits for a reply like after any reach-out.
     """
     problem = ""
@@ -136,7 +136,7 @@ async def _reach_out(brain: Brain, *, test: bool = False) -> None:
     brain.llm.set_user_info(persona.effective_user_info())
     brain.llm.set_sampling(sampling.active_values())
     brain.llm.set_curiosity("")  # the reach-out note carries its own instruction
-    print("[brain] an hour of quiet -- reaching out" + (f" with {question['text']!r}" if question else ""))
+    print("[brain] a quiet spell -- reaching out" + (f" with {question['text']!r}" if question else ""))
     try:
         result = await asyncio.to_thread(brain.llm.reach_out, question["text"] if question else None)
         text, mood = result.text, result.mood
@@ -144,11 +144,11 @@ async def _reach_out(brain: Brain, *, test: bool = False) -> None:
         curiosity.mark_reached_out(question["id"] if question else None)
         await broadcast_curiosity_timer()
     if not text:
-        await hub.debug_broadcast("curiosity", "tried to reach out after an hour of quiet, but the model said nothing")
+        await hub.debug_broadcast("curiosity", "tried to reach out after a quiet spell, but the model said nothing")
         return
     await hub.debug_broadcast(
         "curiosity",
-        f"reached out {'(test from Settings)' if test else 'after an hour of quiet'} "
+        f"reached out {'(test from Settings)' if test else 'after a quiet spell'} "
         f"({'with a saved question' if question else 'a check-in'}, {len(text)} chars, "
         f"to {len(hub.RENDERER_CONNECTIONS)} device(s))",
     )

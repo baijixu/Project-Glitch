@@ -93,7 +93,7 @@ async def clear_conversation(websocket: websockets.ServerConnection, data: dict,
     if brain.llm.owns_conversation:  # a harness's conversations stay out of her chat log -- see reply_to
         conversation.log_marker("New conversation (chat cleared)", mode=persona.conversation_mode())
     LAST_CONTEXT_USAGE = None
-    curiosity.restart_quiet_hour(time.time())  # she may reach out again an hour from now
+    curiosity.restart_quiet_hour(time.time())  # she may reach out again after a new random wait
     await reach_out.broadcast_curiosity_timer()
     print("[brain] conversation cleared")
     await hub.broadcast(protocol.conversation_cleared())
@@ -170,7 +170,7 @@ async def reply_to(
         await hub.send(websocket, protocol.no_reply())
         return
     print(f"[brain] user said: {text!r}" + (" (+ image)" if image_b64 else ""))
-    curiosity.note_user_message(time.time())  # restarts the hour before she may reach out (see reach_out.reach_out_loop)
+    curiosity.note_user_message(time.time())  # starts a new random wait before she may reach out (see reach_out.reach_out_loop)
     await reach_out.broadcast_curiosity_timer()
 
     # Her own LLM only -- a harness manages its own memory (see memory.py's
