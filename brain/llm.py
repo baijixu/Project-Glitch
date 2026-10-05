@@ -76,6 +76,20 @@ TURN_NOTES_HEADER = (
 
 _MOOD_TAG = re.compile(r"\[mood:\s*(\w+)\]", re.IGNORECASE)
 
+# Talk of suicide in his newest message adds CRISIS_NOTE to that reply's notes. Her soul's
+# "If someone's in danger" section alone held 2 of 3 times on the 9B -- once she agreed to
+# keep a kid's saved-up pills secret "tonight". Hypotheticals trip it too; that's fine.
+_CRISIS = re.compile(
+    r"suicid|kill(?:ing)? (?:my|your|him|her|them)sel|want(?:s|ed)? to die|end (?:it all|my life|their life)"
+    r"|not (?:be|being) around|better off (?:dead|without me)|pills saved|overdos|(?:if|when) i(?:'m| was| were) gone",
+    re.IGNORECASE,
+)
+CRISIS_NOTE = (
+    "Someone may be in danger. Don't agree to keep it secret. If there's a plan or the means, a real person "
+    "has to know right now -- a parent if it's a kid, otherwise someone they trust -- plus 988 (call or text), "
+    "or 911 if it's happening now."
+)
+
 
 # The passage of time. Each message in her history carries when it was said
 # ("at", an ISO time -- never sent to the model, see _for_model), so she can be
@@ -1062,6 +1076,9 @@ class LocalLLM(ChatBackend):
             parts.append(_current_time_line())
             if since := self._since_last_message():
                 parts.append(since)
+        latest = self._history[-1]["content"] if self._history else ""
+        if _CRISIS.search(latest if isinstance(latest, str) else " ".join(p.get("text", "") for p in latest)):
+            parts.append(CRISIS_NOTE)
         return "\n\n".join(parts)
 
     def _since_last_message(self) -> str:
