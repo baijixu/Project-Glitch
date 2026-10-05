@@ -27,6 +27,7 @@ from openai import OpenAI
 import protocol
 
 ENVELOPE_WINDOW_MS = 30
+TTS_TIMEOUT_SEC = 120  # ponytail: a guess with room for a long reply on a CPU engine; raise if real replies hit it
 
 # The LLM's replies routinely include emoji (it's instructed to be
 # conversational, not told to avoid them) -- Kokoro doesn't skip them, it
@@ -117,7 +118,9 @@ class RemoteTTS:
     def __init__(
         self, endpoint: str, api_key: str | None = None, voice: str = DEFAULT_VOICE, model: str = DEFAULT_MODEL
     ) -> None:
-        self._client = OpenAI(base_url=endpoint, api_key=api_key or "not-needed")
+        # The client's defaults (600 s, 2 retries) let a hung engine hold the reply
+        # queue for ~30 minutes -- every device and her reaching out waited on it.
+        self._client = OpenAI(base_url=endpoint, api_key=api_key or "not-needed", timeout=TTS_TIMEOUT_SEC, max_retries=0)
         self._voice = voice
         self._model = model
         # Corrected in synthesize() once real audio comes back -- the
