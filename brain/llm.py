@@ -483,7 +483,7 @@ def _run_web_search_tool(arguments: dict) -> str:
     )
 
 
-def _reply_content(message) -> str:
+def _reply_content(content: str | None) -> str:
     """Returns the model's actual reply text -- `content` only, deliberately
     never `reasoning_content`.
 
@@ -509,7 +509,7 @@ def _reply_content(message) -> str:
     thinking into `content` itself, ending it with "</think>" -- only what
     comes after the last one is her reply.
     """
-    return (message.content or "").rsplit("</think>", 1)[-1].strip()
+    return (content or "").rsplit("</think>", 1)[-1].strip()
 
 
 _TEXT_TOOL_CALL = re.compile(r"<function=([\w.-]+)>(.*?)</function>", re.DOTALL)
@@ -770,7 +770,7 @@ class LocalLLM(ChatBackend):
             except ValueError:
                 arguments = {}
             tool_calls.append({"id": call.id, "name": call.function.name, "arguments": arguments})
-        content, raw_message = _reply_content(message), message.model_dump(exclude_none=True)
+        content, raw_message = _reply_content(message.content), message.model_dump(exclude_none=True)
         if tools and not tool_calls and (tool_calls := _text_tool_calls(content)):
             # Written out as text instead -- run it like a real one, and never show it.
             content = ""
@@ -1540,7 +1540,7 @@ class OllamaLLM(LocalLLM):
             # message back up with the call that asked for it).
             tool_calls.append({"id": f"call_{i}", "name": function.get("name", ""), "arguments": function.get("arguments") or {}})
         return {
-            "content": (message.get("content") or "").strip(),
+            "content": _reply_content(message.get("content")),
             "tool_calls": tool_calls,
             "raw_message": message,
             "usage": {"prompt": body.get("prompt_eval_count"), "completion": body.get("eval_count")},
@@ -1614,7 +1614,7 @@ class HarnessLLM(ChatBackend):
             max_tokens=MAX_REPLY_TOKENS,
             **self._session_args(),
         )
-        mood, text = _extract_mood(_reply_content(response.choices[0].message))
+        mood, text = _extract_mood(_reply_content(response.choices[0].message.content))
         return Reply(text=text, mood=mood)
 
     def _session_args(self) -> dict:
