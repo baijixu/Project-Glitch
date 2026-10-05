@@ -354,8 +354,12 @@ export class Capture {
   // Always-On the button is just a listening light.)
   async _startRecording() {
     if (this._alwaysOn || this.mediaRecorder?.state === "recording") return;
+    this._held = true;
     const stream = await this._openMic("");
     if (!stream) return;
+    // Let go before the mic opened (always, behind the first permission prompt):
+    // recording now would never be stopped.
+    if (!this._held || this.mediaRecorder?.state === "recording") return stream.getTracks().forEach((track) => track.stop());
     this._record(stream, () => {
       stream.getTracks().forEach((track) => track.stop());
       this._sendRecording();
@@ -365,6 +369,7 @@ export class Capture {
   }
 
   _stopRecording() {
+    this._held = false;
     if (this._alwaysOn || this.mediaRecorder?.state !== "recording") return;
     this.mediaRecorder.stop();
     this.micButtonEl?.classList.remove("recording");
@@ -415,10 +420,11 @@ export class Capture {
 
   // Every MIC_VAD_POLL_MS: starts recording when the volume crosses the
   // threshold, and sends once it's stayed under it for MIC_VAD_SILENCE_MS. Not
-  // while she's still answering the last one (like the button being disabled).
+  // while she's still answering the last one (like the button being disabled),
+  // nor while she's speaking -- her voice from the speakers would start a recording.
   _pollVad() {
     const listening = this._alwaysOn;
-    if (!listening || !this._app.canSendReply()) return;
+    if (!listening || !this._app.canSendReply() || this._app.lipSyncActive) return;
     const data = new Uint8Array(listening.analyser.fftSize);
     listening.analyser.getByteTimeDomainData(data);
     let sumSquares = 0;
