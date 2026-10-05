@@ -259,7 +259,7 @@ async def _propose_memory(
     # went in before, and a 9B filed her own answers under its likes: her "I've got
     # a thing for the Bronze Age" came back as Josh's, 5 of 5, because it lists history.
     profile = persona.effective_user_info()
-    name = re.search(r"name\s*(?::|is)\s*([^\n.,]+)", profile, re.IGNORECASE)
+    name = persona.user_name()
     # ponytail: guessed from the profile's wording; an explicit pronouns line if this guesses wrong.
     if re.search(r"\b(female|woman)\b", profile, re.IGNORECASE):
         pronouns = ("her", "she")
@@ -270,7 +270,7 @@ async def _propose_memory(
     known = "\n".join(
         part
         for part in (
-            f"The human is called {name.group(1).strip()}." if name else "",
+            f"The human is called {name}." if name else "",
             brain.llm.memory_block,
             *(f"- {p['fact']}" for p in training.read_pending()),
         )
@@ -278,7 +278,7 @@ async def _propose_memory(
     )
     try:
         raw = await asyncio.to_thread(
-            brain.llm.propose_memory, user_text, reply_text, known, asked, name.group(1).strip() if name else "", pronouns
+            brain.llm.propose_memory, user_text, reply_text, known, asked, name, pronouns
         )
     except Exception as exc:
         await hub.debug_log(websocket, "training", f"memory proposal failed: {exc!r}", (time.monotonic() - start) * 1000)

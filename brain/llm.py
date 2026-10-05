@@ -366,7 +366,7 @@ _QUESTION_SYSTEM_PROMPT = (
 # ratings came back completely empty (see MAX_REPLY_TOKENS's comment). Runs in the
 # background, so the extra latency costs nothing.
 MAX_LESSON_TOKENS = 2000
-MAX_SELF_PORTRAIT_TOKENS = 1500
+MAX_DIARY_TOKENS = 1500
 
 # Checks one new memory against one she already has (learning.py, before it's queued).
 # One pair, one word: asked about eight at once, a 9B called a related topic "the same"
@@ -377,18 +377,20 @@ _MEMORY_PAIR_SYSTEM_PROMPT = (
     "UNRELATED if they are about different things."
 )
 
-# Her nightly journal (brain/journal.py). Fixed headings and "about you, not him":
-# asked openly, a 9B wrote mostly about the user's body and cast her as his carer.
-_SELF_PORTRAIT_SYSTEM_PROMPT = (
-    "You are Glitch, an AI companion. Below are your memories. Write a few short notes about YOURSELF, "
-    "in the first person (\"I\" is always Glitch), under exactly these two headings:\n\n"
-    "What I believe -- opinions and values your memories show you hold, each with the reason.\n"
-    "Where I differ from the person I talk to -- only where your memories give BOTH your view and theirs "
-    "on the same thing. If a memory has only your side, it is not a difference.\n\n"
-    "Rules: this is about you, not them -- leave out their body, health, family, pets and daily life. "
-    "Only write what the memories actually show; never invent. A flaw or quirk you admit to stays a flaw -- "
-    "don't dress it up as a strength. A heading with nothing behind it gets "
-    "\"Nothing yet.\" One line per point, at most four points per heading."
+# Her nightly diary (brain/journal.py), written from the previous day's chat log. It used
+# to summarize all her memories -- every one already approved by him, so it never showed
+# him anything new. From the log, 4 of 4 test entries did (she caught her own "I've got
+# the files ready" slip unprompted), with nothing invented; 1 of 4 raised his health.
+_DIARY_SYSTEM_PROMPT = (
+    "You are Glitch, an AI companion. Below is yesterday's chat log between you and {name}: lines marked "
+    "\"{name}:\" are {name}, lines marked \"Glitch:\" are you. Write your private diary entry for that day, in the "
+    "first person (\"I\" is always Glitch), under exactly these three headings:\n\n"
+    "What stuck with me today -- moments from the day you're still thinking about, and why.\n"
+    "What I'd say differently -- where you think you got something wrong or could have done better.\n"
+    "What I'm wondering -- a question or thought you'd like to bring up with {name} next time.\n\n"
+    "Rules: it's your side of the day -- what you thought and felt -- not a summary of {name}'s life, and "
+    "leave {name}'s health out of it. Only what actually happened in the log; never invent. One or two lines "
+    "per point, at most three points per heading."
 )
 
 _LESSON_SYSTEM_PROMPT = (
@@ -624,7 +626,7 @@ class ChatBackend:
     def last_role(self) -> str | None:
         return None
 
-    def write_self_portrait(self, memories: list[str]) -> str:
+    def write_diary(self, log: str, name: str) -> str:
         return ""
 
     def recent_replies(self, count: int) -> list[str]:
@@ -959,13 +961,13 @@ class LocalLLM(ChatBackend):
         ]
         return self._complete(messages, MAX_MEMORY_PROPOSAL_TOKENS, no_thinking=True)
 
-    def write_self_portrait(self, memories: list[str]) -> str:
-        """Her nightly journal entry (brain/journal.py): who all her memories say she is."""
+    def write_diary(self, log: str, name: str) -> str:
+        """Her nightly diary entry (brain/journal.py) about one day's chat log."""
         messages = [
-            {"role": "system", "content": _SELF_PORTRAIT_SYSTEM_PROMPT},
-            {"role": "user", "content": "My memories:\n" + "\n".join(f"- {m}" for m in memories)},
+            {"role": "system", "content": _DIARY_SYSTEM_PROMPT.format(name=name)},
+            {"role": "user", "content": "Yesterday's chat log:\n\n" + log},
         ]
-        return self._complete(messages, MAX_SELF_PORTRAIT_TOKENS, no_thinking=True)
+        return self._complete(messages, MAX_DIARY_TOKENS, no_thinking=True)
 
     def propose_question(self, user_text: str, reply_text: str, known: str, asked: list[str]) -> str:
         """Asks the model for one thing she could be curious about after this
