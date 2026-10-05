@@ -20,6 +20,7 @@ export class DebugUI {
     this._entries = []; // {ts, category, message, ms?} -- kept when turned off, until a reload
     this._pingTimer = null;
     this._restartTimer = null;
+    this._setPinging(this.active);
     $("debug-toggle")?.addEventListener("change", (e) => this._setActive(e.target.checked));
     $("download-debug-log-button")?.addEventListener("click", () => this._download());
     $("restart-brain-button")?.addEventListener("click", () => this._restartBrain());
@@ -60,8 +61,12 @@ export class DebugUI {
     this.active = active;
     this._app.send({ type: "set_debug_active", active });
     this.log("client", active ? "debugging enabled" : "debugging disabled");
+    this._setPinging(active);
+  }
+
+  _setPinging(on) {
     clearInterval(this._pingTimer);
-    this._pingTimer = active ? setInterval(() => this._app.send({ type: "debug_ping", ts: Date.now() }), PING_INTERVAL_MS) : null;
+    this._pingTimer = on ? setInterval(() => this._app.send({ type: "debug_ping", ts: Date.now() }), PING_INTERVAL_MS) : null;
   }
 
   _download() {
