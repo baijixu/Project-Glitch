@@ -96,10 +96,8 @@ def parse_fact(raw: str) -> str | None:
     return fact
 
 
-def add_pending(fact: str, source: str = "", conflict: str = "") -> dict | None:
-    """None when it repeats something already waiting. `conflict` is a memory she
-    already has that this one contradicts -- Settings shows it so the user can ask
-    her which she means."""
+def add_pending(fact: str, source: str = "") -> dict | None:
+    """None when it repeats something already waiting."""
     fact = fact.strip()
     if not fact:
         return None
@@ -108,8 +106,6 @@ def add_pending(fact: str, source: str = "", conflict: str = "") -> dict | None:
         return None
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     item = {"id": f"{now}-{len(pending)}", "fact": fact, "source": source.strip()[:200], "created": now}
-    if conflict:
-        item["conflict"] = conflict
     pending.append(item)
     _write(pending)
     return item

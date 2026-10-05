@@ -284,11 +284,10 @@ async def _propose_memory(
         await hub.debug_log(websocket, "training", f"memory proposal failed: {exc!r}", (time.monotonic() - start) * 1000)
         return
     fact = training.parse_fact(raw)
-    same, conflict = await _compare_with_memories(fact, brain) if fact else ("", "")
-    if same and not conflict:
+    if fact and await _compare_with_memories(fact, brain):
         await hub.debug_log(websocket, "training", "dropped a proposal she already remembers", (time.monotonic() - start) * 1000)
         return
-    if fact and training.add_pending(fact, user_text, conflict):
+    if fact and training.add_pending(fact, user_text):
         await hub.debug_log(websocket, "training", "memory proposed for review", (time.monotonic() - start) * 1000)
         await hub.broadcast(training_state_message())
     else:
@@ -298,12 +297,12 @@ async def _propose_memory(
 COMPARE_WITH = 3  # her closest existing memories a new proposal is checked against
 
 
-async def _compare_with_memories(fact: str, brain: Brain) -> tuple[str, str]:
-    """(a memory that already says this, a memory this contradicts) -- "" for none.
-    One pair at a time, closest first; a contradiction wins, so when unsure a proposal
-    reaches the user flagged rather than being dropped. Measured on his real exchanges:
-    14 of 23 repeats caught, 5 of 5 contradictions flagged, 0 of 8 new ones dropped
-    (3 of those 8 flagged needlessly). Best-effort: a failure means no check.
+async def _compare_with_memories(fact: str, brain: Brain) -> str:
+    """A memory that already says this, or "". One pair at a time, closest first; an
+    OPPOSITE answer wins, so when unsure a proposal reaches the user rather than being
+    dropped. Measured on his real exchanges: 14 of 23 repeats caught, 0 of 8 new ones
+    dropped. OPPOSITE used to be shown as a contradiction too, but live it was 0 for 7:
+    a 9B calls any two memories on one topic opposite. Best-effort: a failure means no check.
     """
     try:
         block = await memory.recall_for_prompt(fact)
@@ -312,13 +311,13 @@ async def _compare_with_memories(fact: str, brain: Brain) -> tuple[str, str]:
         for old in closest:
             word = (await asyncio.to_thread(brain.llm.compare_memories, fact, old)).strip().upper()
             if word.startswith("OPPOSITE"):
-                return "", old
+                return ""
             if word.startswith("SAME") and not same:
                 same = old
-        return same, ""
+        return same
     except Exception as exc:
         print(f"[training] couldn't check a proposal against her memories: {exc!r}")
-        return "", ""
+        return ""
 
 
 @hub.handles(protocol.RESOLVE_MEMORY_PROPOSAL)
