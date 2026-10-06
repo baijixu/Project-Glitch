@@ -143,7 +143,10 @@ def _read() -> list[dict]:
 
 def _write(questions: list[dict]) -> None:
     open_ones = [q for q in questions if q["status"] == OPEN]
-    closed = [q for q in questions if q["status"] != OPEN][-MAX_CLOSED_KEPT:]
+    # By date: open questions sit first in the file, so one that just closed lands ahead of
+    # older closed ones, and slicing the list itself dropped the newest -- she forgot what
+    # she'd just asked and proposed it again.
+    closed = sorted((q for q in questions if q["status"] != OPEN), key=lambda q: q.get("created", ""))[-MAX_CLOSED_KEPT:]
     QUESTIONS_PATH.write_text(json.dumps(open_ones + closed, indent=2), encoding="utf-8")
 
 
