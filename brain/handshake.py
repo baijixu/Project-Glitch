@@ -55,8 +55,7 @@ async def handle_ready(websocket: websockets.ServerConnection, data: dict, brain
     await engines.send_tts_voices(websocket, tts_engines.read_active_engine_name())
     await hub.send(websocket, engines.llm_engines_message())
     await hub.send(websocket, engines.harness_state_message())
-    await health.send_harness_health(websocket)
-    await health.send_tts_health(websocket)
+    await health.send_health(websocket)
     # If a custom avatar was active last time, the Renderer needs its
     # bytes to swap to it -- it just booted with the shipped default,
     # which needs no round trip at all (see avatars.py's docstring).

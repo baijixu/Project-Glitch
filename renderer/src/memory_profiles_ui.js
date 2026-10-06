@@ -1,5 +1,5 @@
 // Settings -> Memory backend (brain/memory_profiles.py on the Brain side):
-// pick which memory she uses -- the built-in Local file, or a Hindsight or Mem0
+// pick which memory she uses -- the built-in Local file, or a Hindsight
 // server someone runs themselves -- and add, edit or delete those servers.
 // Self-contained like SamplingUI: finds its own elements by id, only needs
 // `send`, and redraws from each `memory_profiles` Brain sends, so every
@@ -138,7 +138,6 @@ export class MemoryProfilesUI {
     if (!t) return;
     this.spaceLabelEl.textContent = t.space_label;
     this.spaceEl.placeholder = `e.g. ${t.default_space} (the default if left blank)`;
-    this.urlEl.placeholder = t.type === "mem0" ? "e.g. http://localhost:8888" : "e.g. http://localhost:8899";
   }
 
   _save() {

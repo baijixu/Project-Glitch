@@ -25,8 +25,10 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from store import Toggle
+
 _DIR = Path(__file__).parent
-ACTIVE_PATH = _DIR / "training_active.txt"
+ACTIVE = Toggle(_DIR / "training_active.txt", default=False)  # opt-in: nothing is saved until someone reviews it
 QUEUE_PATH = _DIR / "training_queue.json"
 
 IMPORTANCE_LEVELS = ("core", "normal", "minor")
@@ -35,15 +37,8 @@ MAX_PENDING = 100  # oldest are dropped past this -- a queue nobody reviews shou
 MAX_FACT_CHARS = 300
 
 
-def set_active(active: bool) -> None:
-    ACTIVE_PATH.write_text("1" if active else "0", encoding="utf-8")
-
-
-def read_active() -> bool:
-    """Off by default -- unlike memory itself this stops things being saved until
-    someone reviews them, so it's opt-in.
-    """
-    return ACTIVE_PATH.exists() and ACTIVE_PATH.read_text(encoding="utf-8").strip() == "1"
+set_active = ACTIVE.write
+read_active = ACTIVE.read
 
 
 def importance_tag(level: str) -> str:

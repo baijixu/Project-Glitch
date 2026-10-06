@@ -27,9 +27,10 @@ import uuid
 from pathlib import Path
 
 import memory
+from store import Toggle
 
 _DIR = Path(__file__).parent
-ACTIVE_PATH = _DIR / "lessons_active.txt"
+ACTIVE = Toggle(_DIR / "lessons_active.txt", default=False)
 AUTONOMY_PATH = _DIR / "lessons_autonomy.txt"
 RETIRED_PATH = _DIR / "lessons_retired.json"
 PENDING_PATH = _DIR / "lessons_pending.json"
@@ -76,17 +77,14 @@ def available() -> bool:
     return memory.read_provider() == memory.HINDSIGHT_PROVIDER and memory.hindsight_client() is not None
 
 
-def set_active(active: bool) -> None:
-    ACTIVE_PATH.write_text("1" if active else "0", encoding="utf-8")
+set_active = ACTIVE.write
 
 
 def read_active() -> bool:
     """Off by default -- unlike memory, this changes how she behaves, so it
     opts in. Always False while unavailable(), regardless of the saved flag.
     """
-    if not available():
-        return False
-    return ACTIVE_PATH.exists() and ACTIVE_PATH.read_text(encoding="utf-8").strip() == "1"
+    return available() and ACTIVE.read()
 
 
 def read_autonomy() -> str:

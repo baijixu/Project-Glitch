@@ -1,4 +1,4 @@
-"""The two kinds of saved setting Brain keeps next to its code:
+"""The three kinds of saved setting Brain keeps next to its code:
 
 * NamedStore -- saved items of one kind, one JSON file per name (LLM engines,
   speech engines, harnesses, memory profiles). The name comes from the
@@ -7,6 +7,8 @@
   always offers it itself.
 * Choice -- one picked name in a text file (the active engine, the selected
   harness...), read back as `default` when nothing has been picked.
+* Toggle -- an on/off switch, "1" or "0" in a text file, read back as `default`
+  when it was never set.
 """
 
 import json
@@ -64,3 +66,18 @@ class Choice:
 
     def write(self, name: str) -> None:
         self.path.write_text(name, encoding="utf-8")
+
+
+class Toggle:
+    def __init__(self, path: Path, default: bool) -> None:
+        self.path = path
+        self.default = default
+
+    def read(self) -> bool:
+        try:
+            return {"1": True, "0": False}.get(self.path.read_text(encoding="utf-8").strip(), self.default)
+        except OSError:
+            return self.default
+
+    def write(self, on: bool) -> None:
+        self.path.write_text("1" if on else "0", encoding="utf-8")

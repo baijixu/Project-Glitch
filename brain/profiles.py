@@ -29,11 +29,14 @@ on every reconnect the way the first version of this feature did.
 from pathlib import Path
 
 from names import sanitize_name
+from store import Toggle
 
 PROFILES_DIR = Path(__file__).parent / "profiles"
 USER_MD_PATH = Path(__file__).parent / "user.md"  # the user's main file -- see the module docstring; written only by write_main_user
 RP_USER_MD_PATH = Path(__file__).parent / "rp_user.md"  # the selected role-play profile -- everything here that "loads" a profile writes this
-ROLEPLAY_ACTIVE_PATH = Path(__file__).parent / "roleplay_active.txt"
+# Whether the selected profile is layered into her prompt, apart from which one is selected. Off by default:
+# it used to default on, so a fresh install started in role-play with memory, lessons and curiosity paused.
+ROLEPLAY_ACTIVE = Toggle(Path(__file__).parent / "roleplay_active.txt", default=False)
 ACTIVE_PROFILE_NAME_PATH = Path(__file__).parent / "active_profile_name.txt"
 
 # Reserved name for "no profile" -- never a real file in profiles/, always
@@ -143,22 +146,5 @@ def read_active_profile_name() -> str:
     return DEFAULT_PROFILE_NAME
 
 
-def set_roleplay_active(active: bool) -> None:
-    """Whether the selected profile is actually layered into the LLM's
-    system prompt (see llm.py's set_persona) or ignored in favor of
-    plain soul-only behavior -- independent of *which* profile is
-    selected, so switching this off and back on doesn't lose the user's
-    dropdown pick (see load_profile's docstring and characters.py's
-    set_roleplay_active).
-    """
-    ROLEPLAY_ACTIVE_PATH.write_text("1" if active else "0", encoding="utf-8")
-
-
-def read_roleplay_active() -> bool:
-    """Defaults to False (role-play off) when never explicitly set -- it used to
-    default on, so a fresh install started in role-play with her memory, user.md,
-    lessons and curiosity all silently paused.
-    """
-    if ROLEPLAY_ACTIVE_PATH.exists():
-        return ROLEPLAY_ACTIVE_PATH.read_text(encoding="utf-8").strip() != "0"
-    return False
+set_roleplay_active = ROLEPLAY_ACTIVE.write
+read_roleplay_active = ROLEPLAY_ACTIVE.read

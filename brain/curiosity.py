@@ -37,8 +37,10 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from store import Toggle
+
 _DIR = Path(__file__).parent
-ACTIVE_PATH = _DIR / "curiosity_active.txt"
+ACTIVE = Toggle(_DIR / "curiosity_active.txt", default=True)  # on by default, like memory: it's the point of the feature
 QUESTIONS_PATH = _DIR / "curiosity_questions.json"
 PACING_PATH = _DIR / "curiosity_pacing.json"
 
@@ -122,15 +124,8 @@ def _save_pacing(data: dict) -> None:
         print(f"[curiosity] couldn't save pacing: {exc!r}")
 
 
-def set_active(active: bool) -> None:
-    ACTIVE_PATH.write_text("1" if active else "0", encoding="utf-8")
-
-
-def read_active() -> bool:
-    """Defaults to on -- like memory, this is the point of the feature."""
-    if ACTIVE_PATH.exists():
-        return ACTIVE_PATH.read_text(encoding="utf-8").strip() != "0"
-    return True
+set_active = ACTIVE.write
+read_active = ACTIVE.read
 
 
 def _read() -> list[dict]:

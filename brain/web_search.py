@@ -22,7 +22,9 @@ from urllib.parse import urlparse
 
 import httpx
 
-ACTIVE_PATH = Path(__file__).parent / "web_search_active.txt"
+from store import Toggle
+
+ACTIVE = Toggle(Path(__file__).parent / "web_search_active.txt", default=False)
 
 # Plenty for a model to actually read through without bloating the
 # follow-up completion call -- SearXNG itself returns far more by default.
@@ -81,8 +83,7 @@ def trust_of(url: str) -> str:
 _TRUST_RANK = {"trusted": 0, "unverified": 1, "user-uploaded": 2}
 
 
-def set_active(active: bool) -> None:
-    ACTIVE_PATH.write_text("1" if active else "0", encoding="utf-8")
+set_active = ACTIVE.write
 
 
 def read_active() -> bool:
@@ -92,11 +93,7 @@ def read_active() -> bool:
     (configure() uncalled), regardless of this file, since there's no
     backend for the toggle to actually turn on.
     """
-    if _base_url is None:
-        return False
-    if ACTIVE_PATH.exists():
-        return ACTIVE_PATH.read_text(encoding="utf-8").strip() == "1"
-    return False
+    return _base_url is not None and ACTIVE.read()
 
 
 def search(query: str) -> list[dict]:

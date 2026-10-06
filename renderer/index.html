@@ -152,8 +152,8 @@
               <button id="delete-memory-profile-button" class="icon-button danger" title="Delete memory backend">🗑️</button>
             </div>
             <p class="settings-hint">
-              The built-in local file needs no setup. For long-term memory, add a Hindsight or Mem0 server you run
-              yourself with ➕ -- its URL, API key and bank / user id -- then pick it here.
+              The built-in local file needs no setup. For long-term memory, add a Hindsight server you run
+              yourself with ➕ -- its URL, API key and bank -- then pick it here.
             </p>
             <p id="memory-profile-error" class="settings-hint sampling-error" hidden></p>
             <button id="download-memory-button" class="settings-action-button">Download Memory</button>
@@ -193,10 +193,10 @@
             <p class="settings-hint">
               While on, nothing is saved to her memory on its own. After a reply she proposes one short fact,
               and it waits here for you to edit, rate (core / normal / minor) and save -- or reject.
-              Core facts are always in her prompt. Needs a memory server (Hindsight or Mem0).
+              Core facts are always in her prompt. Needs a Hindsight memory server.
             </p>
             <p id="training-unavailable" class="settings-hint" hidden>
-              Pick a Hindsight or Mem0 memory backend above first.
+              Pick a Hindsight memory backend above first.
             </p>
             <label class="settings-toggle-row">
               <span>Review memories before saving</span>
@@ -612,7 +612,7 @@
         <label for="memory-profile-backend">Type</label>
         <select id="memory-profile-backend" class="settings-select"></select>
         <label for="memory-profile-url">Server URL</label>
-        <input id="memory-profile-url" type="text" autocomplete="off" />
+        <input id="memory-profile-url" type="text" autocomplete="off" placeholder="e.g. http://localhost:8899" />
         <label for="memory-profile-api-key">API key (optional)</label>
         <input id="memory-profile-api-key" type="password" autocomplete="off" />
         <label id="memory-profile-space-label" for="memory-profile-space">Bank ID</label>

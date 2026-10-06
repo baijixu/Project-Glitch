@@ -366,7 +366,7 @@ async def maybe_retain_memory(
     rather than trying to classify fiction-vs-real-signal reliably.
 
     Branches on the active provider (memory.py's own read_provider()): a
-    memory server (Hindsight, Mem0) gets the raw exchange straight, and
+    memory server (Hindsight) gets the raw exchange straight, and
     decides server-side what's worth keeping and doesn't
     hand back the specific fact synchronously, so no memory_learned gets
     sent for that path. "local" restores the original flat-file

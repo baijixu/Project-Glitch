@@ -1,10 +1,5 @@
-"""Shared WebSocket message schema -- the Python-side mirror of protocol.md
-(the actual source of truth). Every message type Brain code sends or
-expects to receive from the Renderer is built/validated through this
-module; nothing constructs a raw message dict inline elsewhere, so
-protocol.md and this file can't silently drift apart from the rest of the
-codebase.
-"""
+"""The WebSocket messages, built here for every one Brain sends -- the Python side of protocol.md,
+which says what each field means."""
 
 from dataclasses import asdict, dataclass
 
@@ -140,23 +135,13 @@ def ping() -> dict:
 
 
 def debug_pong(ts) -> dict:
-    """Echoes `ts` (a debug_ping's own timestamp, opaque to Brain) straight
-    back -- the Renderer computes round-trip time itself from
-    now-minus-ts, so Brain doesn't need to know or care what clock/units
-    `ts` is even in.
-    """
+    """Echoes a debug_ping's `ts` back; the Renderer works out the round trip itself."""
     return {"type": DEBUG_PONG, "ts": ts}
 
 
 def debug_event(category: str, message: str, ms: float | None = None) -> dict:
-    """Diagnostic-only: connection/timing/error info for the debug log
-    (brain_client.js's Debugging toggle) -- never conversation content.
-    Only sent to a connection that's turned debugging on (see hub.py's
-    DEBUG_CONNECTIONS), and only ever describes *that Brain instance's*
-    own external calls (LLM/TTS/STT/harness), not anything said. `ms` is
-    omitted (not 0 or null) when a category has no meaningful duration
-    (e.g. a refusal that never made a call at all).
-    """
+    """Diagnostics for the debug log -- timings and errors of her own LLM/TTS/STT/harness calls, never
+    conversation content -- only to devices with debugging on. `ms` is left out when there's no duration."""
     payload = {"type": DEBUG_EVENT, "category": category, "message": message}
     if ms is not None:
         payload["ms"] = round(ms, 1)
@@ -202,11 +187,7 @@ def soul_content(name: str, description: str, examples: str) -> dict:
 
 
 def avatars(avatars: list[dict]) -> dict:
-    """`avatars` is avatars.list_avatars()'s own [{"name", "kind"}, ...]
-    shape -- passed straight through, not just names, so the Renderer's
-    picker knows whether each entry is a 3D .vrm or a flat .png without a
-    round trip per entry.
-    """
+    """`avatars` is avatars.list_avatars()'s [{"name", "kind"}], so the picker knows a .vrm from a .png."""
     return {"type": AVATARS, "avatars": avatars}
 
 
@@ -241,31 +222,18 @@ def roleplay_engine(name: str) -> dict:
 
 
 def voice_state(active: bool) -> dict:
-    """Whether Glitch's spoken voice (TTS) is currently turned on -- see
-    voice_settings.py. Sent on `ready` so the settings toggle reflects the
-    persisted value, same as roleplay_state.
-    """
+    """Whether her voice (TTS) is on (voice_settings.py)."""
     return {"type": VOICE_STATE, "active": active}
 
 
 def web_search_state(active: bool) -> dict:
-    """Whether Glitch's own LLM path can search the web (brain/web_search.py)
-    -- separate from anything a Hermes harness already does with its own
-    web/session search when active. Sent on `ready`, same pattern as
-    voice_state; always False if no SearXNG instance was ever configured
-    (config.yaml's brain.web_search block), regardless of what was saved.
-    """
+    """Whether her own LLM path can search the web; always False with no SearXNG configured."""
     return {"type": WEB_SEARCH_STATE, "active": active}
 
 
 def training_state(available: bool, active: bool, pending: list, error: str = "") -> dict:
-    """Everything the Settings panel's Memory training section shows
-    (brain/training.py) -- sent on `ready`, and to every connected device after
-    any change. `available` is False unless the memory provider is a configured
-    Hindsight server. `pending` are proposed memories waiting for review, oldest
-    first, each {id, fact, source, created}; `error` is "" unless the last
-    approval couldn't be saved (the proposal then stays in the list).
-    """
+    """Settings -> Memory training: `available` (needs a Hindsight server), on/off, the proposals waiting for
+    review ({id, fact, source, created}, oldest first), and `error` when an approval couldn't be saved."""
     return {"type": TRAINING_STATE, "available": available, "active": active, "pending": pending, "error": error}
 
 
@@ -276,88 +244,55 @@ def conversation_cleared() -> dict:
 
 
 def context_usage(used: int, window: int | None, conversation: int | None = None, keep: int | None = None) -> dict:
-    """How full her context is, for the Settings meter: `used` tokens after the
-    latest reply (prompt + reply), out of the model's `window` (None if the server
-    doesn't say); and the running `conversation` (estimated tokens) out of the
-    `keep` she holds on to before the oldest part is dropped. Sent after each
-    reply, and on `ready` if there's been one.
-    """
+    """How full her context is, for the Settings meter: `used` of the model's `window` tokens after the latest
+    reply (window None if the server doesn't say), and the running `conversation` (estimated) of the `keep`
+    she holds before the oldest part is dropped."""
     return {"type": CONTEXT_USAGE, "used": used, "window": window, "conversation": conversation, "keep": keep}
 
 
 def curiosity_timer(state: str, due_at: float | None, error: str = "") -> dict:
-    """Settings -> Curiosity's countdown to her speaking first. `state` is
-    "counting" (`due_at`: epoch seconds when she may reach out), "waiting" (she
-    reached out and waits for a reply), "off", "roleplay" or "harness" (paused).
-    With `error`, only to the device whose test_reach_out couldn't run.
-    """
+    """Settings -> Curiosity's countdown: `state` "counting" (`due_at`: epoch seconds she may reach out),
+    "waiting" (for a reply to her), "off", "roleplay" or "harness". With `error`, only to the device whose
+    test_reach_out couldn't run."""
     return {"type": CURIOSITY_TIMER, "state": state, "due_at": due_at, "error": error}
 
 
 def curiosity_state(active: bool) -> dict:
-    """Whether curiosity (brain/curiosity.py -- she asks the odd follow-up question) is
-    on. Sent on `ready`, same pattern as voice_state.
-    """
+    """Whether curiosity (curiosity.py) is on."""
     return {"type": CURIOSITY_STATE, "active": active}
 
 
 def sampling_state(active: str, profiles: dict, builtin: list[str], error: str = "") -> dict:
-    """Her sampling profiles (brain/sampling.py): every profile's settings by
-    name, which one her replies use, and which are built in (can't be saved
-    over or deleted). Sent on `ready` and to every device after a change;
-    `error` only goes to the device whose save/delete was refused.
-    """
+    """Her sampling profiles by name, the one in use, and the built-in ones (can't be saved over or deleted);
+    `error` only to the device whose save/delete was refused."""
     return {"type": SAMPLING_STATE, "active": active, "profiles": profiles, "builtin": builtin, "error": error}
 
 
 def memory_state(active: bool) -> dict:
-    """Whether Glitch's own native memory of the user (brain/memory.py) is
-    currently turned on -- separate from anything Hermes does with its own
-    memory when the harness is active. Sent on `ready`, same pattern as
-    voice_state.
-    """
+    """Whether her own memory (memory.py) is on."""
     return {"type": MEMORY_STATE, "active": active}
 
 
 def memory_content(entries: list[str]) -> dict:
-    """Reply to get_memory_content -- the raw fact list (not the "- "
-    prefixed block LocalLLM.set_memory receives), so the Renderer can
-    format it however it wants (currently: a plain-text download).
-    """
+    """The raw fact list, for Download Memory."""
     return {"type": MEMORY_CONTENT, "entries": entries}
 
 
 def memory_learned(fact: str) -> dict:
-    """Sent once, right when brain/memory.py's "local" provider actually
-    gains a new fact -- not on every extraction attempt (see learning.py's
-    maybe_retain_memory), only when something new was genuinely added.
-    Never sent for the "hindsight" provider: its own retain() decides
-    what's worth keeping server-side and doesn't hand back the specific
-    extracted fact synchronously the way local extraction does. Lets the
-    Renderer surface a brief toast + a chat-history entry so it's not a
-    silent background process. Unlike debug_event, this is always sent
-    regardless of the Debugging toggle -- it's a real user-facing
-    feature, not diagnostics.
-    """
+    """A fact the local memory file just gained, for a toast and a chat-history entry. Never sent for a memory
+    server: it doesn't hand back what it extracted."""
     return {"type": MEMORY_LEARNED, "fact": fact}
 
 
 def memory_profiles(profiles: list[dict], active: str, types: list[dict], error: str = "") -> dict:
-    """Settings -> Memory (brain/memory_profiles.py): the saved backends
-    ([{name, type}]), which one is active ("Local file" is the built-in one),
-    and the kinds of server that can be added ([{type, label, space_label,
-    default_space}]). Sent on `ready` and to every device after any change;
-    with `error` only to the device whose request was refused or whose server
-    couldn't be reached.
-    """
+    """Settings -> Memory: the saved backends [{name, type}], the active one ("Local file" is built in), and
+    the kinds that can be added [{type, label, space_label, default_space}]; `error` only to the device whose
+    request failed."""
     return {"type": MEMORY_PROFILES, "profiles": profiles, "active": active, "types": types, "error": error}
 
 
 def memory_profile_content(name: str, profile: dict) -> dict:
-    """One saved memory profile, for the ✏️ editor: {type, url, api_key, space}
-    ({} if there's no such profile). api_key is echoed back the same way a
-    saved LLM engine's or harness's is.
-    """
+    """One saved memory profile for the ✏️ editor ({} if there's none), api_key included."""
     return {"type": MEMORY_PROFILE_CONTENT, "name": name, "profile": profile}
 
 
@@ -368,30 +303,18 @@ def left_off(note: str) -> dict:
 
 
 def no_reply() -> dict:
-    """Sent when Brain decided there's genuinely nothing to reply to --
-    empty text, no image, and (for user_audio) a transcription that came
-    back blank (e.g. a voice message that was silence). Without this, the
-    Renderer has nothing to clear its "awaiting a reply" state on (only
-    speak_text does that) and the Send/camera/desktop/mic buttons stay
-    grayed out forever -- confirmed live as a real stuck-UI bug, not
-    hypothetical. Deliberately its own message rather than an empty
-    speak_text, so the Renderer doesn't add a blank chat-history bubble.
-    """
+    """Nothing to reply to (empty text, a silent voice message): lets the Renderer re-enable its buttons
+    without a blank chat bubble."""
     return {"type": NO_REPLY}
 
 
 def soul_and_user_content(soul: str, user: str) -> dict:
-    """Reply to get_soul_and_user -- the raw content of her permanent main soul.md
-    (NOT the selected role-play soul, which lives in rp_soul.md) and main user.md
-    (NOT the selected role-play profile, which lives in rp_user.md), for
-    the manual-edit Settings modal (separate from soul_content/profile_content,
-    which are keyed by a saved name)."""
+    """Her main soul.md and user.md (not the role-play ones), for the manual-edit modal."""
     return {"type": SOUL_AND_USER_CONTENT, "soul": soul, "user": user}
 
 
 def notes_content(content: str) -> dict:
-    """Reply to get_notes -- the raw current content of notes.md for the
-    Settings' Notes editor."""
+    """notes.md, for Settings' Notes editor."""
     return {"type": NOTES_CONTENT, "content": content}
 
 
@@ -428,15 +351,8 @@ def llm_engine_content(name: str, endpoint: str, model: str, api_key: str, provi
 
 
 def harness_state(active: bool, name: str, selected: str, available: list[str]) -> dict:
-    """`name` is the actually-connected harness ("" if not active) --
-    `active`/`name` together are what gate _build_harness_llm-derived
-    behavior. `selected` is what the dropdown should show regardless of
-    active: the connected harness while active, or the last one that was
-    ever successfully turned on while it isn't (harness.py's
-    read_selected_harness_name) -- distinct from `name` specifically so
-    turning a harness off doesn't also make the Renderer forget which one
-    was picked (see harness.py's set_selected_harness_name docstring).
-    """
+    """`name` is the connected harness ("" if none). `selected` is what the dropdown shows: the connected one,
+    or the last one turned on, so turning a harness off doesn't forget the pick."""
     return {
         "type": HARNESS_STATE,
         "active": active,
@@ -447,8 +363,7 @@ def harness_state(active: bool, name: str, selected: str, available: list[str]) 
 
 
 def harness_content(name: str, endpoint: str, model: str, api_key: str) -> dict:
-    """Reply to get_harness -- pre-fills the harness editor's Edit flow,
-    same pattern as llm_engine_content/tts_engine_content."""
+    """Reply to get_harness: pre-fills the harness editor, like llm_engine_content."""
     return {"type": HARNESS_CONTENT, "name": name, "endpoint": endpoint, "model": model, "api_key": api_key}
 
 
@@ -464,64 +379,25 @@ class VisemeFrame:
 
 
 def user_transcript(text: str) -> dict:
-    """Sent right after STT finishes transcribing a user_audio message --
-    the Renderer has no other way to know what was actually heard (it
-    only ever sends raw audio, never text, for a voice message), so its
-    chat-history bubble starts as a placeholder ("🎤 (voice message)") and
-    swaps in this text once it arrives. Not sent for a blank/silent
-    transcription -- that path already goes straight to no_reply.
-    """
+    """What STT heard in a voice message, replacing its "🎤 (voice message)" placeholder bubble. Not sent for
+    silence -- that's no_reply."""
     return {"type": USER_TRANSCRIPT, "text": text}
 
 
 def harness_health(name: str, reachable: bool | None) -> dict:
-    """Whether `name`'s configured endpoint answered a lightweight TCP
-    reachability check -- distinct from harness_state's `active` (Glitch
-    is actually plugged into it right now): a harness can be reachable but
-    not active (available, not currently in use) or active without this
-    having reconfirmed reachability yet (still counts as reachable -- an
-    active connection already proves it). Sent periodically to every
-    connected Renderer (see health.py's health_check_loop), not just on
-    request, so the indicator light updates even with no settings panel
-    open to trigger it.
-
-    reachable is None specifically when `name` has no endpoint configured
-    at all (its saved harness file is missing/unreadable, or its endpoint
-    is empty) -- deliberately distinct from False (configured but down
-    right now), which the indicator light renders as a different color:
-    nothing to even check is not the same fact as "checked and it's
-    unreachable".
-    """
+    """Whether `name`'s endpoint answers a TCP check (health.py), for its status light, sent to every device
+    when it changes. None if it has no endpoint at all: a different light from False (set up but down)."""
     return {"type": HARNESS_HEALTH, "name": name, "reachable": reachable}
 
 
 def tts_health(name: str, reachable: bool | None) -> dict:
-    """Same as harness_health, for one saved speech engine (tts_engines.py)
-    -- never sent for tts_engines.NONE_NAME, which has no network endpoint
-    to check at all.
-    """
+    """Same as harness_health, for a saved speech engine (never "None")."""
     return {"type": TTS_HEALTH, "name": name, "reachable": reachable}
 
 
 def tts_voices(name: str, voices: list[str], active_voice: str, can_create_voice: bool, error: str = "") -> dict:
-    """Which custom voices (kokoro_voices.py) have been created (by
-    blending existing ones) for the named speech engine, which one it
-    currently defaults to, and whether creating another is even possible
-    for it (voices_dir configured) -- lets the Renderer show the voice
-    picker/create-voice button, or neither, without needing the engine's
-    full saved content (get_tts_engine's job) just to decide that.
-    `voices`/`active_voice` are empty and `can_create_voice` is False for
-    tts_engines.NONE_NAME or any name that isn't a real saved engine --
-    not an error, just nothing to show. Sent in reply to get_tts_voices,
-    and again after every combine_kokoro_voice/set_tts_voice for the
-    affected engine.
-
-    `error` is "" on every normal reply -- only set when
-    combine_kokoro_voice was refused, so the Renderer has something
-    concrete to show instead of an attempt that silently appeared to do
-    nothing (this used to be a server-console-only print with no reply
-    sent at all).
-    """
+    """The custom (blended) voices a speech engine has, its default, and whether it can make more (voices_dir
+    set) -- all empty for "None" or an unknown name. `error` only when combine_kokoro_voice was refused."""
     return {
         "type": TTS_VOICES,
         "name": name,
@@ -533,17 +409,9 @@ def tts_voices(name: str, voices: list[str], active_voice: str, can_create_voice
 
 
 def lessons_state(available: bool, active: bool, autonomy: str, lessons: list, pending: list, error: str) -> dict:
-    """Everything the Settings panel's Behavior learning section shows
-    (brain/lessons.py) -- sent on `ready`, and again to every connected device
-    after any change to lessons, proposals or the two settings.
-
-    `available` is False while the memory provider isn't a configured
-    Hindsight server (lessons are stored there), in which case the section
-    just explains that. `lessons` are the active ones, strongest first, each
-    {id, name, content, priority}; `pending` are proposed changes waiting for
-    approval, each {id, action, target_id, target_name, name, content, reason};
-    `error` is "" unless the lessons store couldn't be reached.
-    """
+    """Settings -> Behavior learning: `available` (needs a Hindsight server), on/off, autonomy, the active
+    `lessons` ({id, name, content, priority}, strongest first), the `pending` proposals ({id, action,
+    target_id, target_name, name, content, reason}), and `error` if the store couldn't be reached."""
     return {
         "type": LESSONS_STATE,
         "available": available,
@@ -556,9 +424,6 @@ def lessons_state(available: bool, active: bool, autonomy: str, lessons: list, p
 
 
 def lesson_event(kind: str, text: str) -> dict:
-    """A one-line notice that something happened to her lessons because of a
-    rating -- kind is "applied", "proposed" (waiting for approval in Settings)
-    or "noted" (a possible lesson seen once). The Renderer shows it as a
-    system entry in the chat history, same as memory_learned.
-    """
+    """A one-line chat-history notice after a rating: `kind` "applied", "proposed" (waiting in Settings) or
+    "noted" (seen once)."""
     return {"type": LESSON_EVENT, "kind": kind, "text": text}

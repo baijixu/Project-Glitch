@@ -1,7 +1,7 @@
 """Saved memory backends -- Settings -> Memory. Each profile is one JSON file in
 memory_profiles/ naming a memory server someone runs themselves: which kind it
 is (`type`), where it is (`url`), its `api_key`, and `space` -- the bank
-(Hindsight) or user id (Mem0) her memories live under. Same
+her memories live under. Same
 gitignored-file-per-saved-item pattern as llm_engines.py/harness.py.
 
 Memory servers don't share one API the way LLM servers share OpenAI's, so each
@@ -24,11 +24,9 @@ ACTIVE = Choice(Path(__file__).parent / "active_memory_profile.txt", default=LOC
 set_active = ACTIVE.write
 
 HINDSIGHT = "hindsight"
-MEM0 = "mem0"
 # type -> (label for Settings, default space, what `space` is called there)
 TYPES = {
     HINDSIGHT: {"label": "Hindsight", "default_space": "glitch-native", "space_label": "Bank ID"},
-    MEM0: {"label": "Mem0", "default_space": "glitch", "space_label": "User ID"},
 }
 
 
@@ -81,10 +79,6 @@ def delete_profile(name: str) -> None:
     STORE.delete(name)
     if read_active() == name:
         set_active(LOCAL_NAME)
-
-
-def has_active() -> bool:
-    return ACTIVE.path.exists()
 
 
 def read_active() -> str:

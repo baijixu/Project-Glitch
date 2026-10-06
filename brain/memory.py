@@ -9,17 +9,15 @@ Settings -> Memory); activate() connects to it. Kinds of backend:
   line in memory.md, extracted by a lightweight extra LLM call after every
   reply (see learning.maybe_retain_memory), and re-injected as one static
   block every turn regardless of what's being asked.
-- a memory server someone runs themselves -- "hindsight"
-  (https://pypi.org/project/hindsight-client/) or "mem0"
-  (https://docs.mem0.ai/open-source/features/rest-api), each in its own
-  bank / user id, kept separate from whatever memory a harness might use.
+- "hindsight", a memory server someone runs themselves
+  (https://pypi.org/project/hindsight-client/), in its own bank, kept separate from whatever memory a harness might use.
   Extraction and retrieval both happen server-side: retain_exchange() just
   hands it the raw exchange and lets it decide what's worth keeping, and
   recall_for_prompt() asks it for whatever's relevant to the CURRENT
   message instead of one static block every turn.
 
 Adding another server means: a type in memory_profiles.TYPES, a small client
-here (like Mem0Client), and a branch in each entry point under "Unified
+here, and a branch in each entry point under "Unified
 entry points". Every server function below is a no-op/returns ""/[] if no
 client is connected -- same graceful-degradation pattern as a missing
 brain.llm block, not a crash.
@@ -34,13 +32,13 @@ import httpx
 import memory_profiles
 import training
 from hindsight_client import Hindsight
+from store import Toggle
 
 MEMORY_PATH = Path(__file__).parent / "memory.md"
-MEMORY_ACTIVE_PATH = Path(__file__).parent / "memory_active.txt"
+MEMORY_ACTIVE = Toggle(Path(__file__).parent / "memory_active.txt", default=True)
 
 LOCAL_PROVIDER = "local"
 HINDSIGHT_PROVIDER = memory_profiles.HINDSIGHT
-MEM0_PROVIDER = memory_profiles.MEM0
 
 # Over this many chars, the local provider's oldest entries are just
 # dropped (FIFO) rather than intelligently merged -- a deliberate
@@ -123,12 +121,8 @@ _APPROVED_STRATEGY_CONFIG = {"retain_extraction_mode": "chunks"}
 # fact goes through the normal rewrite -- then at least say whose voice it is.
 APPROVED_FACT_CONTEXT = "Glitch's own memory, in her voice: 'I' and 'my' mean Glitch (the AI), not the human"
 
-# Earlier versions of the default above. A bank still carrying one of these
-# was never customized, so ensure_bank() upgrades it to the current default --
-# anything else there was written by hand and is left alone.
 _client: Hindsight | None = None
 _bank_id = ""
-_mem0: "Mem0Client | None" = None
 # The bank APPROVED_STRATEGY was last set up on (see _ensure_approved_strategy),
 # so it's checked once per bank rather than before every approval.
 _approved_strategy_bank: str | None = None
@@ -138,7 +132,7 @@ _approved_strategy_bank: str | None = None
 
 
 def read_provider() -> str:
-    """The active profile's kind: LOCAL_PROVIDER, HINDSIGHT_PROVIDER or MEM0_PROVIDER."""
+    """The active profile's kind: LOCAL_PROVIDER or HINDSIGHT_PROVIDER."""
     name = memory_profiles.read_active()
     if name == memory_profiles.LOCAL_NAME:
         return LOCAL_PROVIDER
@@ -156,10 +150,7 @@ def server_backed() -> bool:
 def server_configured() -> bool:
     """Whether a memory server is the backend and connected -- what memory
     training needs (it stores approved facts word for word, tagged)."""
-    provider = read_provider()
-    if provider == HINDSIGHT_PROVIDER:
-        return hindsight_configured()
-    return provider == MEM0_PROVIDER and _mem0 is not None
+    return read_provider() == HINDSIGHT_PROVIDER and hindsight_configured()
 
 
 async def activate() -> None:
@@ -167,13 +158,13 @@ async def activate() -> None:
     file). A server that's unreachable still counts as connected -- calls then
     fail softly per turn -- but raises here so the caller can say so.
     """
-    global _client, _bank_id, _mem0, _approved_strategy_bank
+    global _client, _bank_id, _approved_strategy_bank
     if _client is not None:
         try:
             await _client.aclose()  # the old connection, before switching
         except Exception:
             pass
-    _client, _mem0, _bank_id, _approved_strategy_bank = None, None, "", None
+    _client, _bank_id, _approved_strategy_bank = None, "", None
     name = memory_profiles.read_active()
     if name == memory_profiles.LOCAL_NAME:
         return
@@ -181,9 +172,6 @@ async def activate() -> None:
     if profile["type"] == HINDSIGHT_PROVIDER:
         configure(profile["url"], profile["space"], profile["api_key"])
         await ensure_bank()
-    elif profile["type"] == MEM0_PROVIDER:
-        _mem0 = Mem0Client(profile["url"], profile["space"], profile["api_key"])
-        await _mem0.check()
 
 
 def active_description() -> str:
@@ -235,60 +223,6 @@ def hindsight_latest_model() -> str:
 
 def hindsight_configured() -> bool:
     return _client is not None
-
-
-# -- Mem0 connection ----------------------------------------------------------
-
-
-# Mem0's own server (mem0/server in https://github.com/mem0ai/mem0): memories
-# live under a user id (the profile's `space`), and it extracts facts from what
-# it's given with its own model, like Hindsight. Approved facts go in with
-# infer=False, which stores them as written.
-MEM0_TIMEOUT_SEC = 30.0
-MEM0_RECALL_LIMIT = 10
-MEM0_LIST_LIMIT = 500
-
-
-class Mem0Client:
-    def __init__(self, url: str, user_id: str, api_key: str = "") -> None:
-        self.url = url.rstrip("/")
-        self.user_id = user_id
-        self._headers = {"X-API-Key": api_key} if api_key else {}
-
-    async def _request(self, method: str, path: str, **kwargs):
-        async with httpx.AsyncClient(timeout=MEM0_TIMEOUT_SEC, headers=self._headers) as client:
-            response = await client.request(method, self.url + path, **kwargs)
-        response.raise_for_status()
-        return response.json() if response.content else None
-
-    async def check(self) -> None:
-        await self.list(limit=1)
-
-    async def add(self, messages: list[dict], *, infer: bool = True, metadata: dict | None = None) -> None:
-        body = {"messages": messages, "user_id": self.user_id, "infer": infer}
-        if metadata:
-            body["metadata"] = metadata
-        await self._request("POST", "/memories", json=body)
-
-    async def search(self, query: str, limit: int = MEM0_RECALL_LIMIT) -> list[dict]:
-        body = {"query": query, "filters": {"user_id": self.user_id}, "top_k": limit}
-        return _mem0_results(await self._request("POST", "/search", json=body))
-
-    async def list(self, limit: int = MEM0_LIST_LIMIT) -> list[dict]:
-        return _mem0_results(await self._request("GET", "/memories", params={"user_id": self.user_id, "top_k": limit}))
-
-    async def delete_all(self) -> None:
-        await self._request("DELETE", "/memories", params={"user_id": self.user_id})
-
-
-def _mem0_results(body) -> list[dict]:
-    # {"results": [...]} from current servers, a bare list from older ones.
-    items = body.get("results", []) if isinstance(body, dict) else body
-    return [item for item in items or [] if isinstance(item, dict) and item.get("memory")]
-
-
-def _mem0_is_core(item: dict) -> bool:
-    return (item.get("metadata") or {}).get("importance") == "core"
 
 
 async def ensure_bank() -> None:
@@ -369,7 +303,7 @@ async def _ensure_approved_strategy() -> None:
 
 # -- How old a memory is -------------------------------------------------------
 # A recalled memory gets "(learned 3 days ago)" after it, from when the server
-# says it was saved (Hindsight's mentioned_at, Mem0's updated_at/created_at), so
+# says it was saved (Hindsight's mentioned_at), so
 # she can tell that "moving next month" was said a month ago. By calendar day in
 # this machine's timezone. No date known (the local file, an older server): the
 # memory goes in as it is.
@@ -527,31 +461,6 @@ def _clear_local() -> None:
     MEMORY_PATH.write_text("", encoding="utf-8")
 
 
-# -- Mem0 provider's own storage ----------------------------------------------
-
-
-async def _mem0_retain_exchange(user_text: str, reply_text: str, asked: str) -> None:
-    messages = [{"role": "user", "content": user_text}]
-    if reply_text:
-        messages.append({"role": "assistant", "content": reply_text})
-    if asked:
-        messages.insert(0, {"role": "assistant", "content": asked})
-    await _mem0.add(messages)
-
-
-async def _mem0_retain_fact(text: str, importance: str) -> None:
-    await _mem0.add([{"role": "user", "content": text}], infer=False, metadata={"importance": importance})
-
-
-async def _mem0_recall(query: str) -> str:
-    """Core facts first (every turn, whatever the topic), then what's relevant."""
-    relevant, everything = await asyncio.gather(_mem0.search(query), _mem0.list())
-    core = [item for item in everything if _mem0_is_core(item)]
-    core_texts = {item["memory"] for item in core}
-    chosen = core + [item for item in relevant if item["memory"] not in core_texts]
-    return "\n".join(f"- {_dated(item['memory'], item.get('updated_at') or item.get('created_at'))}" for item in chosen)
-
-
 # -- Unified entry points (reply.py and learning.py call these, provider-agnostic) ----------
 
 
@@ -563,11 +472,8 @@ async def retain_exchange(user_text: str, reply_text: str, asked: str = "") -> N
     if they were something about the user. `asked` is her question he was
     answering (curiosity.answered_question) -- the answer needs it.
     """
-    provider = read_provider()
-    if provider == HINDSIGHT_PROVIDER:
+    if read_provider() == HINDSIGHT_PROVIDER:
         await _hindsight_retain_exchange(user_text, reply_text, asked)
-    elif provider == MEM0_PROVIDER and _mem0 is not None:
-        await _mem0_retain_exchange(user_text, reply_text, asked)
 
 
 async def retain_fact(text: str, importance: str) -> None:
@@ -576,52 +482,38 @@ async def retain_fact(text: str, importance: str) -> None:
     every turn. Raises if it couldn't be saved at all -- the caller keeps the
     proposal queued so nothing approved is lost.
     """
-    provider = read_provider()
-    if provider == HINDSIGHT_PROVIDER:
+    if read_provider() == HINDSIGHT_PROVIDER:
         await _hindsight_retain_fact(text, importance)
-    elif provider == MEM0_PROVIDER and _mem0 is not None:
-        await _mem0_retain_fact(text, importance)
     else:
         raise RuntimeError("no memory server connected")
 
 
 async def recall_for_prompt(query: str) -> str:
     """Whatever should go into LocalLLM.set_memory() this turn."""
-    provider = read_provider()
-    if provider == HINDSIGHT_PROVIDER:
+    if read_provider() == HINDSIGHT_PROVIDER:
         return await recall_relevant(query)
-    if provider == MEM0_PROVIDER:
-        return await _mem0_recall(query) if _mem0 is not None else ""
     return read_local_block()
 
 
 async def read_entries() -> list[str]:
     """For the Settings panel's Download Memory button."""
-    provider = read_provider()
-    if provider == HINDSIGHT_PROVIDER:
+    if read_provider() == HINDSIGHT_PROVIDER:
         return await _read_hindsight_entries()
-    if provider == MEM0_PROVIDER:
-        return [item["memory"] for item in await _mem0.list()] if _mem0 is not None else []
     return read_local_entries()
 
 
 async def clear() -> None:
     """For the Settings panel's Clear Memory button."""
-    provider = read_provider()
-    if provider == HINDSIGHT_PROVIDER:
+    if read_provider() == HINDSIGHT_PROVIDER:
         await _clear_hindsight()
-    elif provider == MEM0_PROVIDER:
-        if _mem0 is not None:
-            await _mem0.delete_all()
     else:
         _clear_local()
 
 
-# -- Shared (both providers) --------------------------------------------------
+# -- Shared (all providers) ---------------------------------------------------
 
 
-def set_memory_active(active: bool) -> None:
-    MEMORY_ACTIVE_PATH.write_text("1" if active else "0", encoding="utf-8")
+set_memory_active = MEMORY_ACTIVE.write
 
 
 def read_memory_active() -> bool:
@@ -634,6 +526,4 @@ def read_memory_active() -> bool:
     """
     if server_backed() and not server_configured():
         return False
-    if MEMORY_ACTIVE_PATH.exists():
-        return MEMORY_ACTIVE_PATH.read_text(encoding="utf-8").strip() != "0"
-    return True
+    return MEMORY_ACTIVE.read()
