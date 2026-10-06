@@ -9,6 +9,10 @@ const SWAY_AMPLITUDE = (1.2 * Math.PI) / 180;
 const SWAY_SPEED = 0.12;
 const HEAD_TURN_AMPLITUDE = (3.0 * Math.PI) / 180;
 const HEAD_TURN_SPEED = 0.09;
+// While she talks her head dips a little with her voice -- a small nod on the louder
+// syllables, eased so it reads as emphasis rather than a twitch.
+const TALK_NOD_AMPLITUDE = (4.0 * Math.PI) / 180;
+const TALK_NOD_EASE_SEC = 0.15;
 
 const BLINK_MIN_DELAY = 2.0;
 const BLINK_MAX_DELAY = 5.0;
@@ -25,6 +29,7 @@ export class IdleController {
     this.breathPhase = 0;
     this.swayPhase = 0;
     this.headPhase = 0;
+    this.talk = 0; // her voice level, eased (see update)
 
     this.blinkTimer = this._randomBlinkDelay();
     this.blinkPhase = null; // null | "closing" | "holding" | "opening"
@@ -83,7 +88,8 @@ export class IdleController {
     if (bone) bone.rotation.z = (deg * Math.PI) / 180;
   }
 
-  update(delta) {
+  // speechLevel: how open her mouth is right now, 0-1 (BrainClient.speechLevel).
+  update(delta, speechLevel = 0) {
     if (this.chestBone) {
       this.breathPhase += delta * BREATH_SPEED * Math.PI * 2;
       this.chestBone.position.y = this.chestRestY + Math.sin(this.breathPhase) * BREATH_AMPLITUDE;
@@ -98,9 +104,11 @@ export class IdleController {
     if (this.headBone) {
       this.headPhase += delta * HEAD_TURN_SPEED * Math.PI * 2;
       const turnAngle = Math.sin(this.headPhase) * HEAD_TURN_AMPLITUDE;
+      this.talk += (speechLevel - this.talk) * Math.min(delta / TALK_NOD_EASE_SEC, 1);
       this.headBone.quaternion
         .copy(this.headRestQuat)
-        .multiply(_swayQuat.setFromAxisAngle(_axisY, turnAngle));
+        .multiply(_swayQuat.setFromAxisAngle(_axisY, turnAngle))
+        .multiply(_nodQuat.setFromAxisAngle(_axisX, this.talk * TALK_NOD_AMPLITUDE));
     }
 
     this._updateBlink(delta);
@@ -148,5 +156,7 @@ export class IdleController {
 }
 
 const _swayQuat = new THREE.Quaternion();
+const _nodQuat = new THREE.Quaternion();
+const _axisX = new THREE.Vector3(1, 0, 0);
 const _axisY = new THREE.Vector3(0, 1, 0);
 const _axisZ = new THREE.Vector3(0, 0, 1);

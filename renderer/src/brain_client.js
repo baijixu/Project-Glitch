@@ -47,6 +47,14 @@ const TOAST_DURATION_MS = 4000;
 // isn't one -- it means all of these fade to 0. One at a time, like a face.
 const MOODS = ["happy", "sad", "surprised", "angry", "relaxed"];
 const EXPRESSION_FADE_SEC = 0.3;
+// VRM's five mouth shapes (a, i, u, e, o). Each clip's frames say which one is
+// showing and how open (Brain reads them off the audio, voice/tts.py); they ease
+// over this long so 30 ms frames don't make her mouth flicker.
+const VISEMES = ["aa", "ih", "ou", "ee", "oh"];
+const VISEME_FADE_SEC = 0.07;
+// A pause between her sentences isn't the end of the reply: her face keeps its mood
+// unless no new sentence starts within this long.
+const QUIET_AFTER_MS = 1500;
 
 // Everything that sends a message she replies to: off while a reply is on its
 // way (so a second click can't pile up messages) and while not connected. A
@@ -83,6 +91,8 @@ export class BrainClient {
     this._acceptingVoice = true; // false once she's talked over, until her next reply starts
     this.visemeFrames = []; // {t (audioContext time), weight} across every queued clip
     this.lipSyncActive = false;
+    this.visemeWeights = Object.fromEntries(VISEMES.map((v) => [v, 0]));
+    this.speechLevel = 0; // how open her mouth is right now, 0-1 (her head nods with it, idle.js)
     this.moodWeights = Object.fromEntries(MOODS.map((m) => [m, 0]));
     this.moodTargets = Object.fromEntries(MOODS.map((m) => [m, 0]));
 
@@ -205,10 +215,14 @@ export class BrainClient {
   // Once per frame, from main.js: lipsync from her clips' mouth shapes at the current
   // playback time, and mood expressions easing toward their targets.
   update(delta) {
-    if (this.lipSyncActive) {
-      const now = this.audioContext.currentTime;
-      this.vrm.expressionManager?.setValue("aa", this.visemeFrames.findLast((f) => f.t <= now)?.weight ?? 0);
+    const frame = this.lipSyncActive ? this.visemeFrames.findLast((f) => f.t <= this.audioContext.currentTime) : null;
+    for (const name of VISEMES) {
+      const target = frame?.shape === name ? frame.weight : 0;
+      const current = this.visemeWeights[name];
+      this.visemeWeights[name] = current + (target - current) * Math.min(delta / VISEME_FADE_SEC, 1);
+      this.vrm.expressionManager?.setValue(name, this.visemeWeights[name]);
     }
+    this.speechLevel = Math.max(...Object.values(this.visemeWeights));
     for (const name of MOODS) {
       const target = this.moodTargets[name];
       let current = this.moodWeights[name];
@@ -450,8 +464,16 @@ export class BrainClient {
     else this.history.add("glitch", data.text);
     this._streamed = null;
     this._replyChars = data.text.length;
+    if (this.lipSyncActive && this._speechEnd <= this.audioContext.currentTime) this._windDown(); // she'd already caught up
     // Her reaching out isn't the answer this device may be waiting for.
     if (!data.reach_out) this._replyArrived(`reply received (${data.text.length} chars)`);
+  }
+
+  // Her last clip has played and her reply is complete: unless another sentence
+  // starts within QUIET_AFTER_MS, she's done -- mouth shut, face back to neutral.
+  _windDown() {
+    clearTimeout(this._quietTimer);
+    this._quietTimer = setTimeout(() => this._doneTalking(), QUIET_AFTER_MS);
   }
 
   // Stops her voice: every queued clip, its subtitle, her mouth and her face.
@@ -461,6 +483,7 @@ export class BrainClient {
       clip.source.stop();
     }
     this._subtitleTimers.forEach(clearTimeout);
+    clearTimeout(this._quietTimer);
     clearInterval(this._subtitleStreamTimer);
     this.subtitleEl?.classList.remove("visible");
     this._doneTalking();
@@ -471,8 +494,7 @@ export class BrainClient {
     this._clips = [];
     this._subtitleTimers = [];
     this.visemeFrames = [];
-    this.lipSyncActive = false;
-    this.vrm.expressionManager?.setValue("aa", 0);
+    this.lipSyncActive = false; // update() eases her mouth shut
     this._resetMoodImmediate();
   }
 
@@ -507,11 +529,12 @@ export class BrainClient {
     this._speechEnd = start + clip.duration;
     this._clips.push(clip);
     // Mouth shapes in playback time, closing at the clip's end so a pause before the next stays shut.
-    this.visemeFrames.push(...frames.map((f) => ({ t: start + f.t, weight: f.weight })), { t: this._speechEnd, weight: 0 });
+    this.visemeFrames.push(...frames.map((f) => ({ ...f, t: start + f.t })), { t: this._speechEnd, weight: 0 });
     this._subtitleTimers.push(setTimeout(() => this._startSubtitleStream(text, clip.duration), (start - now) * 1000));
     this.lipSyncActive = true;
+    clearTimeout(this._quietTimer); // she's still going
     source.onended = () => {
-      if (this._clips.at(-1) === clip) this._doneTalking(); // the last one: she's finished
+      if (this._clips.at(-1) === clip && !this._streamed) this._windDown(); // more is coming while she's still writing
     };
     source.start(start);
   }

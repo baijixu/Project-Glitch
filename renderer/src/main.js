@@ -169,6 +169,8 @@ async function setActiveAvatar(source, kind = "vrm") {
   scene.add(newVrm.scene);
   vrm = newVrm;
 
+  // Her eyes follow you: three-vrm turns them toward the camera on every vrm.update().
+  if (vrm.lookAt) vrm.lookAt.target = camera;
   idle = new IdleController(vrm);
   idle.relaxPose();
 
@@ -270,7 +272,7 @@ function animate() {
   // idle/lipsync-mood/orbit/render entirely rather than doing that work
   // against a hidden canvas nobody sees (see setActiveAvatar's "png" case).
   if (avatarKind === "vrm") {
-    idle.update(delta);
+    idle.update(delta, brain.speechLevel);
     brain.update(delta);
     vrm.update(delta);
     controls.update();

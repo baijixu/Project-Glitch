@@ -9,12 +9,10 @@ is active (brain/tts_engines.py owns that choice):
     docker-compose.yml's kokoro-tts service) -- lets the actual inference
     cost live in its own process/container instead of Brain's.
 
-Neither engine exposes real phoneme/viseme timestamps, so lipsync is
-approximated the same way for both: an amplitude envelope mapped entirely
-onto the "aa" (open mouth) viseme shape -- a deliberate simplification
-against protocol.md's richer per-shape viseme design, not a full
-phoneme-to-viseme alignment. Good enough to look right; revisit only if
-it doesn't.
+Neither engine exposes real phoneme/viseme timestamps, so lipsync is read
+off the audio itself (_viseme_frames_from_audio): loudness for how open,
+brightness for which vowel shape -- not a phoneme alignment, but the mouth
+moves the way speech does.
 """
 
 import io
@@ -67,26 +65,45 @@ def _strip_emoji(text: str) -> str:
     return re.sub(r"\s+", " ", _EMOJI_PATTERN.sub("", text)).strip()
 
 
+# Below this share of the clip's loudest moment a window counts as silence: mouth
+# closed, and left out when ranking how bright the sound is.
+VOICED_LEVEL = 0.1
+# Louder than this, a vowel gets the more open shape of its pair (oh over ou, ee over ih).
+# Tuned on her Qwen3-TTS voice so all five shapes get used; the knob if her mouth looks off.
+OPEN_LEVEL = 0.3
+
+
 def _viseme_frames_from_audio(audio: np.ndarray, sample_rate: int) -> list[protocol.VisemeFrame]:
-    """Shared by both engines -- an RMS envelope over fixed windows, mapped
-    to the "aa" viseme shape (see module docstring). Takes sample_rate as a
-    parameter rather than assuming a fixed one: RemoteTTS's engine could be
-    anything, and this is what turns "elapsed samples" into the actual
-    seconds the Renderer's _startSubtitleStream/viseme playback times
-    itself against.
+    """Her mouth over time, read off the audio in ENVELOPE_WINDOW_MS windows: how open
+    from how loud, and which of VRM's five vowel shapes from how bright the sound is
+    -- bright windows (a high spectral centroid) are front vowels (ee/ih), dark ones
+    back vowels (oh/ou), the middle aa, and the louder of each pair the more open
+    shape. Brightness is ranked within the clip, so it fits any voice. An approximation
+    from the sound, not phonemes -- but the mouth changes shape the way speech does.
+    sample_rate is the clip's own, since the engine could be anything.
     """
     window = int(sample_rate * ENVELOPE_WINDOW_MS / 1000)
-    if window <= 0 or len(audio) == 0:
+    if window <= 0 or len(audio) < window:
         return []
     n_windows = len(audio) // window
-    trimmed = audio[: n_windows * window].reshape(n_windows, window)
-    rms = np.sqrt(np.mean(trimmed**2, axis=1))
-    peak = rms.max() if rms.max() > 0 else 1.0
-    weights = (rms / peak).round(3)
-    return [
-        protocol.VisemeFrame(t=round(i * ENVELOPE_WINDOW_MS / 1000, 3), shape="aa", weight=float(w))
-        for i, w in enumerate(weights)
-    ]
+    windows = audio[: n_windows * window].reshape(n_windows, window)
+    rms = np.sqrt(np.mean(windows**2, axis=1))
+    weights = rms / (rms.max() or 1.0)
+    spectrum = np.abs(np.fft.rfft(windows * np.hanning(window), axis=1))
+    centroid = (spectrum * np.fft.rfftfreq(window, 1 / sample_rate)).sum(axis=1) / (spectrum.sum(axis=1) + 1e-9)
+    voiced = weights > VOICED_LEVEL
+    brightness = np.full(n_windows, 0.5)
+    brightness[voiced] = centroid[voiced].argsort().argsort() / max(voiced.sum() - 1, 1)  # 0 darkest .. 1 brightest
+    frames = []
+    for i, (weight, bright) in enumerate(zip(weights, brightness)):
+        if bright < 1 / 3:
+            shape = "oh" if weight > OPEN_LEVEL else "ou"
+        elif bright > 2 / 3:
+            shape = "ee" if weight > OPEN_LEVEL else "ih"
+        else:
+            shape = "aa"
+        frames.append(protocol.VisemeFrame(t=round(i * ENVELOPE_WINDOW_MS / 1000, 3), shape=shape, weight=round(float(weight) if voiced[i] else 0.0, 3)))
+    return frames
 
 
 class NoneTTS:
