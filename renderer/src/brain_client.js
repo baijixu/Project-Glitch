@@ -151,6 +151,7 @@ export class BrainClient {
         this._showToast(data.text, `${label}: `);
         if (data.kind !== "error") this.history.add("system", `${label}: ${data.text}`);
       },
+      left_off: (data) => this.history.add("system", `📝 Where we left off: ${data.note}`),
       lessons_state: (data) => this.lessons.handleState(data),
       training_state: (data) => this.training.handleState(data),
       sampling_state: (data) => this.sampling.handleState(data),

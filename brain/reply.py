@@ -89,9 +89,14 @@ async def _user_audio(websocket: websockets.ServerConnection, data: dict, brain:
 async def clear_conversation(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     """The chat history panel's Clear Chat: she starts a fresh conversation too,
     not just the panel. Her long-term memory is untouched -- only the running
-    conversation goes. Every connected device clears its panel as well.
+    conversation goes. Every connected device clears its panel as well. Before it
+    goes, she writes herself a note on where it left off (_write_left_off).
     """
     global LAST_CONTEXT_USAGE
+    name = persona.user_name() or "User"
+    # Her own conversations only: a role-play scene isn't where she and the user left off.
+    keep_note = brain.llm.owns_conversation and not profiles.read_roleplay_active()
+    transcript = brain.llm.transcript(name) if keep_note else ""
     brain.llm.clear_history()  # with a harness: a new session there
     if brain.llm.owns_conversation:  # a harness's conversations stay out of her chat log -- see reply_to
         conversation.log_marker("New conversation (chat cleared)", mode=persona.conversation_mode())
@@ -100,6 +105,23 @@ async def clear_conversation(websocket: websockets.ServerConnection, data: dict,
     await reach_out.broadcast_curiosity_timer()
     print("[brain] conversation cleared")
     await hub.broadcast(protocol.conversation_cleared())
+    if any(line.startswith(f"{name}: ") for line in transcript.splitlines()):  # the user said something worth a note
+        hub.spawn(_write_left_off(brain, transcript, name))
+
+
+async def _write_left_off(brain: Brain, transcript: str, name: str) -> None:
+    """Her note on where the cleared conversation left off, saved for her next ones
+    (reply_to puts it in her prompt) and shown on every device. Holds the reply lock
+    meanwhile, so her first reply in the new conversation already has it."""
+    async with brain.reply_lock:
+        try:
+            note = await asyncio.to_thread(brain.llm.write_left_off, transcript, name)
+        except Exception as exc:
+            print(f"[brain] couldn't write where we left off: {exc!r}")
+            return
+    if note:
+        conversation.save_left_off(note)
+        await hub.broadcast(protocol.left_off(note))
 
 
 @hub.handles(protocol.REGENERATE_LAST)
@@ -224,6 +246,7 @@ async def reply_to(
             brain.llm.set_memory("")
 
     brain.llm.set_user_info(persona.effective_user_info())
+    brain.llm.set_left_off("" if profiles.read_roleplay_active() else conversation.read_left_off())
     # Her sampling profile (brain/sampling.py) -- read every turn, so a switch
     # in Settings applies to the very next reply. Kept on during role-play:
     # it's how she generates, not something about the real user.

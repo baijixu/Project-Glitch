@@ -147,6 +147,14 @@ def _for_model(message: dict) -> dict:
     return {k: v for k, v in message.items() if k != "at"}
 
 
+def _text_of(content) -> str:
+    """A history message's words: its text, or its text parts plus "[picture]" for a picture turn."""
+    if not isinstance(content, list):
+        return str(content or "")
+    text = " ".join(part.get("text", "") for part in content if part.get("type") == "text").strip()
+    return f"{text} [picture]".strip() if any(part.get("type") == "image_url" for part in content) else text
+
+
 def strip_gap_marker(text: str) -> str:
     """The user's own words, without the marker _mark_gap put in front."""
     return _GAP_MARKER.sub("", text, count=1)
@@ -396,6 +404,28 @@ _DIARY_SYSTEM_PROMPT = (
     "Rules: it's your side of the day -- what you thought and felt -- not a summary of {name}'s life, and "
     "leave {name}'s health out of it. Only what actually happened in the log; never invent. One or two lines "
     "per point, at most three points per heading."
+)
+
+# Her note on where a conversation left off, written as Clear Chat ends it and kept in her
+# prompt for the next one (reply.py) -- the chat is the only thing she loses on a clear.
+# Same who's-who framing as the diary above.
+MAX_LEFT_OFF_TOKENS = 400
+MAX_TRANSCRIPT_CHARS = 20000  # the newest part of a long conversation, ~5k tokens
+# His health stays out of her note however it's worded: he wants it raised only when he
+# raises it, and the note lives on into the next conversation. The prompt's own "leave
+# his health out" still let it into 3 of 8 real notes (5 of 8 without it), so any
+# sentence that mentions it is dropped.
+_HEALTH = re.compile(
+    r"\b(?:surg\w*|cancer|tumou?r|astrocytoma|hospital|spine|spinal|mobility|chemo\w*|radiation|seizures?|MRI|"
+    r"left (?:arm|side|leg)|dead[- ]weight|memory (?:issues|problems|loss|trouble)|(?:issues|problems|challenges|trouble) with (?:his |your )?memory)\b",
+    re.IGNORECASE,
+)
+_LEFT_OFF_SYSTEM_PROMPT = (
+    "You are Glitch, an AI companion. Below is the conversation you and {name} just had: lines marked \"{name}:\" "
+    "are {name}, lines marked \"Glitch:\" are you. Write a short note to yourself, in the first person (\"I\" is "
+    "always Glitch), so that next time you talk you know where you left off: what you talked about, anything left "
+    "open or unfinished, and how things were between you. Two to four sentences. Leave {name}'s health out of it. "
+    "Only what actually happened in the conversation; never invent."
 )
 
 _LESSON_SYSTEM_PROMPT = (
@@ -681,6 +711,15 @@ class ChatBackend:
     def write_diary(self, log: str, name: str) -> str:
         return ""
 
+    def transcript(self, name: str) -> str:
+        return ""
+
+    def write_left_off(self, transcript: str, name: str) -> str:
+        return ""
+
+    def set_left_off(self, note: str) -> None:
+        pass
+
     def recent_replies(self, count: int) -> list[str]:
         return []
 
@@ -740,6 +779,7 @@ class LocalLLM(ChatBackend):
         self._lessons = ""
         self._curiosity = ""
         self._user_info = ""
+        self._left_off = ""  # her note on where the last conversation left off
         # Sampling settings for her replies only (brain/sampling.py), set by
         # main.py before each reply. Empty = the server's own settings.
         self._sampling: dict = {}
@@ -1053,6 +1093,26 @@ class LocalLLM(ChatBackend):
         ]
         return self._complete(messages, MAX_MEMORY_PROPOSAL_TOKENS, no_thinking=True)
 
+    def transcript(self, name: str) -> str:
+        """Her conversation as "<name>: ..." / "Glitch: ..." lines, for write_left_off --
+        taken before a clear (reply.py), so the note is written from what was really said."""
+        speaker = {"user": name, "assistant": "Glitch"}
+        lines = [f"{speaker[m['role']]}: {strip_gap_marker(_text_of(m['content']))}" for m in self._history if m.get("role") in speaker]
+        return "\n".join(lines)[-MAX_TRANSCRIPT_CHARS:]
+
+    def write_left_off(self, transcript: str, name: str) -> str:
+        """Her short note on where a conversation left off (see _LEFT_OFF_SYSTEM_PROMPT)."""
+        messages = [
+            {"role": "system", "content": _LEFT_OFF_SYSTEM_PROMPT.format(name=name)},
+            {"role": "user", "content": "The conversation:\n\n" + transcript},
+        ]
+        note = self._complete(messages, MAX_LEFT_OFF_TOKENS, no_thinking=True)
+        return " ".join(s for s in re.split(r"(?<=[.!?])\s+", note.strip()) if s and not _HEALTH.search(s))
+
+    def set_left_off(self, note: str) -> None:
+        """Her note from the last conversation (reply.py sets it every turn, "" in role-play)."""
+        self._left_off = note.strip()
+
     def write_diary(self, log: str, name: str) -> str:
         """Her nightly diary entry (brain/journal.py) about one day's chat log."""
         messages = [
@@ -1134,6 +1194,8 @@ class LocalLLM(ChatBackend):
                 "About the user, in their own words (treat as true, and respect the preferences it "
                 f"states -- e.g. topics they do or don't care about):\n{self._user_info}"
             )
+        if self._left_off:  # changes only when a chat is cleared, so it stays up here with the rest
+            parts.append(f"Where you two left off last time -- your own note from then:\n{self._left_off}")
         if self._lessons:
             # After the soul on purpose: these are the user's own stated
             # preferences, and should win over her default habits.

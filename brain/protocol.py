@@ -119,6 +119,7 @@ SOUL_AND_USER_CONTENT = "soul_and_user_content"
 NOTES_CONTENT = "notes_content"
 MEMORY_LEARNED = "memory_learned"
 NO_REPLY = "no_reply"
+LEFT_OFF = "left_off"
 TTS_ENGINES = "tts_engines"
 TTS_ENGINE_CONTENT = "tts_engine_content"
 TTS_VOICES = "tts_voices"
@@ -358,6 +359,12 @@ def memory_profile_content(name: str, profile: dict) -> dict:
     saved LLM engine's or harness's is.
     """
     return {"type": MEMORY_PROFILE_CONTENT, "name": name, "profile": profile}
+
+
+def left_off(note: str) -> dict:
+    """Her note on where the conversation just cleared left off -- the Renderer shows it
+    in the chat history, so a wrong one can be seen."""
+    return {"type": LEFT_OFF, "note": note}
 
 
 def no_reply() -> dict:

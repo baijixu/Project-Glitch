@@ -117,3 +117,6 @@ brain/restart.log
 tests/
 run-tests.bat
 run-tests.sh
+
+# Her note on where the last conversation left off (brain/conversation.py) -- personal content.
+brain/left_off.md

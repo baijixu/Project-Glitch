@@ -31,6 +31,8 @@ LOG_DIR = _DIR / "chat_logs"
 ROLEPLAY_LOG_DIR = LOG_DIR / "roleplay"
 # Her nightly journal (journal.py), read from the same Settings section.
 JOURNAL_LOG_DIR = _DIR / "self"
+# Her note on where the last conversation left off, written as Clear Chat ends it (reply.py).
+LEFT_OFF_PATH = _DIR / "left_off.md"
 
 MAIN, ROLEPLAY, JOURNAL = "main", "roleplay", "journal"
 PICTURE_NOTE = "[picture]"
@@ -88,6 +90,22 @@ def clear_state(mode: str) -> None:
         _path(mode).unlink(missing_ok=True)
     except OSError as exc:
         print(f"[conversation] couldn't clear the saved {mode} conversation: {exc!r}")
+
+
+def save_left_off(note: str, now: datetime | None = None) -> None:
+    """Her note on where a cleared conversation left off, dated. Best-effort."""
+    now = now or datetime.now()
+    try:
+        LEFT_OFF_PATH.write_text(f"(Written {now:%A} {now.day} {now:%B}, {now:%H:%M}.) {note.strip()}", encoding="utf-8")
+    except OSError as exc:
+        print(f"[conversation] couldn't save where we left off: {exc!r}")
+
+
+def read_left_off() -> str:
+    try:
+        return LEFT_OFF_PATH.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
 
 
 def _log_dir(mode: str) -> Path:
