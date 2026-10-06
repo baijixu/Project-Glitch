@@ -193,12 +193,12 @@ Everything below is done in the **Settings** panel, no config file editing requi
    from `brain/`, and `user.md` is re-read on every message, so edits apply immediately.
 3. **Voice (optional).** Start the bundled speech server with `docker compose up -d`, then *Settings → Speech Engine* and add an
    engine with endpoint `http://localhost:8880/v1`. Any server with the OpenAI `/v1/audio/speech` shape works. You can pick
-   a voice, and if you use the bundled Kokoro service you can blend your own custom voices.
+   a voice, and if you use the bundled Kokoro service you can blend your own custom voices. For a more expressive voice on an
+   NVIDIA GPU (~4.5 GB), run Qwen3-TTS with `tools/qwen_tts_server.py` (setup in its header, no Docker needed) and use endpoint
+   `http://<that machine>:8001/v1` with a voice such as `Serena`, `Vivian` or `Ryan`.
 4. **Memory (optional).** Under *Memory backend*, press ➕ to add your Hindsight or Mem0 server (URL, API key, bank or
    user id), then pick it (see [Memory](#memory)). The built-in *Local file* needs no setup.
 5. **Avatar (optional).** *Settings → Avatar*: import your own `.vrm` or `.png`.
-6. **Role-play off.** Role-play counts as *on* until you've toggled it once, and it pauses memory, lessons and curiosity, so on a
-   fresh install switch it off at the top of Settings.
 
 Then just type, or hold the 🎤 button and speak.
 
@@ -512,7 +512,7 @@ renderer/              Vite + three.js front end
   src/                 brain_client.js (connection, chat box, her face and voice) and
                        one module per feature -- see the map at the top of brain_client.js
   assets/Glitch.vrm    default avatar
-tools/                 backup_local_state.py
+tools/                 backup_local_state.py, qwen_tts_server.py (Qwen3-TTS speech server)
 config.example.yaml    copy to config.yaml
 docker-compose.yml     optional Kokoro speech server
 protocol.md            Brain <-> Renderer messages
