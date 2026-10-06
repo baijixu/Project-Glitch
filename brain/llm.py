@@ -64,11 +64,13 @@ HONESTY_INSTRUCTION = (
 
 # A small model drifts into speaking as the person it's talking to (taking their name,
 # echoing their life back as its own). Kept under every soul/persona like the two above.
+# It used to name "your looks, clothes and tastes" -- measured against this wording on
+# everyday openers (thinking off, 84 replies each), naming them doubled how often she
+# claimed his likes as hers (15 vs 7) and kept her coming back to her own looks.
 IDENTITY_INSTRUCTION = (
-    "You are the AI in this conversation. The person you're talking to is a separate human: "
-    "their name, life and words are theirs, not yours. Never speak as them or call yourself by "
-    "their name. Your looks, clothes and tastes are the ones described above; theirs are only "
-    "what they've told you about themselves. Never give them yours or take theirs."
+    "You are the AI in this conversation. The person you're talking to is a separate human: their name, life and "
+    "words are theirs, not yours. Never speak as them or call yourself by their name. Everything their profile says "
+    "is about them; everything about you is in your own description above."
 )
 
 # Heads the per-turn notes attached to the newest user message (see _turn_notes).
