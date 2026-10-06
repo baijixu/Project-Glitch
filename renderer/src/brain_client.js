@@ -121,7 +121,10 @@ export class BrainClient {
         this.flashStatus("(no reply)", 4000);
         this._replyArrived("no reply (nothing to say)");
       },
+      // Waiting on a newer message means it was sent while this audio was still being
+      // made: that's talking over her before she started, so it isn't played.
       speak_audio: (data) =>
+        !this._awaitingReply &&
         this._playAudio(data.audio_b64).catch((err) => {
           console.warn("[brain] couldn't play audio:", err);
           this.log("audio", `playback failed: ${err.message || err}`);
@@ -239,13 +242,27 @@ export class BrainClient {
     return !this._awaitingReply && this.connected;
   }
 
-  // Sends something she'll reply to, and waits for the reply.
+  // Sends something she'll reply to, and waits for the reply. Cuts her off first if
+  // she's still talking -- the new message is the interruption.
   sendForReply(message, logText) {
+    this.interruptSpeech();
     this.send(message);
     this._startSlowReplyTimer();
     this._setAwaitingReply(true);
     this._replySentAt = Date.now();
     this.log("ws", logText); // sizes only, never the text
+  }
+
+  // Talking over her (🎤 pressed, or a message sent while she speaks): her voice and
+  // subtitle stop now, and Brain keeps only the part of her reply that was heard.
+  interruptSpeech() {
+    if (!this.lipSyncActive || !this._source) return;
+    const heard = (this.audioContext.currentTime - this.playbackStartTime) / this._playingDuration;
+    this._source.stop(); // its onended closes her mouth and resets her face
+    clearInterval(this._subtitleStreamTimer);
+    this.subtitleEl?.classList.remove("visible");
+    this.send({ type: "speech_interrupted", heard: Math.min(Math.max(heard, 0), 1) });
+    this.log("audio", `talked over her at ${Math.round(heard * 100)}%`);
   }
 
   setStatus(text) {
@@ -445,6 +462,7 @@ export class BrainClient {
     this._source = source;
     previous?.stop();
     this.playbackStartTime = this.audioContext.currentTime;
+    this._playingDuration = audioBuffer.duration;
     this.lipSyncActive = true;
     this._startSubtitleStream(this._pendingSpeakText, audioBuffer.duration);
     source.onended = () => {

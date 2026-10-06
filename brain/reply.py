@@ -136,6 +136,16 @@ async def delete_last(websocket: websockets.ServerConnection, data: dict, brain:
         await _drop_proposal_from(brain.llm.pop_last_exchange())
 
 
+@hub.handles(protocol.SPEECH_INTERRUPTED)
+async def speech_interrupted(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    """The user cut in while she was speaking (🎤 or Send): `heard` is how much of
+    her reply's audio had played, 0-1. She keeps only that much of it."""
+    heard = data.get("heard")
+    if isinstance(heard, (int, float)):
+        brain.llm.cut_last_reply(float(heard))
+        await hub.debug_log(websocket, "tts", f"talked over at {heard:.0%} of her reply")
+
+
 async def _drop_proposal_from(user_text: str | None) -> None:
     """A memory proposed from an exchange that was just regenerated or deleted
     goes too -- it came from a reply that's no longer in her conversation."""

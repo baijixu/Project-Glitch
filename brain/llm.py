@@ -626,6 +626,9 @@ class ChatBackend:
     def last_role(self) -> str | None:
         return None
 
+    def cut_last_reply(self, heard: float) -> None:
+        pass
+
     def write_diary(self, log: str, name: str) -> str:
         return ""
 
@@ -1308,6 +1311,17 @@ class LocalLLM(ChatBackend):
     def last_role(self) -> str | None:
         """Who spoke last in her conversation ("user"/"assistant"), None if empty."""
         return self._history[-1].get("role") if self._history else None
+
+    def cut_last_reply(self, heard: float) -> None:
+        """She was talked over `heard` (0-1) of the way through speaking her latest reply:
+        keep about the words that were heard, ending in a dash, so she knows where she was
+        stopped instead of believing she said it all."""
+        if not self._history or self._history[-1].get("role") != "assistant" or not 0 <= heard < 1:
+            return
+        # ponytail: words by share of playback time -- TTS pauses and pacing make it approximate.
+        words = str(self._history[-1]["content"]).split()
+        self._history[-1] = {**self._history[-1], "content": " ".join(words[: max(1, round(len(words) * heard))]) + " —"}
+        self._history_changed()
 
     def pop_last_exchange(self) -> str | None:
         """Removes the most recent turn from history and returns the user

@@ -354,6 +354,7 @@ export class Capture {
   // Always-On the button is just a listening light.)
   async _startRecording() {
     if (this._alwaysOn || this.mediaRecorder?.state === "recording") return;
+    this._app.interruptSpeech(); // pressing 🎤 while she talks cuts her off
     this._held = true;
     const stream = await this._openMic("");
     if (!stream) return;
