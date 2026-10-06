@@ -15,7 +15,7 @@ user_text / user_audio (-> STT) / regenerate_last
      the LLM, then brain.llm.reply (llm.py) in a worker thread
   -> set_expression + speak_text back to the device, the chat log, the context
      meter, then memory saving / training proposals / curiosity in the
-     background (hub.spawn), then TTS -> speak_audio + viseme_stream.
+     background (hub.spawn), while TTS speaks it sentence by sentence (speak_audio).
 
 Where things live
 -----------------

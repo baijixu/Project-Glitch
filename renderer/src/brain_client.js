@@ -70,11 +70,18 @@ export class BrainClient {
     this._awaitingReply = false;
     this._slowReplyTimer = null;
     this._replySentAt = null; // when the pending message went out, for the debug log's round trip
-    this._pendingSpeakText = ""; // her reply's text, shown as a subtitle once its audio arrives
+    this._streamed = null; // her reply's History entry while its sentences are still arriving (history.add's result)
+    this._streamedText = "";
+    this._replyChars = 0; // length of her latest whole reply -- how much of it was heard, when she's talked over
 
+    // Her voice arrives a sentence at a time (speak_audio); each clip is queued to start
+    // the moment the one before ends. Talking over her stops them all.
     this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    this.visemeFrames = [];
-    this.playbackStartTime = 0;
+    this._clips = []; // {source, start, duration, chars} of what she's saying now
+    this._speechEnd = 0; // audioContext time the last queued clip ends
+    this._subtitleTimers = [];
+    this._acceptingVoice = true; // false once she's talked over, until her next reply starts
+    this.visemeFrames = []; // {t (audioContext time), weight} across every queued clip
     this.lipSyncActive = false;
     this.moodWeights = Object.fromEntries(MOODS.map((m) => [m, 0]));
     this.moodTargets = Object.fromEntries(MOODS.map((m) => [m, 0]));
@@ -109,27 +116,19 @@ export class BrainClient {
     this._handlers = {
       ping: () => this.send({ type: "pong" }),
       set_expression: (data) => this._setMood(data.name, data.weight),
-      speak_text: (data) => {
-        this._pendingSpeakText = data.text;
-        this.history.add("glitch", data.text);
-        // Her reaching out isn't the answer this device may be waiting for.
-        if (!data.reach_out) this._replyArrived(`reply received (${data.text.length} chars)`);
-      },
+      speak_text: (data) => this._showReplyText(data),
       // Sent instead of speak_text when she had nothing to say (a blank voice
       // message, an empty reply) -- said so, rather than looking broken.
       no_reply: () => {
         this.flashStatus("(no reply)", 4000);
         this._replyArrived("no reply (nothing to say)");
       },
-      // Waiting on a newer message means it was sent while this audio was still being
-      // made: that's talking over her before she started, so it isn't played.
       speak_audio: (data) =>
-        !this._awaitingReply &&
-        this._playAudio(data.audio_b64).catch((err) => {
+        this._acceptingVoice &&
+        this._playClip(data).catch((err) => {
           console.warn("[brain] couldn't play audio:", err);
           this.log("audio", `playback failed: ${err.message || err}`);
         }),
-      viseme_stream: (data) => (this.visemeFrames = data.frames || []),
       user_transcript: (data) => this.capture.handleTranscript(data.text),
       conversation_cleared: () => this.history.clear(),
       memory_learned: (data) => {
@@ -203,16 +202,12 @@ export class BrainClient {
     this.socket.addEventListener("message", (event) => this._handleMessage(event.data));
   }
 
-  // Once per frame, from main.js: lipsync from the viseme stream by elapsed
+  // Once per frame, from main.js: lipsync from her clips' mouth shapes at the current
   // playback time, and mood expressions easing toward their targets.
   update(delta) {
     if (this.lipSyncActive) {
-      const elapsed = this.audioContext.currentTime - this.playbackStartTime;
-      const frame = this.visemeFrames.find((f, i) => {
-        const next = this.visemeFrames[i + 1];
-        return elapsed >= f.t && (!next || elapsed < next.t);
-      });
-      this.vrm.expressionManager?.setValue("aa", frame ? frame.weight : 0);
+      const now = this.audioContext.currentTime;
+      this.vrm.expressionManager?.setValue("aa", this.visemeFrames.findLast((f) => f.t <= now)?.weight ?? 0);
     }
     for (const name of MOODS) {
       const target = this.moodTargets[name];
@@ -253,15 +248,17 @@ export class BrainClient {
     this.log("ws", logText); // sizes only, never the text
   }
 
-  // Talking over her (🎤 pressed, or a message sent while she speaks): her voice and
-  // subtitle stop now, and Brain keeps only the part of her reply that was heard.
+  // Talking over her (🎤 pressed, or a message sent): her voice and subtitle stop now,
+  // whatever's still on its way isn't played, and Brain keeps only the part of her
+  // reply that was heard -- counted in characters across the clips she got through.
   interruptSpeech() {
-    if (!this.lipSyncActive || !this._source) return;
-    const heard = (this.audioContext.currentTime - this.playbackStartTime) / this._playingDuration;
-    this._source.stop(); // its onended closes her mouth and resets her face
-    clearInterval(this._subtitleStreamTimer);
-    this.subtitleEl?.classList.remove("visible");
-    this.send({ type: "speech_interrupted", heard: Math.min(Math.max(heard, 0), 1) });
+    this._acceptingVoice = false;
+    if (!this.lipSyncActive) return;
+    const now = this.audioContext.currentTime;
+    const heardChars = this._clips.reduce((sum, c) => sum + c.chars * Math.min(Math.max((now - c.start) / c.duration, 0), 1), 0);
+    const heard = Math.min(heardChars / (this._replyChars || 1), 1);
+    this._stopVoice();
+    this.send({ type: "speech_interrupted", heard });
     this.log("audio", `talked over her at ${Math.round(heard * 100)}%`);
   }
 
@@ -314,12 +311,15 @@ export class BrainClient {
     }
   }
 
-  // The Stop button (only there while a reply is pending): Brain drops the
-  // reply and sends nothing, so the input comes back right away. Her side of
-  // that exchange just never appears; Resend Last re-answers it.
+  // The Stop button (only there while a reply is pending): Brain stops the model and
+  // drops the reply, and she stops talking, so the input comes back right away. What
+  // she'd already said stays on screen but not in her memory; Resend Last re-answers it.
   _stopReply() {
     if (!this._awaitingReply) return;
     this.send({ type: "stop_reply" });
+    this._acceptingVoice = false;
+    this._streamed = null;
+    this._stopVoice();
     this._clearSlowReplyTimer();
     this._replySentAt = null;
     this._setAwaitingReply(false);
@@ -435,7 +435,50 @@ export class BrainClient {
     this._subtitleStreamTimer = setInterval(revealNext, intervalMs);
   }
 
-  async _playAudio(audioB64) {
+  // Her reply's text: each sentence as it's written (partial) grows one History bubble,
+  // then all of it settles the bubble and ends the wait. Any of it also means a new
+  // reply has started, so her voice is let through again.
+  _showReplyText(data) {
+    this._acceptingVoice = true;
+    if (data.partial) {
+      this._streamedText = this._streamed ? `${this._streamedText} ${data.text}` : data.text;
+      if (this._streamed) this.history.updateText(this._streamed, this._streamedText);
+      else this._streamed = this.history.add("glitch", this._streamedText);
+      return;
+    }
+    if (this._streamed) this.history.updateText(this._streamed, data.text);
+    else this.history.add("glitch", data.text);
+    this._streamed = null;
+    this._replyChars = data.text.length;
+    // Her reaching out isn't the answer this device may be waiting for.
+    if (!data.reach_out) this._replyArrived(`reply received (${data.text.length} chars)`);
+  }
+
+  // Stops her voice: every queued clip, its subtitle, her mouth and her face.
+  _stopVoice() {
+    for (const clip of this._clips) {
+      clip.source.onended = null;
+      clip.source.stop();
+    }
+    this._subtitleTimers.forEach(clearTimeout);
+    clearInterval(this._subtitleStreamTimer);
+    this.subtitleEl?.classList.remove("visible");
+    this._doneTalking();
+  }
+
+  // She's not talking any more: mouth closed, face back to neutral.
+  _doneTalking() {
+    this._clips = [];
+    this._subtitleTimers = [];
+    this.visemeFrames = [];
+    this.lipSyncActive = false;
+    this.vrm.expressionManager?.setValue("aa", 0);
+    this._resetMoodImmediate();
+  }
+
+  // One sentence of her voice, queued to start the moment the one before it ends,
+  // with its subtitle and mouth shapes timed to match.
+  async _playClip({ audio_b64: audioB64, text, frames }) {
     // Browsers (phones especially) start audio suspended until the page is
     // tapped, and then play nothing, silently -- which looks exactly like "she
     // never speaks". Resume it, and say so in the log.
@@ -454,23 +497,22 @@ export class BrainClient {
       );
     }
     const audioBuffer = await this.audioContext.decodeAudioData(base64ToArrayBuffer(audioB64));
+    if (!this._acceptingVoice) return; // talked over while it was being decoded
     const source = this.audioContext.createBufferSource();
     source.buffer = audioBuffer;
     source.connect(this.audioContext.destination);
-    // A new reply cuts off one still playing, instead of the two talking over each other.
-    const previous = this._source;
-    this._source = source;
-    previous?.stop();
-    this.playbackStartTime = this.audioContext.currentTime;
-    this._playingDuration = audioBuffer.duration;
+    const now = this.audioContext.currentTime;
+    const start = Math.max(now, this._speechEnd);
+    const clip = { source, start, duration: audioBuffer.duration, chars: text.length };
+    this._speechEnd = start + clip.duration;
+    this._clips.push(clip);
+    // Mouth shapes in playback time, closing at the clip's end so a pause before the next stays shut.
+    this.visemeFrames.push(...frames.map((f) => ({ t: start + f.t, weight: f.weight })), { t: this._speechEnd, weight: 0 });
+    this._subtitleTimers.push(setTimeout(() => this._startSubtitleStream(text, clip.duration), (start - now) * 1000));
     this.lipSyncActive = true;
-    this._startSubtitleStream(this._pendingSpeakText, audioBuffer.duration);
     source.onended = () => {
-      if (this._source !== source) return; // cut off by a newer one, which is still talking
-      this.lipSyncActive = false;
-      this.vrm.expressionManager?.setValue("aa", 0);
-      this._resetMoodImmediate();
+      if (this._clips.at(-1) === clip) this._doneTalking(); // the last one: she's finished
     };
-    source.start();
+    source.start(start);
   }
 }

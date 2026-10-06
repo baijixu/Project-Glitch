@@ -163,5 +163,4 @@ async def _reach_out(brain: Brain, *, test: bool = False) -> None:
     except Exception as exc:
         print(f"[brain] TTS failed for her reach-out: {exc!r}")
         return
-    await hub.broadcast(protocol.speak_audio(base64.b64encode(wav_bytes).decode("ascii"), brain.tts.SAMPLE_RATE))
-    await hub.broadcast(protocol.viseme_stream(frames))
+    await hub.broadcast(protocol.speak_audio(base64.b64encode(wav_bytes).decode("ascii"), brain.tts.SAMPLE_RATE, text, frames))

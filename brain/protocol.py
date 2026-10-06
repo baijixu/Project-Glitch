@@ -89,7 +89,6 @@ RESTART_BRAIN = "restart_brain"
 PING = "ping"
 PLAY_ANIMATION = "play_animation"
 SET_EXPRESSION = "set_expression"
-VISEME_STREAM = "viseme_stream"
 SPEAK_TEXT = "speak_text"
 SPEAK_AUDIO = "speak_audio"
 PROFILES = "profiles"
@@ -163,13 +162,18 @@ def debug_event(category: str, message: str, ms: float | None = None) -> dict:
     return payload
 
 
-def speak_text(text: str, reach_out: bool = False) -> dict:
-    """`reach_out`: she spoke first -- not the reply a device may be waiting for."""
-    return {"type": SPEAK_TEXT, "text": text, **({"reach_out": True} if reach_out else {})}
+def speak_text(text: str, reach_out: bool = False, partial: bool = False) -> dict:
+    """Her reply's text. `partial`: one more sentence of a reply still being written
+    (the final speak_text then carries all of it). `reach_out`: she spoke first --
+    not the reply a device may be waiting for."""
+    flags = {"reach_out": reach_out, "partial": partial}
+    return {"type": SPEAK_TEXT, "text": text, **{flag: True for flag, on in flags.items() if on}}
 
 
-def speak_audio(audio_b64: str, sample_rate: int) -> dict:
-    return {"type": SPEAK_AUDIO, "audio_b64": audio_b64, "sample_rate": sample_rate}
+def speak_audio(audio_b64: str, sample_rate: int, text: str, frames: list["VisemeFrame"]) -> dict:
+    """One clip of her voice -- a sentence, played after the one before -- with the
+    text it says (its subtitle) and its mouth shapes over time."""
+    return {"type": SPEAK_AUDIO, "audio_b64": audio_b64, "sample_rate": sample_rate, "text": text, "frames": [asdict(f) for f in frames]}
 
 
 def play_animation(name: str, loop: bool = False) -> dict:
@@ -450,10 +454,6 @@ class VisemeFrame:
     t: float
     shape: str
     weight: float
-
-
-def viseme_stream(frames: list[VisemeFrame]) -> dict:
-    return {"type": VISEME_STREAM, "frames": [asdict(f) for f in frames]}
 
 
 def user_transcript(text: str) -> dict:

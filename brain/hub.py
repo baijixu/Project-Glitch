@@ -185,6 +185,9 @@ class Brain:
         # wrong questions. A second message waits for the first reply to finish
         # (server._run_reply_message), and so does her reaching out.
         self.reply_lock = asyncio.Lock()
+        # She's been talked over (speech_interrupted, or a new message): the rest of
+        # the reply she's voicing goes unsaid. Reset as each reply starts (reply.py).
+        self.speech_stopped = False
 
 
 _LOOPBACK_ADDRESSES = frozenset({"127.0.0.1", "::1", "::ffff:127.0.0.1"})

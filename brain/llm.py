@@ -40,10 +40,13 @@ VALID_MOODS = {"happy", "angry", "sad", "relaxed", "surprised", "neutral"}
 # on it regardless of which personality is currently active.
 DEFAULT_PERSONALITY = "You are Glitch, a friendly and curious AI companion. Keep replies conversational and fairly short."
 
+# At the start, so her voice knows her mood before her first sentence is spoken (her
+# replies stream, see Sentences). Measured on 14 real exchanges, thinking on: 14 of 14
+# opened with exactly one tag, replies read the same as with the tag at the end.
 MOOD_TAG_INSTRUCTION = (
-    "End every reply, on its own at the very end, with exactly one mood tag "
-    "chosen from: [mood: neutral] [mood: happy] [mood: sad] [mood: angry] [mood: surprised] "
-    "[mood: relaxed] -- pick whichever best matches the emotional tone of what you just said."
+    "Start every reply with exactly one mood tag, on its own at the very beginning, chosen from: "
+    "[mood: neutral] [mood: happy] [mood: sad] [mood: angry] [mood: surprised] [mood: relaxed] "
+    "-- pick whichever best matches the emotional tone of what you're about to say."
 )
 
 # Same "stays fixed underneath any soul/persona" role as MOOD_TAG_INSTRUCTION
@@ -526,6 +529,15 @@ def _text_tool_calls(text: str) -> list[dict]:
     ]
 
 
+def _json_arguments(text: str) -> dict:
+    """A tool call's arguments as the model wrote them (JSON text), or {} if they aren't a JSON object."""
+    try:
+        arguments = json.loads(text or "{}")
+    except ValueError:
+        return {}
+    return arguments if isinstance(arguments, dict) else {}
+
+
 def _extract_mood(text: str) -> tuple[str, str]:
     """Returns (mood, text_with_tag_removed). Falls back to "neutral" if the
     model forgot the tag or used something outside VALID_MOODS, rather than
@@ -539,6 +551,41 @@ def _extract_mood(text: str) -> tuple[str, str]:
     if mood not in VALID_MOODS:
         mood = "neutral"
     return mood, _MOOD_TAG.sub("", text).strip()
+
+
+# Her reply as it streams, cut into sentences to speak (reply.py). Her mood tag opens the
+# reply (MOOD_TAG_INSTRUCTION), so nothing is said until it's there: what comes before it
+# is thinking the model leaked into its answer, or a tool call it wrote out as text.
+_LEADING_MOOD_TAG = re.compile(r"\s*\[mood:\s*(\w+)\]", re.IGNORECASE)
+_NOT_HER_REPLY = re.compile(r".*(?:</think>|</function>|</tool_call>)", re.DOTALL)
+_SENTENCE_END = re.compile(r"(?<=[.!?…])\s+|\n+")  # ponytail: "Dr. Smith" splits too -- harmless when spoken
+
+
+class Sentences:
+    """Feed it the reply as it streams; get back each sentence once it's complete.
+    mood stays None until her leading [mood: x] tag has arrived."""
+
+    def __init__(self) -> None:
+        self.mood: str | None = None
+        self._text = ""
+
+    def feed(self, piece: str) -> list[str]:
+        self._text += piece
+        if self.mood is None:
+            self._text = _NOT_HER_REPLY.sub("", self._text)
+            tag = _LEADING_MOOD_TAG.match(self._text)
+            if not tag:
+                return []
+            self.mood = tag[1].lower() if tag[1].lower() in VALID_MOODS else "neutral"
+            self._text = self._text[tag.end():]
+        *done, self._text = _SENTENCE_END.split(_MOOD_TAG.sub("", self._text))
+        return [sentence.strip() for sentence in done if sentence.strip()]
+
+    def finish(self, reply_text: str) -> list[str]:
+        """What's left to say once the reply is complete. One that never opened with its
+        mood tag wasn't spoken while streaming: all of it is, from the finished text."""
+        rest = reply_text if self.mood is None else _MOOD_TAG.sub("", self._text)
+        return [sentence.strip() for sentence in _SENTENCE_END.split(rest) if sentence.strip()]
 
 
 def _image_content(text: str, image_b64: str | None, image_mime: str) -> str | list[dict]:
@@ -640,8 +687,15 @@ class ChatBackend:
         return ""
 
     def reply(
-        self, user_text: str, image_b64: str | None = None, image_mime: str = "image/jpeg", web_search_enabled: bool = False
+        self,
+        user_text: str,
+        image_b64: str | None = None,
+        image_mime: str = "image/jpeg",
+        web_search_enabled: bool = False,
+        on_text: Callable[[str], None] | None = None,
     ) -> Reply:
+        """on_text gets the reply as it streams in -- only LocalLLM streams; the others
+        reply all at once, and reply.py speaks that by the sentence instead."""
         raise NotImplementedError
 
 
@@ -734,6 +788,8 @@ class LocalLLM(ChatBackend):
         tools: list[dict] | None,
         no_thinking: bool = False,
         sampling: dict | None = None,
+        on_text: Callable[[str], None] | None = None,
+        cancelled: Callable[[], bool] | None = None,
     ) -> dict:
         """Runs exactly one chat completion and returns
         {"content": str, "tool_calls": [{"id", "name", "arguments": dict}],
@@ -746,8 +802,19 @@ class LocalLLM(ChatBackend):
         -- Ollama's native /api/chat, not an OpenAI-compatible endpoint)
         while inheriting everything else (the loop, history, system
         prompt, mood tag handling) unchanged.
+
+        Always streamed: each piece of the answer goes to `on_text` as it's
+        written (her replies are spoken sentence by sentence, see reply.py), and
+        once `cancelled()` turns true the stream is closed -- which stops the
+        model too (checked live on LM Studio), not just discards its result.
         """
-        kwargs = {"model": self._model, "messages": messages, "max_tokens": max_tokens}
+        kwargs = {
+            "model": self._model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
         if tools:
             kwargs["tools"] = tools
         if sampling:
@@ -759,21 +826,37 @@ class LocalLLM(ChatBackend):
             # See _complete's no_thinking. A server that rejects the parameter gets
             # the call again without it, and is never sent it again.
             try:
-                response = self._client.chat.completions.create(**kwargs, reasoning_effort="none")
+                stream = self._client.chat.completions.create(**kwargs, reasoning_effort="none")
             except BadRequestError:
                 self._reasoning_effort_supported = False
-                response = self._client.chat.completions.create(**kwargs)
+                stream = self._client.chat.completions.create(**kwargs)
         else:
-            response = self._client.chat.completions.create(**kwargs)
-        message = response.choices[0].message
-        tool_calls = []
-        for call in message.tool_calls or []:
-            try:
-                arguments = json.loads(call.function.arguments or "{}")
-            except ValueError:
-                arguments = {}
-            tool_calls.append({"id": call.id, "name": call.function.name, "arguments": arguments})
-        content, raw_message = _reply_content(message.content), message.model_dump(exclude_none=True)
+            stream = self._client.chat.completions.create(**kwargs)
+        parts, calls, usage = [], {}, None  # calls: index -> {"id", "name", "arguments" (JSON text so far)}
+        with stream:
+            for chunk in stream:
+                if cancelled and cancelled():
+                    break
+                usage = chunk.usage or usage
+                delta = chunk.choices[0].delta if chunk.choices else None
+                if delta is None:
+                    continue
+                if delta.content:
+                    parts.append(delta.content)
+                    if on_text:
+                        on_text(delta.content)
+                for piece in delta.tool_calls or []:  # a tool call arrives in pieces too
+                    call = calls.setdefault(piece.index, {"id": "", "name": "", "arguments": ""})
+                    call["id"] = piece.id or call["id"]
+                    call["name"] += (piece.function and piece.function.name) or ""
+                    call["arguments"] += (piece.function and piece.function.arguments) or ""
+        content = _reply_content("".join(parts))
+        tool_calls = [{"id": c["id"], "name": c["name"], "arguments": _json_arguments(c["arguments"])} for c in calls.values()]
+        raw_message = {"role": "assistant", "content": content}
+        if calls:
+            raw_message["tool_calls"] = [
+                {"id": c["id"], "type": "function", "function": {"name": c["name"], "arguments": c["arguments"]}} for c in calls.values()
+            ]
         if tools and not tool_calls and (tool_calls := _text_tool_calls(content)):
             # Written out as text instead -- run it like a real one, and never show it.
             content = ""
@@ -785,7 +868,6 @@ class LocalLLM(ChatBackend):
                     for c in tool_calls
                 ],
             }
-        usage = getattr(response, "usage", None)
         return {
             "content": content,
             "tool_calls": tool_calls,
@@ -808,6 +890,8 @@ class LocalLLM(ChatBackend):
         no_thinking: bool = False,
         into: Reply | None = None,
         sampling: dict | None = None,
+        on_text: Callable[[str], None] | None = None,
+        cancelled: Callable[[], bool] | None = None,
     ) -> str:
         """Runs _complete_raw once, or -- while `tools` is given and the
         model actually asks to use one -- repeatedly: appends the
@@ -830,10 +914,13 @@ class LocalLLM(ChatBackend):
 
         sampling is her sampling profile (brain/sampling.py) -- passed only by
         reply(), so the background calls keep the server's own settings.
+        on_text/cancelled are _complete_raw's, for her replies only.
         """
         working = list(messages)
         for _ in range(MAX_TOOL_ITERATIONS):
-            result = self._complete_raw(working, max_tokens, tools, no_thinking=no_thinking, sampling=sampling)
+            result = self._complete_raw(
+                working, max_tokens, tools, no_thinking=no_thinking, sampling=sampling, on_text=on_text, cancelled=cancelled
+            )
             if into is not None:  # the last call's numbers are the conversation's current size
                 into.usage.update({k: v for k, v in (result.get("usage") or {}).items() if v is not None})
             if not result["tool_calls"]:
@@ -1124,9 +1211,11 @@ class LocalLLM(ChatBackend):
         image_b64: str | None = None,
         image_mime: str = "image/jpeg",
         web_search_enabled: bool = False,
+        on_text: Callable[[str], None] | None = None,
     ) -> Reply:
         """Answers the user's message. The reply's text has the mood tag
         stripped out (never shown/spoken); its mood is one of VALID_MOODS.
+        on_text gets the raw reply as it streams in (reply.py speaks it by the sentence).
 
         image_b64, when given (a camera/desktop snapshot -- see reply.py's
         reply_to), turns this turn's content into the standard OpenAI
@@ -1144,7 +1233,7 @@ class LocalLLM(ChatBackend):
         self._history.append({"role": "user", "content": content, "at": now.isoformat(timespec="seconds")})
         result = Reply(trimmed=self._trim_history())
         tools = [WEB_SEARCH_TOOL] if web_search_enabled else None
-        if not self._answer(self._request_messages(), tools, result):
+        if not self._answer(self._request_messages(), tools, result, on_text):
             self._history_changed()  # the user's own turn stays (see cancel_reply)
             return Reply(trimmed=result.trimmed)  # cancelled while in flight -- discarded, never reaches _history
         if not result.text.strip():
@@ -1158,17 +1247,24 @@ class LocalLLM(ChatBackend):
         self._history_changed()
         return result
 
-    def _answer(self, messages: list[dict], tools: list[dict] | None, result: Reply) -> bool:
+    def _answer(
+        self, messages: list[dict], tools: list[dict] | None, result: Reply, on_text: Callable[[str], None] | None = None
+    ) -> bool:
         """Fills result.text/mood from the model. If thinking used up the whole
         budget and left no answer -- this model sometimes keeps re-checking her
         soul's rules until it runs out (seen live: 8,000 tokens, 7 minutes,
         nothing) -- it answers once more with thinking off. Her normal replies
-        still think. False if the reply was cancelled or the chat cleared meanwhile.
+        still think. False if the reply was cancelled or the chat cleared meanwhile
+        -- which also stops the model mid-stream.
         """
         generation = self._reply_generation
+        cancelled = lambda: generation != self._reply_generation  # noqa: E731
         for no_thinking in (False, True):
-            raw = self._complete(messages, MAX_REPLY_TOKENS, tools, no_thinking=no_thinking, into=result, sampling=self._sampling)
-            if generation != self._reply_generation:
+            raw = self._complete(
+                messages, MAX_REPLY_TOKENS, tools, no_thinking=no_thinking, into=result, sampling=self._sampling,
+                on_text=on_text, cancelled=cancelled,
+            )
+            if cancelled():
                 return False
             result.mood, result.text = _extract_mood(raw)
             if result.text.strip():
@@ -1511,6 +1607,8 @@ class OllamaLLM(LocalLLM):
         tools: list[dict] | None,
         no_thinking: bool = False,
         sampling: dict | None = None,
+        on_text: Callable[[str], None] | None = None,  # ponytail: not streamed on Ollama -- reply.py speaks the finished reply by the sentence
+        cancelled: Callable[[], bool] | None = None,
     ) -> dict:
         think = self._think and not no_thinking
         # See MAX_REPLY_TOKENS_THINKING's own comment -- the caller passes
@@ -1614,6 +1712,7 @@ class HarnessLLM(ChatBackend):
         image_b64: str | None = None,
         image_mime: str = "image/jpeg",
         web_search_enabled: bool = False,
+        on_text: Callable[[str], None] | None = None,
     ) -> Reply:
         # web_search_enabled is deliberately unused -- a harness has its own tools
         # (e.g. Hermes's own web search) when it's active. Same MAX_REPLY_TOKENS
@@ -1655,5 +1754,6 @@ class NoneLLM(ChatBackend):
         image_b64: str | None = None,
         image_mime: str = "image/jpeg",
         web_search_enabled: bool = False,
+        on_text: Callable[[str], None] | None = None,
     ) -> Reply:
         return Reply(text="(No LLM engine is configured yet -- add one in Settings, under LLM.)")

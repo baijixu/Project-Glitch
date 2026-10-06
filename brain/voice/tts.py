@@ -12,7 +12,7 @@ is active (brain/tts_engines.py owns that choice):
 Neither engine exposes real phoneme/viseme timestamps, so lipsync is
 approximated the same way for both: an amplitude envelope mapped entirely
 onto the "aa" (open mouth) viseme shape -- a deliberate simplification
-against protocol.md's richer per-shape viseme_stream design, not a full
+against protocol.md's richer per-shape viseme design, not a full
 phoneme-to-viseme alignment. Good enough to look right; revisit only if
 it doesn't.
 """

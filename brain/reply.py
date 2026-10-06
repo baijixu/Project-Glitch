@@ -26,6 +26,7 @@ import training
 import voice_settings
 import web_search
 from hub import Brain
+from llm import Reply, Sentences
 from voice import FasterWhisperSTT, NoneTTS
 
 # Browsers' MediaRecorder doesn't produce WAV -- map its common mime types
@@ -140,6 +141,7 @@ async def delete_last(websocket: websockets.ServerConnection, data: dict, brain:
 async def speech_interrupted(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     """The user cut in while she was speaking (🎤 or Send): `heard` is how much of
     her reply's audio had played, 0-1. She keeps only that much of it."""
+    brain.speech_stopped = True  # what she hasn't voiced yet stays unsaid
     heard = data.get("heard")
     if isinstance(heard, (int, float)):
         brain.llm.cut_last_reply(float(heard))
@@ -248,115 +250,155 @@ async def reply_to(
     for event in curiosity.take_events():
         await hub.debug_log(websocket, "curiosity", event)
 
-    llm_start = time.monotonic()
+    # Her reply is shown and spoken sentence by sentence as it's written: `say` puts each
+    # one on screen and queues it for her voice, which _voice works through in order.
+    brain.speech_stopped = False
+    said: asyncio.Queue = asyncio.Queue()  # (sentence, mood) for her voice; None when there are no more
+    voicing = asyncio.create_task(_voice(websocket, brain, said))
+    sentences = Sentences()
+    started = False
+
+    async def say(sentence: str, mood: str) -> None:
+        nonlocal started
+        if not started:  # her face changes as she starts talking, not a beat behind
+            started = True
+            await hub.send(websocket, protocol.set_expression(mood, 1.0))
+        await hub.send(websocket, protocol.speak_text(sentence, partial=True))
+        said.put_nowait((sentence, mood))
+
     try:
-        reply = await asyncio.to_thread(brain.llm.reply, text, image_b64, image_mime, web_search.read_active())
-    except Exception as exc:
-        # No Brain -> Renderer error message type exists yet (protocol.md's
-        # `error` is Renderer -> Brain only) -- surfacing this as speak_text
-        # is a deliberate, minimal stand-in rather than adding a new message
-        # type just for this. Revisit if/when that actually gets in the way.
-        await hub.debug_log(websocket, "llm", f"LLM call failed: {exc!r}", (time.monotonic() - llm_start) * 1000)
-        print(f"[brain] LLM call failed: {exc!r}")
-        await hub.send(websocket, protocol.speak_text(f"(couldn't reach the LLM: {exc})"))
-        return
-    # Never logs reply_text itself -- timing/outcome only, per the
-    # Debugging feature's whole point (connection/timing/errors, not
-    # conversation content).
-    # Sizes and settings only -- how big the prompt was, how long the reply was,
-    # which sampling profile -- so a slow or odd reply can be told apart.
-    reply_text, mood, usage, trim = reply.text, reply.mood, reply.usage, reply.trimmed
-    details = ""
-    llm_ms = (time.monotonic() - llm_start) * 1000
-    if brain.llm.owns_conversation:
-        thinking = f", {usage['reasoning']} of them thinking" if usage.get("reasoning") else ""
-        details = (
-            f" ({usage.get('prompt', '?')} prompt + {usage.get('completion', '?')} reply tokens{thinking}, "
-            f"{brain.llm.message_count} messages, profile {sampling.read_active_name()!r})"
-        )
-    await hub.debug_log(websocket, "llm", f"LLM reply received{details}", llm_ms)
-    if trim:
-        await hub.debug_log(
-            websocket, "llm",
-            f"conversation trimmed: dropped the oldest {trim['dropped']} messages, kept {trim['kept']} "
-            f"(budget ~{trim['budget']} tokens)",
-        )
-    if llm_ms > SLOW_REPLY_MS and brain.llm.owns_conversation:
-        loaded = await asyncio.to_thread(brain.llm.loaded_models)
-        await hub.debug_log(websocket, "llm", f"slow reply -- loaded on her LLM server now: {loaded}")
-    if reply.fell_back:
-        await hub.debug_log(websocket, "llm", "ran out of thinking room -- answered again with thinking off")
+        llm_start = time.monotonic()
+        try:
+            reply = await _stream_reply(brain, text, image_b64, image_mime, sentences, say)
+        except Exception as exc:
+            # No Brain -> Renderer error message type exists yet (protocol.md's
+            # `error` is Renderer -> Brain only) -- surfacing this as speak_text
+            # is a deliberate, minimal stand-in rather than adding a new message
+            # type just for this. Revisit if/when that actually gets in the way.
+            await hub.debug_log(websocket, "llm", f"LLM call failed: {exc!r}", (time.monotonic() - llm_start) * 1000)
+            print(f"[brain] LLM call failed: {exc!r}")
+            await hub.send(websocket, protocol.speak_text(f"(couldn't reach the LLM: {exc})"))
+            return
+        # Never logs reply_text itself -- timing/outcome only, per the
+        # Debugging feature's whole point (connection/timing/errors, not
+        # conversation content).
+        # Sizes and settings only -- how big the prompt was, how long the reply was,
+        # which sampling profile -- so a slow or odd reply can be told apart.
+        reply_text, mood, usage, trim = reply.text, sentences.mood or reply.mood, reply.usage, reply.trimmed
+        details = ""
+        llm_ms = (time.monotonic() - llm_start) * 1000
+        if brain.llm.owns_conversation:
+            thinking = f", {usage['reasoning']} of them thinking" if usage.get("reasoning") else ""
+            details = (
+                f" ({usage.get('prompt', '?')} prompt + {usage.get('completion', '?')} reply tokens{thinking}, "
+                f"{brain.llm.message_count} messages, profile {sampling.read_active_name()!r})"
+            )
+        await hub.debug_log(websocket, "llm", f"LLM reply received{details}", llm_ms)
+        if trim:
+            await hub.debug_log(
+                websocket, "llm",
+                f"conversation trimmed: dropped the oldest {trim['dropped']} messages, kept {trim['kept']} "
+                f"(budget ~{trim['budget']} tokens)",
+            )
+        if llm_ms > SLOW_REPLY_MS and brain.llm.owns_conversation:
+            loaded = await asyncio.to_thread(brain.llm.loaded_models)
+            await hub.debug_log(websocket, "llm", f"slow reply -- loaded on her LLM server now: {loaded}")
+        if reply.fell_back:
+            await hub.debug_log(websocket, "llm", "ran out of thinking room -- answered again with thinking off")
 
-    if not reply_text.strip():
-        # A real, confirmed failure mode (not hypothetical): the
-        # configured reasoning model can finish and return successfully
-        # -- no exception, no token-limit truncation -- with `content`
-        # still empty (everything it produced was reasoning_content, or
-        # just the mood tag with nothing else). Left unhandled, this used
-        # to fall through to speak_text with "" (a blank chat-history
-        # bubble the user just sees as silence) and then a TTS call that
-        # fails outright with "Input contains no speakable text" -- two
-        # confusing symptoms for what's really one cause. Treating it the
-        # same as reply_to's own empty-input guard above is both more
-        # honest and skips a TTS call that could never succeed anyway.
-        await hub.debug_log(websocket, "llm", "LLM returned an empty reply", (time.monotonic() - llm_start) * 1000)
-        await hub.send(websocket, protocol.no_reply())
-        return
+        if not reply_text.strip():
+            # A real, confirmed failure mode (not hypothetical): the
+            # configured reasoning model can finish and return successfully
+            # -- no exception, no token-limit truncation -- with `content`
+            # still empty (everything it produced was reasoning_content, or
+            # just the mood tag with nothing else). Left unhandled, this used
+            # to fall through to speak_text with "" (a blank chat-history
+            # bubble the user just sees as silence) and then a TTS call that
+            # fails outright with "Input contains no speakable text" -- two
+            # confusing symptoms for what's really one cause. Treating it the
+            # same as reply_to's own empty-input guard above is both more
+            # honest and skips a TTS call that could never succeed anyway.
+            await hub.debug_log(websocket, "llm", "LLM returned an empty reply", (time.monotonic() - llm_start) * 1000)
+            await hub.send(websocket, protocol.no_reply())
+            return
 
-    print(f"[brain] mood: {mood}")
-    # Sent before speak_text/speak_audio so her face is already changing by
-    # the time she starts talking, not lagging a beat behind. Sent even for
-    # "neutral" -- the Renderer treats that as "fade every mood expression
-    # back to 0", which is exactly right after a mood-carrying reply.
-    await hub.send(websocket, protocol.set_expression(mood, 1.0))
-    await hub.send(websocket, protocol.speak_text(reply_text))
-    # Only her own conversations go in her chat log. With a harness (Hermes) in
-    # control she's working under a different soul and memory -- that side keeps
-    # its own session logs, and personal and professional are kept apart on
-    # purpose. NoneLLM's placeholder isn't a conversation either.
-    if brain.llm.owns_conversation:
-        conversation.log_exchange(text, reply_text, roleplay=profiles.read_roleplay_active(), picture=bool(image_b64))
-    hub.spawn(_send_context_usage(brain, usage))
+        for sentence in sentences.finish(reply_text):  # the last one -- or all of it, if it didn't stream
+            await say(sentence, mood)
+        print(f"[brain] mood: {mood}")
+        await hub.send(websocket, protocol.speak_text(reply_text))  # all of it: the device's record of her reply
+        # Only her own conversations go in her chat log. With a harness (Hermes) in
+        # control she's working under a different soul and memory -- that side keeps
+        # its own session logs, and personal and professional are kept apart on
+        # purpose. NoneLLM's placeholder isn't a conversation either.
+        if brain.llm.owns_conversation:
+            conversation.log_exchange(text, reply_text, roleplay=profiles.read_roleplay_active(), picture=bool(image_b64))
+        hub.spawn(_send_context_usage(brain, usage))
 
-    # Fire-and-forget: must never slow down or affect the reply the user
-    # already has. Runs regardless of whether voice/TTS succeeds below --
-    # it only needs the text of what was actually said.
-    # A turn where she searched the web has the results woven into her
-    # reply, and a turn with a camera/screen image has her describing that
-    # frame -- neither is a fact about the user, just world facts or a
-    # moment. Only the user's own side is remembered for those, so memory
-    # doesn't fill with headlines and "the keyboard has blue keys" (and she
-    # can't repeat a bad search result back later as if it were a memory).
-    omit_reply = reply.used_web_search or bool(image_b64)
-    hub.spawn(learning.maybe_retain_memory(websocket, text, "" if omit_reply else reply_text, brain, asked=answered))
-    if curious:
-        curiosity.end_turn(reply_text)
-        for event in curiosity.take_events():
-            await hub.debug_log(websocket, "curiosity", event)
-        # "*" in the user's message means they're playing out an action/scene -- not a source of real questions
-        if text and "*" not in text and not omit_reply and curiosity.should_propose():
-            hub.spawn(reach_out.maybe_propose_question(websocket, text, reply_text, brain))
+        # Fire-and-forget: must never slow down or affect the reply the user
+        # already has. Runs regardless of whether voice/TTS succeeds below --
+        # it only needs the text of what was actually said.
+        # A turn where she searched the web has the results woven into her
+        # reply, and a turn with a camera/screen image has her describing that
+        # frame -- neither is a fact about the user, just world facts or a
+        # moment. Only the user's own side is remembered for those, so memory
+        # doesn't fill with headlines and "the keyboard has blue keys" (and she
+        # can't repeat a bad search result back later as if it were a memory).
+        omit_reply = reply.used_web_search or bool(image_b64)
+        hub.spawn(learning.maybe_retain_memory(websocket, text, "" if omit_reply else reply_text, brain, asked=answered))
+        if curious:
+            curiosity.end_turn(reply_text)
+            for event in curiosity.take_events():
+                await hub.debug_log(websocket, "curiosity", event)
+            # "*" in the user's message means they're playing out an action/scene -- not a source of real questions
+            if text and "*" not in text and not omit_reply and curiosity.should_propose():
+                hub.spawn(reach_out.maybe_propose_question(websocket, text, reply_text, brain))
 
-    if not voice_settings.read_voice_active():
-        await hub.debug_log(websocket, "tts", "voice is off -- skipping synthesis")
-        return
+        said.put_nowait(None)
+        await voicing  # she finishes speaking before another reply can start
+    finally:
+        voicing.cancel()  # a no-op once she's finished; otherwise (Stop, an error) her voice stops too
 
-    if isinstance(brain.tts, NoneTTS):
-        await hub.debug_log(websocket, "tts", "no speech engine configured -- skipping synthesis")
-        return
 
-    tts_start = time.monotonic()
-    try:
-        wav_bytes, frames = await asyncio.to_thread(brain.tts.synthesize, reply_text, mood)
-    except Exception as exc:
-        await hub.debug_log(websocket, "tts", f"TTS call failed: {exc!r}", (time.monotonic() - tts_start) * 1000)
-        print(f"[brain] TTS failed: {exc!r}")
-        return
-    await hub.debug_log(websocket, "tts", "TTS synthesis ok", (time.monotonic() - tts_start) * 1000)
+async def _stream_reply(brain: Brain, text: str, image_b64: str | None, image_mime: str, sentences: Sentences, say) -> Reply:
+    """brain.llm.reply in a worker thread, `say`ing each sentence as soon as it's written."""
+    loop = asyncio.get_running_loop()
+    pieces: asyncio.Queue = asyncio.Queue()  # the reply as it streams in; None once it's done
+    search = web_search.read_active()
 
-    audio_b64 = base64.b64encode(wav_bytes).decode("ascii")
-    await hub.send(websocket, protocol.speak_audio(audio_b64, brain.tts.SAMPLE_RATE))
-    await hub.send(websocket, protocol.viseme_stream(frames))
+    def answer() -> Reply:
+        try:
+            on_text = lambda piece: loop.call_soon_threadsafe(pieces.put_nowait, piece)  # noqa: E731
+            return brain.llm.reply(text, image_b64, image_mime, search, on_text=on_text)
+        finally:
+            loop.call_soon_threadsafe(pieces.put_nowait, None)
+
+    answering = asyncio.ensure_future(asyncio.to_thread(answer))
+    while (piece := await pieces.get()) is not None:
+        for sentence in sentences.feed(piece):
+            await say(sentence, sentences.mood)
+    return await answering
+
+
+async def _voice(websocket: websockets.ServerConnection, brain: Brain, said: asyncio.Queue) -> None:
+    """Her voice: each (sentence, mood) off `said` (None ends it) becomes its own
+    speak_audio, which the device plays after the one before. Once she's been talked
+    over (brain.speech_stopped) the rest goes unsaid."""
+    while (item := await said.get()) is not None:
+        sentence, mood = item
+        if brain.speech_stopped or not voice_settings.read_voice_active() or isinstance(brain.tts, NoneTTS):
+            continue
+        if not any(c.isalnum() for c in sentence):  # an emoji or "..." on its own -- nothing to say
+            continue
+        start = time.monotonic()
+        try:
+            wav_bytes, frames = await asyncio.to_thread(brain.tts.synthesize, sentence, mood)
+        except Exception as exc:
+            await hub.debug_log(websocket, "tts", f"TTS call failed: {exc!r}", (time.monotonic() - start) * 1000)
+            print(f"[brain] TTS failed: {exc!r}")
+            continue
+        await hub.debug_log(websocket, "tts", f"TTS ok ({len(sentence)} chars)", (time.monotonic() - start) * 1000)
+        audio_b64 = base64.b64encode(wav_bytes).decode("ascii")
+        await hub.send(websocket, protocol.speak_audio(audio_b64, brain.tts.SAMPLE_RATE, sentence, frames))
 
 
 # The latest context_usage message, so a device that connects later sees the meter too.

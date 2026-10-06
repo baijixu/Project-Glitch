@@ -94,6 +94,7 @@ async def handle_renderer(websocket: websockets.ServerConnection, brain: Brain, 
             if msg_type == protocol.STOP_REPLY:
                 _stop_replies(reply_tasks, brain)
             elif msg_type in _REPLY_MESSAGE_TYPES:
+                brain.speech_stopped = True  # a new message cuts off whatever she's still saying
                 task = asyncio.create_task(_run_reply_message(websocket, raw, brain))
                 reply_tasks.add(task)
                 task.add_done_callback(reply_tasks.discard)

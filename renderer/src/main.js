@@ -207,7 +207,7 @@ window.addEventListener("error", (event) => {
   const where = event.filename ? ` at ${event.filename.split("/").pop()}:${event.lineno}` : "";
   brain.log("client", `error: ${event.message}${where}`);
 });
-// The first tap or key press unlocks sound (see BrainClient._playAudio), so her
+// The first tap or key press unlocks sound (see BrainClient._playClip), so her
 // first reply isn't silent on a browser that starts audio suspended.
 const unlockAudio = () => {
   if (brain.audioContext?.state === "suspended") brain.audioContext.resume().catch(() => {});
