@@ -337,7 +337,7 @@ async def reply_to(
 
     tts_start = time.monotonic()
     try:
-        wav_bytes, frames = await asyncio.to_thread(brain.tts.synthesize, reply_text)
+        wav_bytes, frames = await asyncio.to_thread(brain.tts.synthesize, reply_text, mood)
     except Exception as exc:
         await hub.debug_log(websocket, "tts", f"TTS call failed: {exc!r}", (time.monotonic() - tts_start) * 1000)
         print(f"[brain] TTS failed: {exc!r}")

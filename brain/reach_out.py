@@ -159,7 +159,7 @@ async def _reach_out(brain: Brain, *, test: bool = False) -> None:
     if not voice_settings.read_voice_active() or isinstance(brain.tts, NoneTTS):
         return
     try:
-        wav_bytes, frames = await asyncio.to_thread(brain.tts.synthesize, text)
+        wav_bytes, frames = await asyncio.to_thread(brain.tts.synthesize, text, mood)
     except Exception as exc:
         print(f"[brain] TTS failed for her reach-out: {exc!r}")
         return

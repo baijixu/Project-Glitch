@@ -51,6 +51,18 @@ _EMOJI_PATTERN = re.compile(
 )
 
 
+# Her mood tag (llm.py's VALID_MOODS) as a speaking-style hint, sent as OpenAI's
+# `instructions` -- Qwen3-TTS (tools/qwen_tts_server.py) follows it, Kokoro
+# ignores it. Neutral sends none: the voice's own default delivery.
+MOOD_STYLES = {
+    "happy": "Warm and cheerful, with a smile in the voice.",
+    "sad": "Soft, gentle and a little sad.",
+    "angry": "Firm and frustrated, with an edge.",
+    "relaxed": "Calm, easy and unhurried.",
+    "surprised": "Surprised and animated.",
+}
+
+
 def _strip_emoji(text: str) -> str:
     return re.sub(r"\s+", " ", _EMOJI_PATTERN.sub("", text)).strip()
 
@@ -89,7 +101,7 @@ class NoneTTS:
 
     SAMPLE_RATE = 24000
 
-    def synthesize(self, text: str) -> tuple[bytes, list[protocol.VisemeFrame]]:
+    def synthesize(self, text: str, mood: str = "neutral") -> tuple[bytes, list[protocol.VisemeFrame]]:
         return b"", []
 
 
@@ -131,10 +143,11 @@ class RemoteTTS:
         # carries the real rate for decodeAudioData) -- see protocol.md.
         self.SAMPLE_RATE = 24000
 
-    def synthesize(self, text: str) -> tuple[bytes, list[protocol.VisemeFrame]]:
+    def synthesize(self, text: str, mood: str = "neutral") -> tuple[bytes, list[protocol.VisemeFrame]]:
         text = _strip_emoji(text)
+        style = {"instructions": MOOD_STYLES[mood]} if mood in MOOD_STYLES else {}
         response = self._client.audio.speech.create(
-            model=self._model, voice=self._voice, input=text, response_format="wav"
+            model=self._model, voice=self._voice, input=text, response_format="wav", **style
         )
         wav_bytes = response.content
         audio, sample_rate = sf.read(io.BytesIO(wav_bytes), dtype="float32")
