@@ -54,8 +54,16 @@ RECALL_MAX_TOKENS = 800
 # The token budget alone didn't make recall selective: her short approved facts
 # fit 34 of 40 into it, so every message got nearly her whole memory (and the
 # user's surgery and pups came up whatever he asked). Results come ranked, so
-# only the top few are kept.
-RECALL_LIMIT = 8
+# only the best few are kept -- and only ones that actually match. Hindsight's
+# reranker score says how well: on a night of short playful messages the best
+# match for "you look stunning" scored 0.00002 (old university libraries), and
+# she wove such misses in as non sequiturs ("like a Samoyed at 3 AM"); real
+# matches scored 0.1-0.998, a general "how are the dogs?" 0.0004. So a memory
+# needs RECALL_RELATIVE of the best match's score, and none come in at all when
+# even the best is under RECALL_FLOOR.
+RECALL_LIMIT = 3
+RECALL_FLOOR = 0.0001
+RECALL_RELATIVE = 0.25
 CORE_RECALL_MAX_TOKENS = 300  # the always-shown "core" facts (retain_fact / brain/training.py)
 
 # Steers what Hindsight's server-side extraction keeps from each retained
@@ -434,12 +442,20 @@ async def recall_relevant(query: str) -> str:
     )
     core_texts = {text for text, _ in core}
     lines = [_dated(text, when) for text, when in core]
+    best = max((_relevance(result) for result in response.results), default=0.0)
     lines += [
         _dated(result.text, getattr(result, "mentioned_at", None))
-        for result in response.results[:RECALL_LIMIT]
-        if result.text not in core_texts
-    ]
+        for result in response.results
+        if result.text not in core_texts and _relevance(result) >= max(RECALL_FLOOR, best * RECALL_RELATIVE)
+    ][:RECALL_LIMIT]
     return "\n".join(f"- {line}" for line in lines)
+
+
+def _relevance(result) -> float:
+    """How well a recalled memory matches (Hindsight's reranker score). A server
+    that doesn't score counts every result as a match, as before."""
+    score = getattr(getattr(result, "scores", None), "reranker", None)
+    return score if isinstance(score, (int, float)) else 1.0
 
 
 def _item_text(item) -> str:
