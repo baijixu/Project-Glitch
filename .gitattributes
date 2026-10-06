@@ -2,3 +2,7 @@
 # or checked out with CRLF line endings -- force LF regardless of the
 # cloning machine's core.autocrlf setting.
 *.sh text eol=lf
+
+# Downloaded straight from GitHub onto the TTS PC (raw files are served as stored):
+# stored with CRLF, since cmd.exe can lose goto labels in an LF-only batch file.
+tools/start_qwen_tts.bat -text
