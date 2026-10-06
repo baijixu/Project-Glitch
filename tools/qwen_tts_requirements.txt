@@ -1,0 +1,8 @@
+# What tools/qwen_tts_server.py runs on, pinned to the set that works (2026-10-05):
+# transformers 5.18 breaks qwen-tts-hf ("MimiConfig has no attribute rope_theta").
+# Install into its venv with: qwen-tts-env\Scripts\pip install -r qwen_tts_requirements.txt
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.11.0+cu128
+faster-qwen3-tts==0.5.4
+qwen-tts-hf==0.1.1.post1
+transformers==5.15.1

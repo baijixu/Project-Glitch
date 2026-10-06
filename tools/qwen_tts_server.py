@@ -3,12 +3,20 @@ behind the OpenAI speech API (POST /v1/audio/speech) -- the shape
 Glitch's RemoteTTS already speaks, so it's just another speech engine in
 Settings. Plain Python, for a Windows PC that can't run Docker.
 
-Setup on the GPU machine (Python 3.12, NVIDIA GPU, ~4.5 GB VRAM free):
+Setup on the GPU machine (Python 3.12, NVIDIA GPU, ~4.5 GB VRAM free), with this
+file, qwen_tts_requirements.txt and start_qwen_tts.bat in one folder:
 
     py -3.12 -m venv qwen-tts-env
-    qwen-tts-env\\Scripts\\pip install torch --index-url https://download.pytorch.org/whl/cu128
-    qwen-tts-env\\Scripts\\pip install faster-qwen3-tts
-    qwen-tts-env\\Scripts\\python qwen_tts_server.py
+    qwen-tts-env\\Scripts\\pip install -r qwen_tts_requirements.txt
+    start_qwen_tts.bat
+
+To have Windows start it at boot, with nobody logged in, register the .bat as a
+task (PowerShell as administrator; it asks for the account's password). The
+ExecutionTimeLimit of 0 matters: by default Windows stops a task after 3 days.
+
+    Register-ScheduledTask -TaskName "Glitch Qwen3-TTS" -User $env:USERNAME -RunLevel Limited `
+        -Action (New-ScheduledTaskAction -Execute "$PWD\\start_qwen_tts.bat") -Trigger (New-ScheduledTaskTrigger -AtStartup) `
+        -Settings (New-ScheduledTaskSettingsSet -ExecutionTimeLimit 0) -Password (Read-Host "Password for $env:USERNAME")
 
 The model (~4 GB) downloads on first start, then a short warm-up runs. In Glitch: Settings -> Speech
 Engine -> add one with endpoint http://<this PC>:8001/v1 and a voice: Serena,
