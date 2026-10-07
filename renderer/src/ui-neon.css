@@ -436,13 +436,13 @@ html[data-ui="neon"] .modal-button {
   font-size: 12px;
 }
 
-/* ---- Line icons in place of emoji buttons (icons.js names them in data-icon) ---- */
+/* ---- Line icons in place of emoji (icons.js names them in data-icon) ---- */
 
-html[data-ui="neon"] [data-icon] {
+html[data-ui="neon"] :is(button, .mic-icon)[data-icon] {
   font-size: 0;
 }
 
-html[data-ui="neon"] [data-icon]::before {
+html[data-ui="neon"] :is(button, .mic-icon)[data-icon]::before {
   content: "";
   display: block;
   width: 18px;
@@ -450,6 +450,24 @@ html[data-ui="neon"] [data-icon]::before {
   background: currentColor;
   -webkit-mask: var(--icon) center / contain no-repeat;
   mask: var(--icon) center / contain no-repeat;
+}
+
+/* An emoji in text: the icon at the text's size, the emoji itself moved out of view. */
+html[data-ui="neon"] .text-icon {
+  display: inline-block;
+  width: 1.15em;
+  height: 1.15em;
+  vertical-align: -0.2em;
+  overflow: hidden;
+  text-indent: 2em;
+  white-space: nowrap;
+  background: var(--neon);
+  -webkit-mask: var(--icon) center / contain no-repeat;
+  mask: var(--icon) center / contain no-repeat;
+}
+
+html[data-ui="neon"] .text-icon[data-icon="warning"] {
+  background: #ffd23f;
 }
 
 html[data-ui="neon"] .corner-button,
@@ -538,4 +556,24 @@ html[data-ui="neon"] [data-icon="clip"] {
 
 html[data-ui="neon"] [data-icon="archive"] {
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 4.5h17v4h-17zM5.5 8.5v11h13v-11M10 12.5h4'/%3E%3C/svg%3E");
+}
+
+html[data-ui="neon"] [data-icon="memory"] {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 7h10v10H7zM10 10h4v4h-4zM9.5 4v3M14.5 4v3M9.5 17v3M14.5 17v3M4 9.5h3M4 14.5h3M17 9.5h3M17 14.5h3'/%3E%3C/svg%3E");
+}
+
+html[data-ui="neon"] [data-icon="book"] {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 6.5C10 5 7 4.5 4 5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5V5c-3-.5-6 0-8 1.5zM12 6.5v13'/%3E%3C/svg%3E");
+}
+
+html[data-ui="neon"] [data-icon="note"] {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 3.5h8l4 4v13H6zM14 3.5v4h4M9 12h6M9 15.5h6'/%3E%3C/svg%3E");
+}
+
+html[data-ui="neon"] [data-icon="eye"] {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E");
+}
+
+html[data-ui="neon"] [data-icon="warning"] {
+  --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4l9 16H3zM12 10v4.5M12 17.5v.01'/%3E%3C/svg%3E");
 }

@@ -168,9 +168,9 @@ export class HistoryUI {
     this._removeStaleReply(entry);
     entry.text = text;
     const bubble = this._groups.get(entry)?.querySelector(".history-bubble");
-    if (bubble?.lastChild) bubble.lastChild.nodeValue = text;
+    if (bubble) setText(bubble, text);
     const overlayBubble = this.overlayActive ? this.overlayEl?.lastElementChild : null;
-    if (overlayBubble?.classList.contains("user") && overlayBubble.lastChild) overlayBubble.lastChild.nodeValue = text;
+    if (overlayBubble?.classList.contains("user")) setText(overlayBubble, text);
     this._save();
     this._app.sendForReply({ type: "regenerate_last", text, edited: true }, `sent regenerate_last (${text.length} chars, edited)`);
   }
@@ -366,4 +366,11 @@ export class HistoryUI {
       { once: true },
     );
   }
+}
+
+// A bubble's text replaced, keeping its picture and name: the text may be split around
+// inline icons (icons.js), so every piece of it goes, not just the last.
+function setText(el, text) {
+  for (const node of [...el.childNodes]) if (node.nodeType === Node.TEXT_NODE || node.classList?.contains("text-icon")) node.remove();
+  el.append(text);
 }
