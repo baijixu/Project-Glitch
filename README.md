@@ -11,7 +11,7 @@ talk to her from your PC, or from your phone over your home network or [Tailscal
   [memory training](#memory-training) on, she proposes each memory and you edit, approve or reject it before she keeps it.
 - **She learns from your 👍/👎.** Rate a reply, say why, and she turns it into a short behavior rule, which can wait for
   your approval ([behavior learning](#behavior-learning)).
-- **She speaks first, sometimes.** After an hour of quiet she may ask you something she's been curious about, once, and
+- **She speaks first, sometimes.** After a quiet spell she may ask you something she's been curious about, once, and
   never the same question twice ([curiosity](#curiosity)).
 - **Role-play and work, kept apart.** A [role-play mode](#souls-user-info-and-role-play) with its own personas and chat
   logs that never touches her real memory, and a
@@ -24,15 +24,17 @@ talk to her from your PC, or from your phone over your home network or [Tailscal
 > and please open an issue if you hit one.
 
 <p align="center">
-  <img src="docs/images/glitch-app.png" alt="The Glitch app: the default VRM avatar, a chat box along the bottom, and buttons for camera, screen and microphone on the right" width="420">
+  <img src="docs/images/glitch-main.webp" alt="The Glitch app in the Neon style: the default avatar, a green-haired woman in a bob cut and a black crop top, with the chat and settings buttons in the top corners" width="32%">
+  <img src="docs/images/glitch-chat-history.webp" alt="The chat history panel open on the left: the user's message and Glitch's reply, with Resend Last and Clear Chat at the bottom" width="32%">
+  <img src="docs/images/glitch-settings.webp" alt="The Settings panel open on the right: voice, camera and microphone switches, Background, UI Style, Role-play and Remember Me" width="32%">
 </p>
 
-The main window with the shipped default avatar:
+The shipped default avatar in the Neon UI style (Settings → UI Style), with the chat history and Settings open:
 
-- **🌸 top left:** chat history (with Resend Last and Clear Chat, and 👍/👎 on her replies)
-- **top right:** the **RP** badge (shown while role-play is on), three status lights (Brain connection, harness, speech engine), and **⚙️ Settings**
-- **right edge:** 📷 camera, 🖥️ screen capture, 🎤 hold to talk
-- **bottom:** 📎 attach a picture or text file, the message box, and **Send**
+- **top left:** chat history (with Resend Last and Clear Chat, and 👍/👎 on her replies)
+- **top right:** the **RP** badge (lit while role-play is on), three status lights (Brain connection, harness, speech engine), and **Settings**
+- **right edge:** camera, screen capture, hold to talk
+- **bottom:** attach a picture or text file, the message box, and **Send**
 
 ---
 
