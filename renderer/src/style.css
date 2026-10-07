@@ -489,6 +489,15 @@ body.overlay-chat-active #overlay-edit-button {
   display: none;
 }
 
+/* Phones: the top row can't fit it beside the lights and RP badge, so it
+   drops under the flower instead. */
+@media (max-width: 480px) {
+  #processing-indicator {
+    top: 70px;
+    left: 16px;
+  }
+}
+
 .processing-dot {
   animation: processing-dot 1.4s infinite;
   opacity: 0;
