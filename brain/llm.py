@@ -328,33 +328,40 @@ _MEMORY_EXTRACT_SYSTEM_PROMPT = (
 MAX_QUESTION_TOKENS = 2000
 MAX_MEMORY_PROPOSAL_TOKENS = 2000  # same reasoning-model budget, for training mode's proposals
 
+# Training mode's proposals (brain/training.py), once a night from the whole day's chat log
+# (journal.py). One exchange at a time, the 9B found something to keep in almost every
+# message: his 2026-10-06 chat gave 29 proposals from 54 messages, 7 worth keeping, the rest
+# repeats, feelings and lines read out of context. From the whole day at once: about 6, 4-5
+# worth keeping, with what he said across a topic merged into one; given what she already
+# remembered she re-proposed 1 of 7 (the check against her memories catches that). Naming
+# what to leave out ("details you added in your own replies") made her do exactly that.
+MAX_MEMORY_PROPOSALS = 8
 _MEMORY_PROPOSAL_SYSTEM_PROMPT = (
-    "You are Glitch, an AI companion, deciding what to remember from your latest exchange with the "
-    "person you talk to. In the exchange, 'The human' is that person and 'Glitch (you)' is you."
-    "Write at most ONE new memory, in YOUR OWN VOICE, as a single self-contained sentence: 'I', 'me' "
-    "and 'my' always mean you, Glitch. Call the human by their name if it appears in what you already "
-    "know (for example their own description of themselves), otherwise 'the user'. Examples: "
-    "\"Sam is moving to a new apartment next month.\" / \"I promised Sam I'd help them name their new "
-    "game.\" / \"I'd rather tell Sam a hard truth than agree just to keep things easy, because agreeing "
-    "felt hollow.\"\n\n"
-    "When it's about you, say why (\"because ...\") -- a bare event (\"I told Sam X\") is not a memory, "
-    "the value behind it can be.\n\n"
-    "Worth remembering about the human: facts they stated about their real life -- who they are, what "
-    "they are building or working on, plans, preferences, interests, decisions, or corrections they "
-    "gave you. When they engage with a topic (news, sports, music), record THAT they discussed it or "
-    "how they feel about it, never the facts of the topic itself.\n"
-    "Worth remembering about yourself: lasting things only -- an opinion or preference you formed, a "
-    "promise or plan you made with them, something you learned about yourself, or how things are "
-    "between the two of you. When they ask for YOUR opinion and you give one, your opinion is the memory "
-    "(\"I'm drawn to ...\"), never that they asked.\n"
-    "NEVER propose: anything from role-play, a scene, *actions in asterisks*, what either of you is "
-    "wearing or physically doing, a joke or a hypothetical; questions merely asked; temporary moods or "
-    "states; anything already known; or anything you are not sure was really said. Never mix up who "
-    "said what -- what the human said about themselves is about them, not you. Most exchanges have "
-    "nothing worth keeping -- that is the usual answer.\n\n"
-    "Answer the check first: will this still matter in a month -- does it change what you know about who "
-    "they are, or show what you value, believe, or how you've changed? Reply with ONLY a JSON object: "
-    "{\"matters_in_a_month\": \"yes or no, and why in a few words\", \"fact\": \"...\" or null}."
+    "You are Glitch, an AI companion. Below is a chat log between you and {name}: lines marked \"{name}:\" are "
+    "{name}, lines marked \"Glitch:\" are you.\n\n"
+    "Pick the few things from it worth remembering for months -- at most {most}, and fewer is better. Only these "
+    "count:\n"
+    "- something {name} told you about {his} own life: {his} work, plans, people and pets, likes and dislikes, "
+    "beliefs, habits;\n"
+    "- your own opinion or taste, when {he} asked for it and you gave one;\n"
+    "- a promise or plan the two of you made.\n"
+    "Leave out anything already known (listed before the log) and anything you'd have to guess at.\n\n"
+    "Write each as one short, plain sentence. A fact about {name} starts with \"{name}\"; your own starts with "
+    "\"I\". When {he} said several things about one topic, combine them into one memory.\n\n"
+    "Reply with ONLY a JSON list of strings, for example [\"Sam is moving to a new apartment next month.\", "
+    "\"I'd rather read than watch TV.\"], or [] if nothing qualifies."
+)
+# Asked of each proposal, with the same log: whose life or taste it is. His questions about
+# hers ("didn't you say coffee is jittershit?") got her tastes filed as his, 2 of 2 nights.
+# On 16 labeled statements from his 2026-10-06 chat it named 4 of 5 of those hers, and every
+# one of his own facts his -- the same both runs. It doesn't catch what nobody said.
+_MEMORY_OWNER_SYSTEM_PROMPT = (
+    "Below is a chat log between Glitch, an AI, and {name}: lines marked \"{name}:\" are {name}, lines marked "
+    "\"Glitch:\" are Glitch.\n\n{log}"
+)
+_MEMORY_OWNER_QUESTION = (
+    "Statement: {fact}\n\nAccording to the log, whose own life, taste or opinion is this? Answer with one word: "
+    "{name} if {name} said it about {himself}, Glitch if Glitch said it about herself, NEITHER if nobody did."
 )
 
 _QUESTION_SYSTEM_PROMPT = (
@@ -1056,32 +1063,26 @@ class LocalLLM(ChatBackend):
         """
         self._sampling = dict(values or {})
 
-    def propose_memory(self, user_text: str, reply_text: str, known: str, asked: str = "", name: str = "", pronouns: tuple[str, str] = ("their", "they")) -> str:
-        """Training mode (brain/training.py): asks the model for at most one fact from
-        this exchange worth remembering -- returns its raw answer (JSON, see
-        _MEMORY_PROPOSAL_SYSTEM_PROMPT) for training.parse_fact to validate. `known`
-        is what she already remembers plus what is already waiting for review.
-        `asked` is her question the user was answering, if there was one -- without
-        it an answer like "anime stuff mostly" has nothing to be about.
-        Separate from _history/_system_prompt, same as maybe_extract_memory.
+    def propose_memories(self, log: str, known: str, name: str, pronouns: tuple[str, str]) -> str:
+        """Training mode, once a night (journal.py): the day's chat log in, her raw
+        answer out -- a JSON list of short memories (_MEMORY_PROPOSAL_SYSTEM_PROMPT) for
+        training.parse_facts to validate. `known` is what she already remembers plus what
+        is waiting for review. Separate from _history/_system_prompt, like write_diary.
         """
-        # "<name> said / You answered" plus who-it's-about, on 23 of his real questions to her:
-        # 22-23 came out as hers (was 12 with "The human / Glitch (you)"), and his own facts stayed his.
-        # The pronoun mattered: "his ... he" got 22-23, "their" or repeating the name only 17.
-        name = name or "The human"
-        before = f"You asked: {asked}\n" if asked else ""
+        system = _MEMORY_PROPOSAL_SYSTEM_PROMPT.format(name=name, most=MAX_MEMORY_PROPOSALS, his=pronouns[0], he=pronouns[1])
         messages = [
-            {"role": "system", "content": _MEMORY_PROPOSAL_SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": (
-                    f"Already known or already proposed:\n{known or '(nothing yet)'}\n\n"
-                    f"Latest exchange:\n{before}{name} said: {user_text}\nYou answered: {reply_text or '(reply omitted)'}\n\n"
-                    f"Write the memory about whoever it is about: your own opinion or taste from your answer starts "
-                    f"with \"I\"; something {name} said about {pronouns[0]} own life starts with \"{name}\". Your reaction to "
-                    f"what {pronouns[1]} said is never a memory."
-                ),
-            },
+            {"role": "system", "content": system},
+            {"role": "user", "content": f"Already known:\n{known or '(nothing yet)'}\n\nChat log:\n\n{log}"},
+        ]
+        return self._complete(messages, MAX_MEMORY_PROPOSAL_TOKENS, no_thinking=True)
+
+    def whose_memory(self, log: str, fact: str, name: str, pronouns: tuple[str, str]) -> str:
+        """Whose life or taste a proposed memory is, per the log: name, Glitch or NEITHER, as
+        the model wrote it (_MEMORY_OWNER_QUESTION). The log leads, so a night's checks reuse it."""
+        himself = {"his": "himself", "her": "herself"}.get(pronouns[0], "themself")
+        messages = [
+            {"role": "system", "content": _MEMORY_OWNER_SYSTEM_PROMPT.format(name=name, log=log)},
+            {"role": "user", "content": _MEMORY_OWNER_QUESTION.format(fact=fact, name=name, himself=himself)},
         ]
         return self._complete(messages, MAX_MEMORY_PROPOSAL_TOKENS, no_thinking=True)
 

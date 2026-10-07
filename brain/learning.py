@@ -6,6 +6,7 @@ server profiles.
 import asyncio
 import re
 import time
+from datetime import date
 
 import websockets
 
@@ -247,20 +248,12 @@ async def _set_training_active(websocket: websockets.ServerConnection, data: dic
     await hub.broadcast(training_state_message())
 
 
-async def _propose_memory(
-    websocket: websockets.ServerConnection, user_text: str, reply_text: str, brain: Brain, asked: str = ""
-) -> None:
-    """Training mode's replacement for retain_exchange: asks the model for at most one fact
-    worth keeping and queues it for the user to approve, edit or reject (brain/training.py).
-    Nothing is sent to Hindsight from here. A failure or an empty answer is the normal
-    outcome and never surfaces.
+async def propose_from_log(log: str, day: date, name: str, brain: Brain) -> None:
+    """Training mode's proposals, once a night (journal.py): a few memories from the whole
+    day's chat log, each checked against what she remembers, queued for the user to
+    approve, edit or reject (brain/training.py). Nothing is sent to Hindsight from here.
     """
-    start = time.monotonic()
-    # Only their name from user.md, so she can call them by it. The whole profile
-    # went in before, and a 9B filed her own answers under its likes: her "I've got
-    # a thing for the Bronze Age" came back as Josh's, 5 of 5, because it lists history.
     profile = persona.effective_user_info()
-    name = persona.user_name()
     # ponytail: guessed from the profile's wording; an explicit pronouns line if this guesses wrong.
     if re.search(r"\b(female|woman)\b", profile, re.IGNORECASE):
         pronouns = ("her", "she")
@@ -268,31 +261,33 @@ async def _propose_memory(
         pronouns = ("his", "he")
     else:
         pronouns = ("their", "they")
-    known = "\n".join(
-        part
-        for part in (
-            f"The human is called {name}." if name else "",
-            brain.llm.memory_block,
-            *(f"- {p['fact']}" for p in training.read_pending()),
-        )
-        if part
-    )
     try:
-        raw = await asyncio.to_thread(
-            brain.llm.propose_memory, user_text, reply_text, known, asked, name, pronouns
-        )
+        known = [*await memory.read_entries(), *(p["fact"] for p in training.read_pending())]
+        raw = await asyncio.to_thread(brain.llm.propose_memories, log, "\n".join(f"- {k}" for k in known), name, pronouns)
+        added = 0
+        for fact in training.parse_facts(raw):
+            owner = await asyncio.to_thread(brain.llm.whose_memory, log, fact, name, pronouns)
+            if not owner_matches(fact, owner, name) or await _compare_with_memories(fact, brain):
+                continue
+            if training.add_pending(fact, f"{day:%A %d %B}'s chat"):
+                added += 1
     except Exception as exc:
-        await hub.debug_log(websocket, "training", f"memory proposal failed: {exc!r}", (time.monotonic() - start) * 1000)
+        print(f"[training] couldn't propose memories from {day}: {exc!r}")
         return
-    fact = training.parse_fact(raw)
-    if fact and await _compare_with_memories(fact, brain):
-        await hub.debug_log(websocket, "training", "dropped a proposal she already remembers", (time.monotonic() - start) * 1000)
-        return
-    if fact and training.add_pending(fact, user_text):
-        await hub.debug_log(websocket, "training", "memory proposed for review", (time.monotonic() - start) * 1000)
+    print(f"[training] proposed {added} memories from {day}")
+    if added:
         await hub.broadcast(training_state_message())
-    else:
-        await hub.debug_log(websocket, "training", "nothing worth proposing", (time.monotonic() - start) * 1000)
+
+
+def owner_matches(fact: str, owner: str, name: str) -> bool:
+    """A memory about him has to be his per the log, and one about her mustn't be his --
+    her taste in his question ("didn't you say coffee is jittershit?") came back as his."""
+    his = owner.strip().upper().startswith(name.upper())
+    if fact.startswith(name):
+        return his
+    if fact.startswith(("I ", "I'", "My ", "Glitch")):
+        return not his
+    return True
 
 
 COMPARE_WITH = 3  # her closest existing memories a new proposal is checked against
@@ -384,8 +379,7 @@ async def maybe_retain_memory(
         return  # an image-only turn with nothing the user said -- nothing left worth keeping
     start = time.monotonic()
     if memory.server_backed() and training.read_active():
-        await _propose_memory(websocket, user_text, reply_text, brain, asked)
-        return
+        return  # she proposes from the whole day instead, once a night (propose_from_log)
     if memory.server_backed():
         try:
             await memory.retain_exchange(user_text, reply_text, asked)  # reply_text is "" for a web-search turn, see reply.reply_to

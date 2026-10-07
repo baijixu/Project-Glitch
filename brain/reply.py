@@ -22,7 +22,6 @@ import profiles
 import protocol
 import reach_out
 import sampling
-import training
 import voice_settings
 import web_search
 from hub import Brain
@@ -143,7 +142,6 @@ async def regenerate_last(websocket: websockets.ServerConnection, data: dict, br
     if edited and hub.fields_too_long(text):
         return
     popped_text = brain.llm.pop_last_exchange()
-    await _drop_proposal_from(popped_text)
     if popped_text is not None and not edited:
         text = popped_text
     await reply_to(websocket, text, brain)
@@ -156,7 +154,7 @@ async def delete_last(websocket: websockets.ServerConnection, data: dict, brain:
     a Stop before the turn reached history leaves an older exchange there."""
     expected = "assistant" if data.get("answered") else "user"
     if brain.llm.last_role() == expected:
-        await _drop_proposal_from(brain.llm.pop_last_exchange())
+        brain.llm.pop_last_exchange()
 
 
 @hub.handles(protocol.SPEECH_INTERRUPTED)
@@ -168,14 +166,6 @@ async def speech_interrupted(websocket: websockets.ServerConnection, data: dict,
     if isinstance(heard, (int, float)):
         brain.llm.cut_last_reply(float(heard))
         await hub.debug_log(websocket, "tts", f"talked over at {heard:.0%} of her reply")
-
-
-async def _drop_proposal_from(user_text: str | None) -> None:
-    """A memory proposed from an exchange that was just regenerated or deleted
-    goes too -- it came from a reply that's no longer in her conversation."""
-    # ponytail: a proposal still being written (it runs after the reply) slips past; fine at human click speed.
-    if user_text is not None and training.drop_latest_from(user_text):
-        await hub.broadcast(learning.training_state_message())
 
 
 def _transcribe(stt: FasterWhisperSTT, audio_b64: str, mime_type: str) -> str:

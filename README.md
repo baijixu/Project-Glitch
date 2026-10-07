@@ -296,8 +296,8 @@ are stored word for word.
 
 ### Memory training
 
-Turn on *Settings → Memory training* and nothing is saved automatically. After a reply she proposes at most one short fact,
-which waits in a review list. For each one you can **edit the wording**, mark it **Core / Normal / Minor**, and **Save** or
+Turn on *Settings → Memory training* and nothing is saved automatically. Each night, after her journal, she reads the day's
+chat log and proposes a few short facts, which wait in a review list. For each one you can **edit the wording**, mark it **Core / Normal / Minor**, and **Save** or
 **Reject**. What you save is stored exactly as you worded it. Core facts are always placed in her prompt; the importance is
 stored as a tag on the memory. It needs a Hindsight memory server. Good for the first weeks, while you're shaping what she
 remembers.

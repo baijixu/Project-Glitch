@@ -1,9 +1,9 @@
 """Training mode: she proposes memories, the user decides what actually gets saved.
 
 With it on (and Hindsight as the memory provider), the normal "hand every
-exchange to Hindsight" path is replaced: after each reply a background call
-(LocalLLM.propose_memory, parse_fact here) proposes at most ONE short fact, and
-it waits in a review queue. In Settings the user can edit its wording, pick an
+exchange to Hindsight" path is replaced: once a night she reads the day's chat log
+and proposes a few short facts (learning.propose_from_log, parse_facts here), and
+they wait in a review queue. In Settings the user can edit its wording, pick an
 importance (core / normal / minor) and approve it -- only then is that text
 retained (memory.retain_fact), tagged with its importance -- or reject it.
 Nothing reaches Hindsight without the user's say-so, which is the point: it
@@ -66,30 +66,18 @@ def _norm(text: str) -> str:
     return re.sub(r"[^a-z0-9 ]", "", text.lower()).strip()
 
 
-def parse_fact(raw: str) -> str | None:
-    """The model's answer to LocalLLM.propose_memory: {"fact": "..." | null}.
-    Anything else -- prose around the JSON, nothing worth keeping, something
-    too long -- is None. Defensive on purpose; a small local model won't always
-    follow the shape.
+def parse_facts(raw: str) -> list[str]:
+    """The model's answer to LocalLLM.propose_memories: a JSON list of short facts.
+    Defensive on purpose -- a small local model won't always follow the shape: prose
+    around the list is ignored, and anything that isn't a short string is dropped.
     """
-    match = re.search(r"\{.*\}", raw or "", re.DOTALL)
-    if not match:
-        return None
+    match = re.search(r"\[.*\]", raw or "", re.DOTALL)
     try:
-        answer = json.loads(match.group(0))
-        fact = answer.get("fact")
-    except (ValueError, AttributeError):
-        return None
-    # Her own "will this matter in a month?" check, answered before the fact --
-    # a small model asked for a fact otherwise writes one for anything ("lol nice").
-    if not str(answer.get("matters_in_a_month", "yes")).strip().lower().startswith("yes"):
-        return None
-    if not isinstance(fact, str):
-        return None
-    fact = fact.strip()
-    if not fact or len(fact) > MAX_FACT_CHARS:
-        return None
-    return fact
+        items = json.loads(match.group(0)) if match else []
+    except ValueError:
+        return []
+    facts = [item.strip() for item in items if isinstance(item, str)]
+    return [fact for fact in facts if 0 < len(fact) <= MAX_FACT_CHARS]
 
 
 def add_pending(fact: str, source: str = "") -> dict | None:
@@ -109,19 +97,6 @@ def add_pending(fact: str, source: str = "") -> dict | None:
 
 def get_pending(proposal_id: str) -> dict | None:
     return next((p for p in _read() if p["id"] == proposal_id), None)
-
-
-def drop_latest_from(source: str) -> bool:
-    """Drops the newest proposal made from this message -- its reply was regenerated,
-    edited or deleted away, so what it proposed was never really said."""
-    pending = _read()
-    key = source.strip()[:200]
-    index = next((i for i in range(len(pending) - 1, -1, -1) if pending[i]["source"] == key), None)
-    if index is None:
-        return False
-    del pending[index]
-    _write(pending)
-    return True
 
 
 def remove_pending(proposal_id: str) -> bool:

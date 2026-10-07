@@ -5,6 +5,9 @@ wondering -- brain/self/<date>.md, one file per day, so every entry is kept.
 It used to summarize all her memories, but every one of those he'd already approved,
 so it never told him anything new. Days they didn't talk get no entry. Only written,
 not used yet: it goes into her prompt (or her reach-outs) once the entries read like her.
+
+With memory training on, the same day's log is where her memory proposals come from too
+(learning.propose_from_log).
 """
 
 import asyncio
@@ -13,8 +16,10 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import conversation
+import learning
 import memory
 import persona
+import training
 from hub import Brain
 
 JOURNAL_DIR = conversation.JOURNAL_LOG_DIR
@@ -58,5 +63,7 @@ async def journal_loop(brain: Brain) -> None:
                 JOURNAL_DIR.mkdir(exist_ok=True)
                 path.write_text(f"# {path.stem} -- about {day:%A %d %B}\n\n{text.strip()}\n", encoding="utf-8")
                 print(f"[journal] wrote {path.name}")
+                if memory.server_backed() and training.read_active():  # after the lock: his replies come first
+                    await learning.propose_from_log(log, day, name, brain)
         except Exception as exc:  # never let one bad night stop the loop
             print(f"[journal] couldn't write today's entry: {exc!r}")
