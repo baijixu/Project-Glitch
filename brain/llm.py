@@ -397,6 +397,9 @@ _DIARY_SYSTEM_PROMPT = (
     "leave {name}'s health out of it. Only what actually happened in the log; never invent. One or two lines "
     "per point, at most three points per heading."
 )
+# Heads her newest entry in her own prompt. Explaining that the entries call him "you" made
+# her leave the entry unused; with this one she drew on it ("maybe I over-analyzed it").
+JOURNAL_HEADER = "Your own diary -- your latest entry:"
 
 # Her note on where a conversation left off, written as Clear Chat ends it and kept in her
 # prompt for the next one (reply.py) -- the chat is the only thing she loses on a clear.
@@ -713,6 +716,9 @@ class ChatBackend:
     def set_left_off(self, note: str) -> None:
         pass
 
+    def set_journal(self, entry: str) -> None:
+        pass
+
     def recent_replies(self, count: int) -> list[str]:
         return []
 
@@ -773,6 +779,7 @@ class LocalLLM(ChatBackend):
         self._curiosity = ""
         self._user_info = ""
         self._left_off = ""  # her note on where the last conversation left off
+        self._journal = ""  # her newest diary entry
         # Sampling settings for her replies only (brain/sampling.py), set by
         # main.py before each reply. Empty = the server's own settings.
         self._sampling: dict = {}
@@ -1100,6 +1107,10 @@ class LocalLLM(ChatBackend):
         """Her note from the last conversation (reply.py sets it every turn, "" in role-play)."""
         self._left_off = note.strip()
 
+    def set_journal(self, entry: str) -> None:
+        """Her newest diary entry (journal.py; reply.py sets it every turn, "" in role-play)."""
+        self._journal = entry.strip()
+
     def write_diary(self, log: str, name: str) -> str:
         """Her nightly diary entry (brain/journal.py) about one day's chat log."""
         messages = [
@@ -1183,6 +1194,8 @@ class LocalLLM(ChatBackend):
             )
         if self._left_off:  # changes only when a chat is cleared, so it stays up here with the rest
             parts.append(f"Where you two left off last time -- your own note from then:\n{self._left_off}")
+        if self._journal:  # a new one once a night
+            parts.append(f"{JOURNAL_HEADER}\n{self._journal}")
         if self._lessons:
             # After the soul on purpose: these are the user's own stated
             # preferences, and should win over her default habits.

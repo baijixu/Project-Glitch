@@ -240,6 +240,7 @@ async def reply_to(
 
     brain.llm.set_user_info(persona.effective_user_info())
     brain.llm.set_left_off("" if profiles.read_roleplay_active() else conversation.read_left_off())
+    brain.llm.set_journal("" if profiles.read_roleplay_active() else conversation.read_latest_journal())
     # Her sampling profile (brain/sampling.py) -- read every turn, so a switch
     # in Settings applies to the very next reply. Kept on during role-play:
     # it's how she generates, not something about the real user.

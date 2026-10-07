@@ -111,6 +111,12 @@ def read_left_off() -> str:
         return ""
 
 
+def read_latest_journal() -> str:
+    """Her newest diary entry (journal.py), or "" before her first."""
+    days = list_logs(JOURNAL)
+    return read_log(JOURNAL, days[0]["date"]).strip() if days else ""
+
+
 def _log_dir(mode: str) -> Path:
     return {ROLEPLAY: ROLEPLAY_LOG_DIR, JOURNAL: JOURNAL_LOG_DIR}.get(mode, LOG_DIR)
 

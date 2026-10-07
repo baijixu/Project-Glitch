@@ -136,6 +136,7 @@ async def _reach_out(brain: Brain, *, test: bool = False) -> None:
     question = None if test else curiosity.question_to_reach_out_with()
     brain.llm.set_user_info(persona.effective_user_info())
     brain.llm.set_left_off(conversation.read_left_off())  # she only reaches out outside role-play
+    brain.llm.set_journal(conversation.read_latest_journal())
     brain.llm.set_sampling(sampling.active_values())
     brain.llm.set_curiosity("")  # the reach-out note carries its own instruction
     print("[brain] a quiet spell -- reaching out" + (f" with {question['text']!r}" if question else ""))
