@@ -6,7 +6,7 @@ against whatever LLM you point it at (LM Studio, llama.cpp, Ollama, or any OpenA
 talk to her from your PC, or from your phone over your home network or [Tailscale](https://tailscale.com).
 
 - **Fully local.** Your LLM, your speech, your memory server, with no cloud AI service involved. Built and used day to day
-  with a 35B mixture-of-experts model on a 12 GB GPU.
+  with a 9B model (Qwen3.5 9B) on a 12 GB GPU.
 - **A memory you control.** Long-term recall through your own [Hindsight server](#memory), and with
   [memory training](#memory-training) on, she proposes each memory and you edit, approve or reject it before she keeps it.
 - **She learns from your 👍/👎.** Rate a reply, say why, and she turns it into a short behavior rule, which can wait for
