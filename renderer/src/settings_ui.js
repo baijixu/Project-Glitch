@@ -3,7 +3,7 @@
 // download and clear, the Notes and soul.md/user.md editors, and the context
 // meter.
 
-import { $, Modal, downloadText } from "./ui.js";
+import { $, Modal, downloadText, writePref } from "./ui.js";
 
 // Brain-side switches: message it sends -> the state message Brain answers with.
 const SWITCHES = [
@@ -25,6 +25,14 @@ export class SettingsUI {
     $("download-memory-button")?.addEventListener("click", () => this._ask("get_memory_content"));
     $("clear-memory-button")?.addEventListener("click", () => {
       if (window.confirm("Clear everything Glitch remembers about you? This can't be undone.")) app.send({ type: "clear_memory" });
+    });
+
+    // UI style: this device's own (index.html applies it before the page draws).
+    const uiStyleEl = $("ui-style-select");
+    if (uiStyleEl) uiStyleEl.value = document.documentElement.dataset.ui || "";
+    uiStyleEl?.addEventListener("change", () => {
+      document.documentElement.dataset.ui = uiStyleEl.value;
+      writePref("glitch_ui_style", uiStyleEl.value);
     });
 
     // Both editors ask Brain for the file each time they open -- nothing is

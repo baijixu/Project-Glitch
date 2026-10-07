@@ -11,6 +11,7 @@
 //   characters_ui.js .. role-play toggle, profiles, souls
 //   engines_ui.js ..... speech engines + voices, LLM engines, harnesses
 //   avatars_ui.js ..... avatar picker, import, rename, delete
+//   backgrounds_ui.js . the picture behind her: pick, add, delete
 //   history_ui.js ..... History panel, over-avatar bubbles, resend/edit/rate
 //   capture.js ........ camera/screen/file, push-to-talk and Always-On mic
 //   settings_ui.js .... on/off switches, memory, Notes and soul/user editors, context meter
@@ -18,6 +19,7 @@
 //   (lessons, training, sampling, chat logs, memory profiles, curiosity countdown: *_ui.js)
 
 import { AvatarsUI } from "./avatars_ui.js";
+import { BackgroundsUI } from "./backgrounds_ui.js";
 import { Capture } from "./capture.js";
 import { CharactersUI } from "./characters_ui.js";
 import { ChatLogsUI } from "./chat_logs_ui.js";
@@ -106,6 +108,7 @@ export class BrainClient {
     });
     this.capture = new Capture(this);
     this.avatars = new AvatarsUI(this, { onAvatarSwap });
+    this.backgrounds = new BackgroundsUI(this);
     this.speechEngines = new SpeechEnginesUI(this);
     this.llmEngines = new LlmEnginesUI(this, { onEnginesChanged: (names) => this.characters.setEngineNames(names) });
     this.lessons = new LessonsUI({ send });
@@ -167,6 +170,7 @@ export class BrainClient {
       ...this.characters.handlers,
       ...this.settings.handlers,
       ...this.avatars.handlers,
+      ...this.backgrounds.handlers,
       ...this.speechEngines.handlers,
       ...this.llmEngines.handlers,
       ...this.harness.handlers,

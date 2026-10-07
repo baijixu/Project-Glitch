@@ -13,6 +13,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
     <title>Glitch</title>
     <link rel="stylesheet" href="/src/style.css" />
+    <link rel="stylesheet" href="/src/ui-neon.css" />
+    <!-- This device's UI style (Settings -> UI style), set before anything draws so the
+         page never flashes the other one first. -->
+    <script>
+      try {
+        document.documentElement.dataset.ui = localStorage.getItem("glitch_ui_style") || "";
+      } catch {}
+    </script>
   </head>
   <body>
     <canvas id="scene"></canvas>
@@ -94,6 +102,24 @@
               <span class="settings-toggle-track"></span>
             </span>
           </label>
+        </section>
+        <section id="background-section" class="settings-section">
+          <h3>Background</h3>
+          <p class="settings-hint">The picture behind her, the same on every device. Add a PNG, JPG or WebP image.</p>
+          <select id="background-select" class="settings-select"></select>
+          <div class="settings-button-row">
+            <button id="delete-background-button" class="icon-button danger" title="Delete background" disabled>🗑️</button>
+          </div>
+          <button id="add-background-button" class="settings-action-button">Add Background</button>
+          <input id="background-file-input" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+        </section>
+        <section id="ui-style-section" class="settings-section">
+          <h3>UI Style</h3>
+          <p class="settings-hint">How the screen looks on this device.</p>
+          <select id="ui-style-select" class="settings-select">
+            <option value="">Classic</option>
+            <option value="neon">Neon</option>
+          </select>
         </section>
         <div id="harness-lockable">
           <section class="settings-section">

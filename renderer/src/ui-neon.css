@@ -1,0 +1,445 @@
+/* The "Neon" UI style (Settings -> UI style): dark glass, thin cyan lines and glow, her
+   green as the second accent. Only applies with <html data-ui="neon"> (index.html sets it
+   from this device's choice), on top of style.css -- Classic is style.css alone. */
+
+html[data-ui="neon"] {
+  --neon: #22e3ff;
+  --neon-rgb: 34, 227, 255;
+  --green: #3dff9a;
+  --green-rgb: 61, 255, 154;
+  --danger: #ff4d7e;
+  --glass: rgba(6, 12, 22, 0.62);
+  --glass-strong: rgba(5, 10, 19, 0.88);
+  --line: rgba(var(--neon-rgb), 0.28);
+  --line-soft: rgba(var(--neon-rgb), 0.14);
+  --text: #dff8ff;
+  --muted: #7d9fb0;
+  scrollbar-color: rgba(var(--neon-rgb), 0.4) transparent;
+  scrollbar-width: thin;
+}
+
+html[data-ui="neon"] body {
+  font-family: "Bahnschrift", "DIN Alternate", "Roboto Condensed", "Segoe UI", system-ui, sans-serif;
+}
+
+/* No picture picked: a faint grid with a glow behind her, instead of plain black. */
+html[data-ui="neon"] body:not(.has-backdrop) {
+  background:
+    radial-gradient(ellipse 55% 45% at 50% 40%, rgba(var(--neon-rgb), 0.11), transparent 70%),
+    radial-gradient(ellipse 80% 40% at 50% 105%, rgba(var(--green-rgb), 0.08), transparent 70%),
+    linear-gradient(rgba(var(--neon-rgb), 0.05) 1px, transparent 1px) 0 0 / 44px 44px,
+    linear-gradient(90deg, rgba(var(--neon-rgb), 0.05) 1px, transparent 1px) 0 0 / 44px 44px,
+    #02050b;
+}
+
+html[data-ui="neon"] :focus-visible {
+  outline: 1px solid var(--neon);
+  outline-offset: 2px;
+}
+
+/* ---- Glass: panels and floating controls ---- */
+
+html[data-ui="neon"] .corner-button,
+html[data-ui="neon"] #processing-indicator,
+html[data-ui="neon"] #status:not(:empty),
+html[data-ui="neon"] #memory-toast,
+html[data-ui="neon"] .vision-button,
+html[data-ui="neon"] #mic-button {
+  background: var(--glass);
+  border: 1px solid var(--line);
+  color: var(--text);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 0 14px rgba(var(--neon-rgb), 0.12), inset 0 0 10px rgba(var(--neon-rgb), 0.06);
+}
+
+html[data-ui="neon"] .corner-button {
+  border-radius: 12px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+html[data-ui="neon"] .corner-button:hover,
+html[data-ui="neon"] .vision-button:hover:not(:disabled),
+html[data-ui="neon"] #mic-button:hover:not(:disabled) {
+  background: var(--glass);
+  border-color: var(--neon);
+  box-shadow: 0 0 18px rgba(var(--neon-rgb), 0.45), inset 0 0 12px rgba(var(--neon-rgb), 0.15);
+  transform: none;
+}
+
+html[data-ui="neon"] #processing-indicator {
+  border-radius: 12px;
+  color: var(--neon);
+  font-size: 12px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  text-shadow: 0 0 8px rgba(var(--neon-rgb), 0.7);
+}
+
+html[data-ui="neon"] #status:not(:empty),
+html[data-ui="neon"] #memory-toast {
+  border-radius: 8px;
+  letter-spacing: 0.4px;
+}
+
+html[data-ui="neon"] #memory-toast {
+  border-color: rgba(var(--green-rgb), 0.45);
+  box-shadow: 0 0 16px rgba(var(--green-rgb), 0.2);
+}
+
+/* ---- Status lights: small glowing diamonds ---- */
+
+html[data-ui="neon"] .connection-light {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  transform: rotate(45deg);
+  background: #2a3a48;
+  box-shadow: none;
+}
+
+html[data-ui="neon"] .connection-light.green {
+  background: var(--green);
+  box-shadow: 0 0 10px var(--green), 0 0 2px #fff;
+}
+
+html[data-ui="neon"] .connection-light.blue {
+  background: var(--neon);
+  box-shadow: 0 0 10px var(--neon), 0 0 2px #fff;
+}
+
+html[data-ui="neon"] .connection-light.yellow {
+  background: #ffd23f;
+  box-shadow: 0 0 10px #ffd23f;
+}
+
+html[data-ui="neon"] .connection-light.red {
+  background: var(--danger);
+  box-shadow: 0 0 10px var(--danger);
+}
+
+html[data-ui="neon"] .rp-badge {
+  border-radius: 3px;
+  background: transparent;
+  border: 1px solid #3a4a58;
+  color: var(--muted);
+  letter-spacing: 2px;
+  box-shadow: none;
+}
+
+html[data-ui="neon"] .rp-badge.active {
+  background: rgba(var(--green-rgb), 0.12);
+  border-color: var(--green);
+  color: var(--green);
+  box-shadow: 0 0 10px rgba(var(--green-rgb), 0.5);
+}
+
+/* ---- Her words ---- */
+
+html[data-ui="neon"] #subtitle {
+  color: #f2fdff;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  -webkit-text-stroke: 3px rgba(0, 8, 16, 0.9);
+  filter: drop-shadow(0 0 6px rgba(var(--neon-rgb), 0.55));
+}
+
+html[data-ui="neon"] .overlay-bubble,
+html[data-ui="neon"] .history-bubble {
+  border-radius: 6px;
+  color: var(--text);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+html[data-ui="neon"] .overlay-bubble.user,
+html[data-ui="neon"] .history-user .history-bubble {
+  background: rgba(var(--neon-rgb), 0.14);
+  border: 1px solid rgba(var(--neon-rgb), 0.4);
+  box-shadow: 0 0 12px rgba(var(--neon-rgb), 0.12);
+}
+
+html[data-ui="neon"] .overlay-bubble.glitch,
+html[data-ui="neon"] .history-glitch .history-bubble {
+  background: rgba(var(--green-rgb), 0.1);
+  border: 1px solid rgba(var(--green-rgb), 0.38);
+  box-shadow: 0 0 12px rgba(var(--green-rgb), 0.1);
+}
+
+html[data-ui="neon"] .overlay-bubble.system,
+html[data-ui="neon"] .history-system .history-bubble {
+  background: transparent;
+  border: 1px dashed var(--line);
+  color: var(--muted);
+}
+
+html[data-ui="neon"] .history-name,
+html[data-ui="neon"] .overlay-bubble-name {
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+html[data-ui="neon"] .history-time {
+  color: var(--muted);
+}
+
+/* ---- Chat bar ---- */
+
+html[data-ui="neon"] #message-input {
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--glass-strong);
+  color: var(--text);
+  caret-color: var(--neon);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: inset 0 0 14px rgba(var(--neon-rgb), 0.06);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+html[data-ui="neon"] #message-input::placeholder {
+  color: var(--muted);
+  letter-spacing: 0.5px;
+}
+
+html[data-ui="neon"] #message-input:focus {
+  outline: none;
+  border-color: var(--neon);
+  box-shadow: 0 0 16px rgba(var(--neon-rgb), 0.3), inset 0 0 14px rgba(var(--neon-rgb), 0.08);
+}
+
+html[data-ui="neon"] #send-button,
+html[data-ui="neon"] .settings-action-button,
+html[data-ui="neon"] .modal-button.primary {
+  border-radius: 6px;
+  border: 1px solid rgba(var(--neon-rgb), 0.7);
+  background: linear-gradient(135deg, rgba(var(--neon-rgb), 0.22), rgba(var(--green-rgb), 0.14));
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  font-size: 12px;
+  box-shadow: 0 0 12px rgba(var(--neon-rgb), 0.18);
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+html[data-ui="neon"] #send-button:hover:not(:disabled),
+html[data-ui="neon"] .settings-action-button:hover,
+html[data-ui="neon"] .modal-button.primary:hover {
+  background: linear-gradient(135deg, rgba(var(--neon-rgb), 0.38), rgba(var(--green-rgb), 0.24));
+  box-shadow: 0 0 20px rgba(var(--neon-rgb), 0.45);
+}
+
+html[data-ui="neon"] #send-button:disabled {
+  background: rgba(40, 52, 64, 0.6);
+  border-color: #3a4a58;
+  box-shadow: none;
+}
+
+html[data-ui="neon"] .settings-action-button.danger {
+  border-color: rgba(255, 77, 126, 0.7);
+  background: rgba(255, 77, 126, 0.12);
+  box-shadow: 0 0 10px rgba(255, 77, 126, 0.15);
+}
+
+html[data-ui="neon"] .settings-action-button.danger:hover {
+  background: rgba(255, 77, 126, 0.26);
+  box-shadow: 0 0 18px rgba(255, 77, 126, 0.4);
+}
+
+html[data-ui="neon"] #stop-button {
+  background: var(--danger);
+  box-shadow: 0 0 12px rgba(255, 77, 126, 0.7);
+}
+
+html[data-ui="neon"] .vision-button,
+html[data-ui="neon"] #mic-button {
+  border-radius: 10px;
+}
+
+html[data-ui="neon"] #mic-button.recording {
+  background: rgba(255, 77, 126, 0.25);
+  border-color: var(--danger);
+  box-shadow: 0 0 18px rgba(255, 77, 126, 0.6);
+}
+
+/* ---- Slide panels and Settings ---- */
+
+html[data-ui="neon"] .slide-panel {
+  background: linear-gradient(180deg, rgba(6, 14, 26, 0.86), rgba(3, 7, 14, 0.92));
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+
+html[data-ui="neon"] #settings-panel {
+  border-left: 1px solid var(--line);
+  box-shadow: -4px 0 30px rgba(var(--neon-rgb), 0.12);
+}
+
+html[data-ui="neon"] #history-panel {
+  border-right: 1px solid var(--line);
+  box-shadow: 4px 0 30px rgba(var(--neon-rgb), 0.12);
+}
+
+html[data-ui="neon"] .slide-panel h2,
+html[data-ui="neon"] .modal h2 {
+  color: var(--neon);
+  font-size: 14px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  text-shadow: 0 0 10px rgba(var(--neon-rgb), 0.6);
+  padding-bottom: 8px;
+  border-bottom: 1px solid transparent;
+  border-image: linear-gradient(90deg, var(--neon), transparent) 1;
+}
+
+html[data-ui="neon"] #settings-content {
+  color: var(--muted);
+}
+
+html[data-ui="neon"] .settings-section {
+  border: 1px solid var(--line-soft);
+  border-left: 2px solid rgba(var(--neon-rgb), 0.45);
+  border-radius: 6px;
+  background: rgba(10, 22, 36, 0.4);
+}
+
+html[data-ui="neon"] .settings-section h3 {
+  color: var(--neon);
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+html[data-ui="neon"] .settings-hint,
+html[data-ui="neon"] .lesson-reason,
+html[data-ui="neon"] .chat-log-meta {
+  color: var(--muted);
+}
+
+html[data-ui="neon"] .settings-section > .settings-toggle-row,
+html[data-ui="neon"] .modal .settings-toggle-row,
+html[data-ui="neon"] .settings-section > label,
+html[data-ui="neon"] .modal label {
+  color: var(--text);
+  letter-spacing: 0.4px;
+}
+
+html[data-ui="neon"] .settings-toggle-track {
+  background: #0c1622;
+  border: 1px solid var(--line);
+}
+
+html[data-ui="neon"] .settings-toggle-track::before {
+  top: 1px;
+  left: 1px;
+  background: #5d7a8a;
+}
+
+html[data-ui="neon"] .settings-toggle-input:checked + .settings-toggle-track {
+  background: rgba(var(--neon-rgb), 0.25);
+  border-color: var(--neon);
+  box-shadow: 0 0 10px rgba(var(--neon-rgb), 0.35);
+}
+
+html[data-ui="neon"] .settings-toggle-input:checked + .settings-toggle-track::before {
+  background: var(--neon);
+  box-shadow: 0 0 8px var(--neon);
+}
+
+html[data-ui="neon"] .icon-button,
+html[data-ui="neon"] .modal-button.secondary {
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: rgba(12, 24, 38, 0.7);
+  color: var(--text);
+}
+
+html[data-ui="neon"] .icon-button:hover:not(:disabled),
+html[data-ui="neon"] .modal-button.secondary:hover {
+  background: rgba(var(--neon-rgb), 0.12);
+  border-color: var(--neon);
+}
+
+html[data-ui="neon"] .icon-button.danger:hover:not(:disabled) {
+  background: rgba(255, 77, 126, 0.2);
+  border-color: var(--danger);
+}
+
+html[data-ui="neon"] .settings-select,
+html[data-ui="neon"] .settings-text-input,
+html[data-ui="neon"] .modal textarea,
+html[data-ui="neon"] .modal input[type="text"],
+html[data-ui="neon"] .modal input[type="password"],
+html[data-ui="neon"] .modal input[type="number"] {
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: rgba(3, 8, 15, 0.85);
+  color: var(--text);
+}
+
+html[data-ui="neon"] .settings-select:focus,
+html[data-ui="neon"] .settings-text-input:focus,
+html[data-ui="neon"] .modal textarea:focus,
+html[data-ui="neon"] .modal input:focus {
+  border-color: var(--neon);
+  box-shadow: 0 0 12px rgba(var(--neon-rgb), 0.3);
+}
+
+html[data-ui="neon"] .settings-select option {
+  background: #07101c;
+  color: var(--text);
+}
+
+html[data-ui="neon"] .lesson-row,
+html[data-ui="neon"] .chat-log-entry,
+html[data-ui="neon"] .rate-modal-quote {
+  border-color: var(--line-soft);
+  background: rgba(10, 22, 36, 0.5);
+}
+
+html[data-ui="neon"] .chat-log-entry.from-user,
+html[data-ui="neon"] .rate-modal-quote {
+  border-left-color: var(--neon);
+}
+
+html[data-ui="neon"] .chat-log-entry.from-glitch {
+  border-left-color: var(--green);
+}
+
+html[data-ui="neon"] .lesson-text,
+html[data-ui="neon"] .chat-log-text {
+  color: var(--text);
+}
+
+html[data-ui="neon"] .context-meter-track {
+  background: #0c1622;
+  border: 1px solid var(--line-soft);
+}
+
+html[data-ui="neon"] .context-meter-fill {
+  background: linear-gradient(90deg, var(--neon), var(--green));
+  box-shadow: 0 0 10px rgba(var(--neon-rgb), 0.6);
+}
+
+/* ---- Pop-ups ---- */
+
+html[data-ui="neon"] .modal-backdrop {
+  background: rgba(1, 4, 9, 0.7);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+html[data-ui="neon"] .modal {
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(8, 16, 28, 0.96), rgba(4, 9, 17, 0.97));
+  box-shadow: 0 0 40px rgba(var(--neon-rgb), 0.15), 0 10px 40px rgba(0, 0, 0, 0.6);
+}
+
+html[data-ui="neon"] .modal-button {
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  font-size: 12px;
+}

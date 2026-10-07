@@ -1,5 +1,6 @@
-"""Settings -> Role-play, Soul and Avatar: saved role-play profiles and souls,
-her main soul.md/user.md, notes, avatars and chat logs, and the role-play toggle.
+"""Settings -> Role-play, Soul, Avatar and Background: saved role-play profiles and
+souls, her main soul.md/user.md, notes, avatars, backgrounds and chat logs, and the
+role-play toggle.
 """
 
 import base64
@@ -7,6 +8,7 @@ import base64
 import websockets
 
 import avatars
+import backgrounds
 import conversation
 import engines
 import hub
@@ -253,6 +255,50 @@ async def _manage_avatar(websocket: websockets.ServerConnection, data: dict, bra
     except (ValueError, OSError) as exc:
         print(f"[brain] couldn't {'rename' if renaming else 'delete'} avatar {name!r}: {exc!r}")
         await hub.send(websocket, protocol.avatars(avatars.list_avatars()))
+
+
+def background_messages() -> list[dict]:
+    """The background list, then the picture in use, if any: what a device needs to show it."""
+    active = backgrounds.read_active()
+    messages = [protocol.backgrounds(backgrounds.list_backgrounds(), active)]
+    if active:
+        try:
+            data, kind = backgrounds.read(active)
+        except (ValueError, OSError) as exc:
+            print(f"[brain] couldn't read background {active!r}: {exc!r}")
+        else:
+            messages.append(protocol.background_data(active, base64.b64encode(data).decode("ascii"), kind))
+    return messages
+
+
+@hub.handles(protocol.SAVE_BACKGROUND, protocol.SET_BACKGROUND, protocol.DELETE_BACKGROUND)
+async def _change_background(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    """Settings -> Background: add a picture (it becomes the one in use), pick one ("" for
+    none) or delete one. Every device then shows the same; a refused change just re-sends
+    what's there to the asker. Like an avatar's bytes, data_b64 is bounded by max_size.
+    """
+    name = str(data.get("name") or "")
+    try:
+        if hub.fields_too_long(name):
+            raise ValueError("that name is too long")
+        if data["type"] == protocol.SAVE_BACKGROUND:
+            image = base64.b64decode(str(data.get("data_b64") or ""), validate=True)
+            if not image:
+                raise ValueError("no image")
+            name = backgrounds.save(name, image, str(data.get("kind") or ""))
+            backgrounds.set_active(name)
+        elif data["type"] == protocol.SET_BACKGROUND:
+            backgrounds.set_active(name)
+        else:
+            backgrounds.delete(name)
+    except (ValueError, OSError) as exc:
+        print(f"[brain] couldn't {data['type'].replace('_', ' ')} {name!r}: {exc!r}")
+        for message in background_messages():
+            await hub.send(websocket, message)
+        return
+    print(f"[brain] {data['type'].replace('_', ' ')}: {name!r}")
+    for message in background_messages():
+        await hub.broadcast(message)
 
 
 @hub.handles(protocol.GET_CHAT_LOGS, protocol.GET_CHAT_LOG, protocol.DELETE_CHAT_LOG)

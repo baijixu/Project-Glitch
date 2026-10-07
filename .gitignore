@@ -18,6 +18,8 @@ brain/rp_soul.md
 brain/active_soul_name.txt
 brain/avatars/
 brain/active_avatar.txt
+brain/backgrounds/
+brain/active_background.txt
 
 # Whether Glitch's spoken voice is on (brain/voice_settings.py).
 brain/voice_active.txt

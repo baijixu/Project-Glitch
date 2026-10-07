@@ -25,6 +25,9 @@ GET_CHAT_LOGS = "get_chat_logs"
 GET_CHAT_LOG = "get_chat_log"
 DELETE_CHAT_LOG = "delete_chat_log"
 DELETE_AVATAR = "delete_avatar"
+SAVE_BACKGROUND = "save_background"
+SET_BACKGROUND = "set_background"
+DELETE_BACKGROUND = "delete_background"
 SET_ROLEPLAY_ACTIVE = "set_roleplay_active"
 SET_ROLEPLAY_ENGINE = "set_roleplay_engine"
 SAVE_TTS_ENGINE = "save_tts_engine"
@@ -94,6 +97,8 @@ AVATARS = "avatars"
 CHAT_LOGS = "chat_logs"
 CHAT_LOG_CONTENT = "chat_log_content"
 AVATAR_DATA = "avatar_data"
+BACKGROUNDS = "backgrounds"
+BACKGROUND_DATA = "background_data"
 ROLEPLAY_STATE = "roleplay_state"
 ROLEPLAY_ENGINE = "roleplay_engine"
 VOICE_STATE = "voice_state"
@@ -210,6 +215,16 @@ def avatars_changed(avatars: list[dict], renamed: dict | None = None, deleted: s
 
 def avatar_data(name: str, data_b64: str, kind: str) -> dict:
     return {"type": AVATAR_DATA, "name": name, "data_b64": data_b64, "kind": kind}
+
+
+def backgrounds(names: list[str], active: str) -> dict:
+    """Settings -> Background's saved pictures, and the one in use ("" for none)."""
+    return {"type": BACKGROUNDS, "names": names, "active": active}
+
+
+def background_data(name: str, data_b64: str, kind: str) -> dict:
+    """The background in use, to show behind her: a png, jpg or webp."""
+    return {"type": BACKGROUND_DATA, "name": name, "data_b64": data_b64, "kind": kind}
 
 
 def roleplay_state(active: bool) -> dict:

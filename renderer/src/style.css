@@ -4,8 +4,14 @@ html, body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #1a1e2a;
+  background: #000;
   font-family: system-ui, sans-serif;
+}
+
+/* The backdrop behind her: the picture picked in Settings -> Background (--backdrop,
+   set by backgrounds_ui.js) over plain black. The 3D canvas is see-through. */
+body {
+  background: var(--backdrop, none) center / cover no-repeat, #000;
 }
 
 #scene {
@@ -23,7 +29,6 @@ html, body {
      fill the screen would cut off the top of her head/bottom of frame on
      most aspect ratios, which is worse than letterboxing. */
   object-fit: contain;
-  background: #000;
 }
 
 #status {

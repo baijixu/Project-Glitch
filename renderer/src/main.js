@@ -13,7 +13,8 @@ const settingsPanelEl = document.getElementById("settings-panel");
 const avatarImageEl = document.getElementById("avatar-image");
 
 const canvas = document.getElementById("scene");
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+// See-through: the page's backdrop (Settings -> Background, or the UI style's own) shows behind her.
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
 // Shadows: she casts one on the floor and on herself (hair on her face, arms on
@@ -22,7 +23,6 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x000000);
 
 const camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.1, 20);
 camera.position.set(0, 1.25, 1.7);
@@ -54,9 +54,9 @@ dirLight.shadow.normalBias = 0.02;
 dirLight.shadow.radius = 3;
 scene.add(dirLight);
 
-// A faint glow on the floor under her, fading to the black background, so her
+// A faint glow on the floor under her, fading out into whatever's behind her, so her
 // shadow has somewhere to show (a shadow on a black floor is invisible).
-const floor = new THREE.Mesh(new THREE.PlaneGeometry(4, 4), new THREE.MeshStandardMaterial({ map: floorGlowTexture() }));
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(4, 4), new THREE.MeshStandardMaterial({ map: floorGlowTexture(), transparent: true }));
 floor.rotation.x = -Math.PI / 2;
 floor.receiveShadow = true;
 scene.add(floor);
@@ -67,9 +67,9 @@ function floorGlowTexture() {
   glowCanvas.width = glowCanvas.height = size;
   const ctx = glowCanvas.getContext("2d");
   const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-  gradient.addColorStop(0, "#2a2d38");
-  gradient.addColorStop(0.35, "#15161c");
-  gradient.addColorStop(1, "#000000");
+  gradient.addColorStop(0, "rgba(42, 45, 56, 1)");
+  gradient.addColorStop(0.35, "rgba(21, 22, 28, 0.85)");
+  gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, size, size);
   const texture = new THREE.CanvasTexture(glowCanvas);
