@@ -368,6 +368,22 @@ def question_to_reach_out_with() -> dict | None:
     return pool[0] if pool else None
 
 
+_WONDERING = re.compile(r"^#+ What I.m wondering[^\n]*\n+(.+?)\s*(?=^#|\Z)", re.MULTILINE | re.DOTALL)
+
+
+def take_diary_question(entry: str) -> str:
+    """What her diary entry (journal.py) says she's wondering, the first time it's asked for --
+    so she reaches out with each entry's question once -- else ""."""
+    match = _WONDERING.search(entry)
+    pacing = _pacing()
+    key = entry.split("\n", 1)[0]  # "# 2026-10-07 -- about Tuesday 06 October"
+    if not match or pacing.get("diary_asked") == key:
+        return ""
+    pacing["diary_asked"] = key
+    _save_pacing(pacing)
+    return match[1].strip()[: MAX_QUESTION_CHARS * 2]
+
+
 def mark_reached_out(question_id: str | None) -> None:
     """She spoke first: not again until he replies. The question she used (if any)
     counts as asked, so his reply is taken as its answer."""
