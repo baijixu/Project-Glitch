@@ -646,6 +646,9 @@ body.overlay-chat-active #overlay-edit-button {
   --offscreen: -100%;
   box-shadow: 2px 0 16px rgba(0, 0, 0, 0.4);
   width: min(380px, 90vw);
+  /* The chat bar moves aside while this is open (#history-panel.open ~ #chat-bar),
+     so Resend Last and Clear Chat can sit near the bottom. */
+  padding-bottom: 20px;
 }
 
 #settings-panel {
@@ -1052,6 +1055,7 @@ body.overlay-chat-active #overlay-edit-button {
 #history-list {
   flex: 1 1 auto;
   overflow-y: auto;
+  overflow-x: hidden; /* the tap padding of his bubbles' ↻/✏️/🗑️ reaches past the right edge */
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1131,30 +1135,31 @@ body.overlay-chat-active #overlay-edit-button {
   margin-bottom: 4px;
 }
 
+/* His messages on the right, hers on the left. */
 .history-user {
-  align-self: flex-start;
+  align-self: flex-end;
 }
 
 .history-user .history-bubble {
   background: #4a7bd8;
-  border-bottom-left-radius: 4px;
+  border-bottom-right-radius: 4px;
 }
 
 .history-user .history-meta {
-  align-self: flex-start;
+  align-self: flex-end;
 }
 
 .history-glitch {
-  align-self: flex-end;
+  align-self: flex-start;
 }
 
 .history-glitch .history-bubble {
   background: #3a3f52;
-  border-bottom-right-radius: 4px;
+  border-bottom-left-radius: 4px;
 }
 
 .history-glitch .history-meta {
-  align-self: flex-end;
+  align-self: flex-start;
 }
 
 /* A memory_learned notification (see brain_client.js's "memory_learned"
