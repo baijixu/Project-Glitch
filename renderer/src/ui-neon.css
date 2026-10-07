@@ -1,6 +1,8 @@
 /* The "Neon" UI style (Settings -> UI style): dark glass, thin cyan lines and glow, her
    green as the second accent. Only applies with <html data-ui="neon"> (index.html sets it
-   from this device's choice), on top of style.css -- Classic is style.css alone. */
+   from this device's choice), on top of style.css -- Classic is style.css alone.
+   No backdrop-filter: blurring over her 3D view, redrawn every frame, took the GPU from
+   her model -- 1 token/s instead of ~10 -- so the glass here is just a solid tint. */
 
 html[data-ui="neon"] {
   --neon: #22e3ff;
@@ -8,7 +10,7 @@ html[data-ui="neon"] {
   --green: #3dff9a;
   --green-rgb: 61, 255, 154;
   --danger: #ff4d7e;
-  --glass: rgba(6, 12, 22, 0.62);
+  --glass: rgba(6, 12, 22, 0.8);
   --glass-strong: rgba(5, 10, 19, 0.88);
   --line: rgba(var(--neon-rgb), 0.28);
   --line-soft: rgba(var(--neon-rgb), 0.14);
@@ -48,8 +50,6 @@ html[data-ui="neon"] #mic-button {
   background: var(--glass);
   border: 1px solid var(--line);
   color: var(--text);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
   box-shadow: 0 0 14px rgba(var(--neon-rgb), 0.12), inset 0 0 10px rgba(var(--neon-rgb), 0.06);
 }
 
@@ -148,8 +148,6 @@ html[data-ui="neon"] .overlay-bubble,
 html[data-ui="neon"] .history-bubble {
   border-radius: 6px;
   color: var(--text);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
 }
 
 html[data-ui="neon"] .overlay-bubble.user,
@@ -193,8 +191,6 @@ html[data-ui="neon"] #message-input {
   background: var(--glass-strong);
   color: var(--text);
   caret-color: var(--neon);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
   box-shadow: inset 0 0 14px rgba(var(--neon-rgb), 0.06);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
@@ -267,9 +263,7 @@ html[data-ui="neon"] #mic-button.recording {
 /* ---- Slide panels and Settings ---- */
 
 html[data-ui="neon"] .slide-panel {
-  background: linear-gradient(180deg, rgba(6, 14, 26, 0.86), rgba(3, 7, 14, 0.92));
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
+  background: linear-gradient(180deg, rgba(6, 14, 26, 0.95), rgba(3, 7, 14, 0.97));
 }
 
 html[data-ui="neon"] #settings-panel {
@@ -426,9 +420,7 @@ html[data-ui="neon"] .context-meter-fill {
 /* ---- Pop-ups ---- */
 
 html[data-ui="neon"] .modal-backdrop {
-  background: rgba(1, 4, 9, 0.7);
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
+  background: rgba(1, 4, 9, 0.82);
 }
 
 html[data-ui="neon"] .modal {
