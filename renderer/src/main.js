@@ -4,6 +4,7 @@ import { VRMUtils } from "@pixiv/three-vrm";
 import { loadAvatar } from "./avatar.js";
 import { IdleController, pickGesture } from "./idle.js";
 import { BrainClient } from "./brain_client.js";
+import "./icons.js";
 
 const statusEl = document.getElementById("status");
 const historyButtonEl = document.getElementById("history-button");
