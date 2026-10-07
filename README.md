@@ -75,7 +75,7 @@ The shipped default avatar in the Neon UI style (Settings → UI Style), with th
 - **She learns how you like her to behave.** Rate replies 👍/👎 with a reason and she distills short behavior
   rules from your feedback. You choose how much she may change on her own, and you can edit or retire any rule.
 - **Curiosity.** She asks the occasional follow-up question about what you said, or something she's wondered about you, paced so
-  it never turns into an interrogation and never repeats. After an hour of quiet she reaches out first, once, until you reply.
+  it never turns into an interrogation and never repeats. After 15-60 minutes of quiet (random) she reaches out first, once, until you reply.
 - **Tune how she talks.** Sampling profiles (temperature, top P, min P...) you save and switch between, applied from her next reply.
 - **Vision.** Show her your camera, your screen, or attach a picture or text file (with a vision-capable model).
 - **Web access.** Optional web search through your own [SearXNG](https://docs.searxng.org/) instance, with results labeled
@@ -242,7 +242,7 @@ The ⚙️ panel, top to bottom:
 | **Glitch RP Persona** | Her saved role-play souls. |
 | **Remember Me** | Memory on/off, the memory backend (the Local file, or saved Hindsight servers), Download / Clear Memory. |
 | **Web Access** | Lets her search the web through your SearXNG. |
-| **Curiosity** | Follow-up questions and reaching out after an hour of quiet. |
+| **Curiosity** | Follow-up questions and reaching out after a quiet spell. |
 | **Memory training** | Review what she wants to remember before it's saved. |
 | **Behavior learning** | The rules she's learned from your ratings, and how much she may change on her own. |
 | **Avatar** | Pick, import, rename or delete avatars. |
