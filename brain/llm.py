@@ -106,6 +106,10 @@ CRISIS_NOTE = (
 # time is the scene's, not the real world's).
 GAP_MARKER_SEC = 3600
 _GAP_MARKER = re.compile(r"^\[[^\]\n]* later -- [^\]\n]*\]\n")
+# A picture turn in a restored conversation is just this note (conversation.PICTURE_NOTE); a
+# resend of one says _PICTURE_GONE instead. Tested: 3/3 asked for it again, none guessed.
+_PICTURE_NOTE = "[picture]"
+_PICTURE_GONE = "[picture -- lost when the app restarted, so you can't see it; ask for it again]"
 
 
 def _now() -> datetime:
@@ -706,7 +710,7 @@ class ChatBackend:
     def cancel_reply(self) -> None:
         pass
 
-    def pop_last_exchange(self) -> str | None:
+    def pop_last_exchange(self) -> tuple[str, str | None, str] | None:
         return None
 
     def last_role(self) -> str | None:
@@ -1484,7 +1488,7 @@ class LocalLLM(ChatBackend):
         self._history[-1] = {**self._history[-1], "content": " ".join(words[: max(1, round(len(words) * heard))]) + " —"}
         self._history_changed()
 
-    def pop_last_exchange(self) -> str | None:
+    def pop_last_exchange(self) -> tuple[str, str | None, str] | None:
         """Removes the most recent turn from history and returns the user
         text it was for, or None if there's nothing sensible to pop
         (empty history).
@@ -1509,10 +1513,10 @@ class LocalLLM(ChatBackend):
         turn on top of a stale one -- which is what simply resending the
         same text as a brand new message would do.
 
-        An image attached to the popped turn is not recoverable here (its
-        content becomes a list, not a plain string) -- only the text part
-        is returned, same limitation the Renderer's own retry button
-        already accepts by hiding itself on an image message entirely.
+        Returns (text, image_b64, image_mime): a picture still in memory goes
+        back with it. One kept only as its "[picture]" note (a conversation
+        restored after a restart) can't, so the note tells her to ask for it
+        again -- answered blind, she made up what it showed (seen live).
         """
         if not self._history:
             return None
@@ -1528,8 +1532,14 @@ class LocalLLM(ChatBackend):
         self._history_changed()
         content = user_message.get("content")
         if isinstance(content, list):
-            return strip_gap_marker("\n".join(part.get("text", "") for part in content if part.get("type") == "text"))
-        return strip_gap_marker(content) if isinstance(content, str) else content
+            text = "\n".join(part.get("text", "") for part in content if part.get("type") == "text")
+            url = next((part["image_url"]["url"] for part in content if part.get("type") == "image_url"), "")
+            mime, _, image_b64 = url.removeprefix("data:").partition(";base64,")
+            return strip_gap_marker(text), image_b64 or None, mime or "image/jpeg"
+        text = strip_gap_marker(content) if isinstance(content, str) else ""
+        if text.endswith(_PICTURE_NOTE):
+            text = text.removesuffix(_PICTURE_NOTE) + _PICTURE_GONE
+        return text, None, "image/jpeg"
 
     def maybe_extract_memory(self, user_text: str, reply_text: str, existing_entries: list[str]) -> str | None:
         """The "local" memory provider's own extraction step (memory.py) --

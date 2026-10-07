@@ -141,10 +141,13 @@ async def regenerate_last(websocket: websockets.ServerConnection, data: dict, br
     edited = bool(data.get("edited"))  # the ✏️ button: answer their corrected text instead
     if edited and hub.fields_too_long(text):
         return
-    popped_text = brain.llm.pop_last_exchange()
-    if popped_text is not None and not edited:
-        text = popped_text
-    await reply_to(websocket, text, brain)
+    popped = brain.llm.pop_last_exchange()
+    image_b64, image_mime = None, "image/jpeg"
+    if popped is not None:
+        popped_text, image_b64, image_mime = popped  # a picture goes again, edited or not
+        if not edited:
+            text = popped_text
+    await reply_to(websocket, text, brain, image_b64=image_b64, image_mime=image_mime)
 
 
 @hub.handles(protocol.DELETE_LAST)
