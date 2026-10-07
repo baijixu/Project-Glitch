@@ -33,6 +33,22 @@ import web_search
 # happy/angry/sad/relaxed/surprised are the mood ones; neutral means "none
 # of the above", not a settable expression Brain ever sends.
 VALID_MOODS = {"happy", "angry", "sad", "relaxed", "surprised", "neutral"}
+# Moods she writes that aren't presets, as the nearest one that is -- seen in 72 test replies:
+# curious 12, concerned 6, thoughtful 1, each a blank face and voice before. Curious isn't
+# "surprised": that face is wide-eyed, too much for a sixth of her replies.
+MOOD_ALIASES = {
+    "curious": "happy", "excited": "happy", "playful": "happy", "amused": "happy", "flirty": "happy",
+    "thoughtful": "relaxed", "calm": "relaxed", "content": "relaxed", "tired": "relaxed", "nostalgic": "relaxed",
+    "concerned": "sad", "worried": "sad", "sympathetic": "sad",
+    "annoyed": "angry", "frustrated": "angry",
+    "shocked": "surprised", "amazed": "surprised",
+}
+
+
+def _mood(word: str) -> str:
+    """A mood tag's word as one of VALID_MOODS ("neutral" for one with no near preset)."""
+    word = word.lower()
+    return word if word in VALID_MOODS else MOOD_ALIASES.get(word, "neutral")
 
 # Who Glitch is by default, replaced (not appended to) by an active
 # custom soul (brain/souls.py) -- MOOD_TAG_INSTRUCTION below stays fixed
@@ -567,16 +583,14 @@ def _json_arguments(text: str) -> dict:
 
 def _extract_mood(text: str) -> tuple[str, str]:
     """Returns (mood, text_with_tag_removed). Falls back to "neutral" if the
-    model forgot the tag or used something outside VALID_MOODS, rather than
+    model forgot the tag or used a mood with no near preset (_mood), rather than
     erroring -- a missing/malformed tag shouldn't break the reply. Small
     models sometimes tag mid-reply too: every tag is removed, the last one wins.
     """
     tags = _MOOD_TAG.findall(text)
     if not tags:
         return "neutral", text.strip()
-    mood = tags[-1].lower()
-    if mood not in VALID_MOODS:
-        mood = "neutral"
+    mood = _mood(tags[-1])
     return mood, _MOOD_TAG.sub("", text).strip()
 
 
@@ -603,7 +617,7 @@ class Sentences:
             tag = _LEADING_MOOD_TAG.match(self._text)
             if not tag:
                 return []
-            self.mood = tag[1].lower() if tag[1].lower() in VALID_MOODS else "neutral"
+            self.mood = _mood(tag[1])
             self._text = self._text[tag.end():]
         # Split first: a bare tag still arriving ("mood: rel") must not be taken for a whole one.
         *done, self._text = _SENTENCE_END.split(self._text)
