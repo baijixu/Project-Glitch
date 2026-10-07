@@ -150,6 +150,8 @@ export class HistoryUI {
   _edit(entry) {
     if (!this._app.canSendReply()) return;
     if (!this._isLatest(entry)) return this._app.flashStatus("Only your latest message can be edited", 2500);
+    // Its bubble only shows the file's name: an edit would send her that instead of the file.
+    if (entry.text.includes("📎")) return this._app.flashStatus("A message with a file can't be edited -- resend it", 2500);
     const textarea = $("edit-message-textarea");
     if (!this.editModal.el || !textarea) return;
     textarea.value = entry.text;
@@ -194,16 +196,18 @@ export class HistoryUI {
     for (const button of previous?.querySelectorAll(".history-retry-button") || []) button.hidden = false;
   }
 
-  // Her reply to `entry` (the latest exchange), if there is one: from the panel,
-  // the bubbles and the stored history. Over-avatar bubbles aren't tracked per
-  // entry, but the stale one is always the newest.
+  // What she said after `entry` (the latest exchange) -- her reply, and her reaching out
+  // after it -- from the panel, the bubbles and the stored history, as Brain drops it
+  // too (pop_last_exchange). Over-avatar bubbles aren't tracked per entry, but the stale
+  // ones are always the newest.
   _removeStaleReply(entry) {
     const index = this.entries.indexOf(entry);
-    const reply = this.entries[index + 1];
-    if (index === -1 || reply?.role !== "glitch") return;
-    this.entries.splice(index + 1, 1);
-    this._groups.get(reply)?.remove(); // not just the last one: a "🧠 Learned" line can come after it
-    if (this.overlayActive) this.overlayEl?.lastElementChild?.remove();
+    if (index === -1) return;
+    for (const reply of this.entries.slice(index + 1).filter((e) => e.role === "glitch")) {
+      this.entries.splice(this.entries.indexOf(reply), 1);
+      this._groups.get(reply)?.remove(); // not just the last one: a "🧠 Learned" line can come after it
+      if (this.overlayActive) this.overlayEl?.lastElementChild?.remove();
+    }
     this._save();
   }
 

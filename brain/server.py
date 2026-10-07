@@ -188,6 +188,11 @@ async def _run_reply_message(websocket: websockets.ServerConnection, raw: str, b
         pass
     except Exception as exc:
         print(f"[brain] reply handler failed: {exc!r}")
+        if _peek_message_type(raw) in _REPLY_MESSAGE_TYPES:  # else the device shows "processing..." until Stop
+            try:
+                await hub.send(websocket, protocol.no_reply())
+            except Exception:
+                pass
 
 
 def _stop_replies(reply_tasks: set[asyncio.Task], brain: Brain) -> None:
@@ -268,11 +273,6 @@ async def handle_message(websocket: websockets.ServerConnection, raw: str, brain
 @hub.handles(protocol.PONG)
 async def _pong(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     pass
-
-
-@hub.handles(protocol.ANIMATION_FINISHED)
-async def _animation_finished(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-    print(f"[brain] animation finished: {data.get('name')!r}")
 
 
 @hub.handles(protocol.ERROR)

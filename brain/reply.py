@@ -140,7 +140,7 @@ async def regenerate_last(websocket: websockets.ServerConnection, data: dict, br
     text = str(data.get("text", ""))
     edited = bool(data.get("edited"))  # the ✏️ button: answer their corrected text instead
     if edited and hub.fields_too_long(text):
-        return
+        return await hub.send(websocket, protocol.no_reply())
     popped = brain.llm.pop_last_exchange()
     image_b64, image_mime = None, "image/jpeg"
     if popped is not None:

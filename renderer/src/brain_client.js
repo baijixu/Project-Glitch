@@ -163,10 +163,6 @@ export class BrainClient {
       memory_profiles: (data) => this.memoryProfiles.handleState(data),
       memory_profile_content: (data) => this.memoryProfiles.handleContent(data),
       curiosity_timer: (data) => this.curiosityTimer.handleTimer(data),
-      play_animation: (data) => {
-        console.warn("[brain] play_animation not yet implemented:", data);
-        this.send({ type: "error", message: `play_animation not yet implemented: ${data.name}` });
-      },
       ...this.characters.handlers,
       ...this.settings.handlers,
       ...this.avatars.handlers,
@@ -458,6 +454,9 @@ export class BrainClient {
   // then all of it settles the bubble and ends the wait. Any of it also means a new
   // reply has started, so her voice is let through again.
   _showReplyText(data) {
+    // Already on its way when Stop was pressed: dropped, or it opened a bubble that her
+    // next reply was glued onto, and let her stopped voice through again.
+    if (!this._awaitingReply && !data.reach_out) return;
     this._acceptingVoice = true;
     if (data.partial) {
       this._streamedText = this._streamed ? `${this._streamedText} ${data.text}` : data.text;

@@ -18,7 +18,6 @@ history is saved to disk through on_history_change (engines.build_llm, brain/con
 import json
 import re
 import time
-import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -26,6 +25,7 @@ from datetime import datetime
 import httpx
 from openai import BadRequestError, OpenAI
 
+import conversation
 import web_search
 
 # Mirrors this VRM's actual expression presets (confirmed via
@@ -107,9 +107,8 @@ CRISIS_NOTE = (
 # time is the scene's, not the real world's).
 GAP_MARKER_SEC = 3600
 _GAP_MARKER = re.compile(r"^\[[^\]\n]* later -- [^\]\n]*\]\n")
-# A picture turn in a restored conversation is just this note (conversation.PICTURE_NOTE); a
-# resend of one says _PICTURE_GONE instead. Tested: 3/3 asked for it again, none guessed.
-_PICTURE_NOTE = "[picture]"
+# A picture turn in a restored conversation is just its conversation.PICTURE_NOTE; a resend
+# of one says _PICTURE_GONE instead. Tested: 3/3 asked for it again, none guessed.
 _PICTURE_GONE = "[picture -- lost when the app restarted, so you can't see it; ask for it again]"
 
 
@@ -150,14 +149,6 @@ def _message_time(message: dict) -> datetime | None:
 def _for_model(message: dict) -> dict:
     """A history message as the model gets it -- without the "at" time."""
     return {k: v for k, v in message.items() if k != "at"}
-
-
-def _text_of(content) -> str:
-    """A history message's words: its text, or its text parts plus "[picture]" for a picture turn."""
-    if not isinstance(content, list):
-        return str(content or "")
-    text = " ".join(part.get("text", "") for part in content if part.get("type") == "text").strip()
-    return f"{text} [picture]".strip() if any(part.get("type") == "image_url" for part in content) else text
 
 
 def strip_gap_marker(text: str) -> str:
@@ -295,17 +286,6 @@ MAX_REPLY_TOKENS = 8000
 # so they go in extra_body -- LM Studio and llama-server read them from there
 # (checked live: LM Studio maps each one to its own setting and validates it).
 _OPENAI_SAMPLING_ARGS = ("temperature", "top_p", "presence_penalty")
-
-# OllamaLLM-only, and only when think=true (role-play deliberately runs
-# with think=false specifically to avoid needing this at all -- see
-# OllamaLLM's own docstring). num_predict is one shared budget covering
-# both the thinking tokens and the actual reply for a single completion,
-# so 2000 is routinely not enough room for a model to both finish
-# reasoning and still answer -- confirmed live, replies came back empty
-# after ~2000 tokens of pure thinking. It predates MAX_REPLY_TOKENS going
-# to 8,000 too (the same problem turned up on the LM Studio path); kept as
-# its own constant so the Ollama thinking budget can still be tuned apart.
-MAX_REPLY_TOKENS_THINKING = 8000
 
 # A short phrase at most -- this call only ever needs to return "NONE" or
 # one compact fact, never a real reply, so this is deliberately far below
@@ -1104,7 +1084,7 @@ class LocalLLM(ChatBackend):
         """Her conversation as "<name>: ..." / "Glitch: ..." lines, for write_left_off --
         taken before a clear (reply.py), so the note is written from what was really said."""
         speaker = {"user": name, "assistant": "Glitch"}
-        lines = [f"{speaker[m['role']]}: {strip_gap_marker(_text_of(m['content']))}" for m in self._history if m.get("role") in speaker]
+        lines = [f"{speaker[m['role']]}: {strip_gap_marker(conversation.text_of(m['content']))}" for m in self._history if m.get("role") in speaker]
         return "\n".join(lines)[-MAX_TRANSCRIPT_CHARS:]
 
     def write_left_off(self, transcript: str, name: str) -> str:
@@ -1380,8 +1360,7 @@ class LocalLLM(ChatBackend):
         anything else is "unknown". Never raises.
         """
         try:
-            with urllib.request.urlopen(f"{self._server_root()}/api/v0/models", timeout=3) as response:
-                data = json.load(response).get("data", [])
+            data = httpx.get(f"{self._server_root()}/api/v0/models", timeout=3).json().get("data", [])
             return ", ".join(m["id"] for m in data if m.get("state") == "loaded" and m.get("id")) or "nothing loaded"
         except Exception:
             return "unknown"
@@ -1401,7 +1380,7 @@ class LocalLLM(ChatBackend):
         )
         note = (
             f"<notes>\n{TURN_NOTES_HEADER}\n\n"
-            "They haven't said anything in over an hour. Reach out to them first -- once, briefly, in your own "
+            "They haven't said anything for a while. Reach out to them first -- once, briefly, in your own "
             f"voice, the way a friend might text. {hint}Don't mention these notes or that an app told you to.\n\n"
             f"{_current_time_line()}\n</notes>"
         )
@@ -1491,23 +1470,14 @@ class LocalLLM(ChatBackend):
         self._history_changed()
 
     def pop_last_exchange(self) -> tuple[str, str | None, str] | None:
-        """Removes the most recent turn from history and returns the user
-        text it was for, or None if there's nothing sensible to pop
-        (empty history).
+        """Removes the user's latest message and everything after it, and returns
+        that message, or None if he hasn't said anything.
 
-        Handles two shapes at the tail of history: a complete
-        user-then-assistant pair (the ordinary case -- an empty or
-        nonsensical reply still gets appended as a real, if unsatisfying,
-        assistant turn, see reply.py's reply_to), and a dangling lone user
-        turn with no assistant after it (reply() appends the user turn
-        *before* calling _complete, so a request that raises -- a
-        connection error, say -- leaves exactly this shape). Popping just
-        the dangling turn in that second case matters just as much as
-        popping the pair in the first: leaving it in place would mean the
-        next reply() call appends a second, back-to-back user turn on top
-        of it with no assistant in between, which is the same "he's just
-        repeating himself" problem this method exists to avoid in the
-        first place.
+        After it there's usually her reply; nothing, when the request failed
+        (reply() appends the user turn *before* calling _complete); or her reply
+        and her reaching out after it. Leaving any of that in place would mean
+        the next reply() piles a second copy of his message on top -- he'd seem
+        to be repeating himself, the problem this method exists to avoid.
 
         Used by reply.py's regenerate_last: popping first means the
         follow-up reply() call this feeds into starts from the exact same
@@ -1520,17 +1490,11 @@ class LocalLLM(ChatBackend):
         restored after a restart) can't, so the note tells her to ask for it
         again -- answered blind, she made up what it showed (seen live).
         """
-        if not self._history:
+        users = [i for i, m in enumerate(self._history) if m.get("role") == "user"]
+        if not users:
             return None
-        if self._history[-1].get("role") == "assistant":
-            if len(self._history) < 2 or self._history[-2].get("role") != "user":
-                return None
-            user_message = self._history.pop(-2)
-            self._history.pop()  # the assistant turn that followed it
-        elif self._history[-1].get("role") == "user":
-            user_message = self._history.pop()
-        else:
-            return None
+        user_message = self._history[users[-1]]
+        del self._history[users[-1]:]
         self._history_changed()
         content = user_message.get("content")
         if isinstance(content, list):
@@ -1539,8 +1503,8 @@ class LocalLLM(ChatBackend):
             mime, _, image_b64 = url.removeprefix("data:").partition(";base64,")
             return strip_gap_marker(text), image_b64 or None, mime or "image/jpeg"
         text = strip_gap_marker(content) if isinstance(content, str) else ""
-        if text.endswith(_PICTURE_NOTE):
-            text = text.removesuffix(_PICTURE_NOTE) + _PICTURE_GONE
+        if text.endswith(conversation.PICTURE_NOTE):
+            text = text.removesuffix(conversation.PICTURE_NOTE) + _PICTURE_GONE
         return text, None, "image/jpeg"
 
     def maybe_extract_memory(self, user_text: str, reply_text: str, existing_entries: list[str]) -> str | None:
@@ -1688,12 +1652,6 @@ class OllamaLLM(LocalLLM):
         cancelled: Callable[[], bool] | None = None,
     ) -> dict:
         think = self._think and not no_thinking
-        # See MAX_REPLY_TOKENS_THINKING's own comment -- the caller passes
-        # MAX_REPLY_TOKENS same as every other engine, but that's not
-        # enough room once thinking is actually turned on, so this widens
-        # it right here rather than needing every caller to know that.
-        if think:
-            max_tokens = max(max_tokens, MAX_REPLY_TOKENS_THINKING)
         payload = {
             "model": self._model,
             "messages": [_to_ollama_message(m) for m in messages],

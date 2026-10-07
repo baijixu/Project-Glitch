@@ -33,8 +33,8 @@ Two independent components, one contract between them.
 ┌─────────────────────────────┐         WebSocket + HTTP        ┌──────────────────────────────┐
 │         RENDERER             │◄────────────(LAN or local)─────►│           BRAIN               │
 │  (three.js + three-vrm,      │                                  │  (Python backend)             │
-│   runs inside pywebview      │                                  │                                │
-│   or plain browser window)   │                                  │  - LLM orchestration           │
+│   runs in a browser tab      │                                  │                                │
+│   on any device)             │                                  │  - LLM orchestration           │
 │                               │                                  │  - STT / TTS                   │
 │  - Loads/renders .vrm model  │                                  │  - Skills (ComfyUI, etc.)       │
 │  - Plays animations          │                                  │  - Decides WHAT the model does  │
@@ -52,7 +52,7 @@ Two independent components, one contract between them.
 ## 4. Renderer component
 
 - **Stack:** three.js + `@pixiv/three-vrm`, vanilla JS or a minimal bundler (Vite recommended — fast, simple, well-documented). No framework bloat (no React/Vue needed for this).
-- **Host shell:** `pywebview` (Python) wrapping the local HTML/JS app in a native window. This is the *only* Python involved in the Renderer component, and its job is limited to: open a window, load `index.html`, expose OS-level niceties (always-on-top, fullscreen toggle, tray icon) if wanted. It does not contain app logic.
+- **Host:** a plain browser tab, served by Vite's dev server (HTTPS, so phones on the LAN get the mic and camera). A pywebview desktop shell was tried and removed in 1.2.4: nothing needed it.
 - **Responsibilities:**
   - Load and display the `.vrm` model.
   - Play animation clips / blend expressions on command.
@@ -99,7 +99,6 @@ Define this list exhaustively in the actual codebase (e.g. `protocol.md` or a sh
 
 | Concern | Windows | macOS | Linux |
 |---|---|---|---|
-| pywebview backend | Edge WebView2 (bundled w/ Win10/11) | WKWebView (native) | WebKitGTK — needs `python3-gi`, `gir1.2-webkit2-4.1` (or distro equivalent) installed |
 | Audio capture/playback | `sounddevice`/`pyaudio` — verify device enumeration works | same libs, verify mic permission prompt handled | same libs, verify PulseAudio/PipeWire compatibility |
 | GPU/model backend calls (LM Studio, ComfyUI) | HTTP calls to local/LAN endpoints — no OS branching needed | same | same |
 | Setup script | `.bat` or plain Python (`setup.py` / `install.py`), **never `.ps1`** | `.sh` | `.sh` |
@@ -118,9 +117,7 @@ glitch/
 │   ├── src/
 │   ├── assets/
 │   │   └── glitch.vrm
-│   ├── package.json
-│   └── shell/                # pywebview wrapper only
-│       └── launch.py
+│   └── package.json
 ├── brain/                    # Python backend
 │   ├── main.py
 │   ├── llm/
@@ -139,11 +136,10 @@ glitch/
 
 ## 9. Build order (recommended)
 
-1. **Renderer first, standalone.** Get the `.vrm` loading and animating correctly in a plain browser tab before touching pywebview or Python at all. Verify animation quality here — this is the highest-risk part of the project to get wrong.
-2. **Wrap in pywebview.** Confirm the same behavior inside the native window shell.
-3. **Define and implement `protocol.md`.** Get a bare-bones WebSocket ping/pong working between a throwaway Python script and the Renderer.
-4. **Bring in Brain logic incrementally**, one subsystem at a time (LLM → STT/TTS → skills), verifying the protocol calls at each step rather than building everything at once.
-5. **Cross-platform pass last** — get it fully working on your primary OS first, then verify/fix on the other two.
+1. **Renderer first, standalone.** Get the `.vrm` loading and animating correctly in a plain browser tab before touching Python at all. Verify animation quality here — this is the highest-risk part of the project to get wrong.
+2. **Define and implement `protocol.md`.** Get a bare-bones WebSocket ping/pong working between a throwaway Python script and the Renderer.
+3. **Bring in Brain logic incrementally**, one subsystem at a time (LLM → STT/TTS → skills), verifying the protocol calls at each step rather than building everything at once.
+4. **Cross-platform pass last** — get it fully working on your primary OS first, then verify/fix on the other two.
 
 ## 10. Guardrails for whoever builds this
 

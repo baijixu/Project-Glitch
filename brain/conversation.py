@@ -38,15 +38,18 @@ MAIN, ROLEPLAY, JOURNAL = "main", "roleplay", "journal"
 PICTURE_NOTE = "[picture]"
 
 
+def text_of(content) -> str:
+    """A message's words: its text, or for a picture turn its text plus PICTURE_NOTE."""
+    if not isinstance(content, list):
+        return str(content or "")
+    text = "\n".join(part.get("text", "") for part in content if part.get("type") == "text").strip()
+    return f"{text} {PICTURE_NOTE}".strip() if any(part.get("type") == "image_url" for part in content) else text
+
+
 def _storable(message: dict) -> dict:
     """A history message with any image replaced by PICTURE_NOTE."""
-    content = message.get("content")
     when = {"at": message["at"]} if isinstance(message.get("at"), str) else {}  # when it was said (llm.py)
-    if not isinstance(content, list):
-        return {"role": message.get("role"), "content": content, **when}
-    text = "\n".join(part.get("text", "") for part in content if part.get("type") == "text").strip()
-    has_image = any(part.get("type") == "image_url" for part in content)
-    return {"role": message.get("role"), "content": f"{text} {PICTURE_NOTE}".strip() if has_image else text, **when}
+    return {"role": message.get("role"), "content": text_of(message.get("content")), **when}
 
 
 def _path(mode: str):

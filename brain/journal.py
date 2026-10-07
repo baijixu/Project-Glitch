@@ -50,7 +50,7 @@ async def journal_loop(brain: Brain) -> None:
         await asyncio.sleep(CHECK_SEC)
         try:
             path = due_path(datetime.now())
-            if not path or not brain.llm.owns_conversation or not memory.read_memory_active() or brain.reply_lock.locked():
+            if not path or not brain.llm.owns_conversation or brain.reply_lock.locked():
                 continue
             day = date.fromisoformat(path.stem) - timedelta(days=1)
             name = persona.user_name() or "User"
@@ -63,7 +63,7 @@ async def journal_loop(brain: Brain) -> None:
                 JOURNAL_DIR.mkdir(exist_ok=True)
                 path.write_text(f"# {path.stem} -- about {day:%A %d %B}\n\n{text.strip()}\n", encoding="utf-8")
                 print(f"[journal] wrote {path.name}")
-                if memory.server_backed() and training.read_active():  # after the lock: his replies come first
+                if memory.read_memory_active() and memory.server_backed() and training.read_active():  # after the lock: his replies first
                     await learning.propose_from_log(log, day, name, brain)
         except Exception as exc:  # never let one bad night stop the loop
             print(f"[journal] couldn't write today's entry: {exc!r}")
