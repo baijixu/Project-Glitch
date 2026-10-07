@@ -531,7 +531,12 @@ export class BrainClient {
     this._clips.push(clip);
     // Mouth shapes in playback time, closing at the clip's end so a pause before the next stays shut.
     this.visemeFrames.push(...frames.map((f) => ({ ...f, t: start + f.t })), { t: this._speechEnd, weight: 0 });
-    this._subtitleTimers.push(setTimeout(() => this._startSubtitleStream(text, clip.duration), (start - now) * 1000));
+    this._subtitleTimers.push(
+      setTimeout(() => {
+        this._startSubtitleStream(text, clip.duration);
+        this.onSentence?.(text); // main.js: her gesture for it
+      }, (start - now) * 1000),
+    );
     this.lipSyncActive = true;
     clearTimeout(this._quietTimer); // she's still going
     source.onended = () => {

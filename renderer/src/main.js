@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { VRMUtils } from "@pixiv/three-vrm";
 import { loadAvatar } from "./avatar.js";
-import { IdleController } from "./idle.js";
+import { IdleController, pickGesture } from "./idle.js";
 import { BrainClient } from "./brain_client.js";
 
 const statusEl = document.getElementById("status");
@@ -199,6 +199,7 @@ brain = new BrainClient({
   vrm,
   onAvatarSwap: setActiveAvatar,
 });
+brain.onSentence = (text) => idle?.gesture(pickGesture(text)); // a nod for "yeah", a shrug for "I don't know"...
 brain.connect();
 window.__brain = brain; // for console-driven verification while building
 

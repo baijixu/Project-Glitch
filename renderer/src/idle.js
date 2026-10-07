@@ -14,6 +14,33 @@ const HEAD_TURN_SPEED = 0.09;
 const TALK_NOD_AMPLITUDE = (4.0 * Math.PI) / 180;
 const TALK_NOD_EASE_SEC = 0.15;
 
+// Gestures, picked from what she's saying (pickGesture) as each sentence starts: moves
+// layered over the idle, one at a time. [seconds, move at t (0-1 through it, side +-1)]
+// -> degrees of head pitch (+ = down), yaw, roll, and shoulder lift.
+const GESTURES = {
+  nod: [0.9, (t) => ({ pitch: 9 * Math.sin(2 * Math.PI * t) ** 2 })],
+  shake: [1.1, (t) => ({ yaw: 11 * Math.sin(4 * Math.PI * t) * Math.sin(Math.PI * t) })],
+  tilt: [1.6, (t, side) => ({ roll: 9 * side * hold(t) })],
+  shrug: [1.3, (t, side) => ({ shoulders: 10 * hold(t), roll: 4 * side * hold(t), pitch: -3 * hold(t) })],
+};
+// First match wins. ponytail: plain word matching -- a "[gesture: x]" tag in her prompt if it reads mechanical.
+const GESTURE_WORDS = [
+  ["shrug", /\b(?:I don['’]?t know|dunno|no idea|who knows|not sure|I guess)\b/i],
+  ["shake", /^\W*(?:no|nah|nope|not really)\b/i],
+  ["nod", /^\W*(?:yes|yeah|yep|yup|sure|of course|absolutely|exactly|definitely|totally|right)\b/i],
+  ["tilt", /\?\W*$/],
+];
+
+export function pickGesture(text) {
+  return GESTURE_WORDS.find(([, words]) => words.test(text))?.[0] ?? null;
+}
+
+// Eases in over the first quarter, holds, eases out over the last.
+function hold(t) {
+  const x = Math.min(1, t / 0.25, (1 - t) / 0.25);
+  return x * x * (3 - 2 * x);
+}
+
 const BLINK_MIN_DELAY = 2.0;
 const BLINK_MAX_DELAY = 5.0;
 const BLINK_CLOSE_TIME = 0.08;
@@ -30,6 +57,9 @@ export class IdleController {
     this.swayPhase = 0;
     this.headPhase = 0;
     this.talk = 0; // her voice level, eased (see update)
+    this.gestureName = null;
+    this.gestureTime = 0;
+    this.gestureSide = 1;
 
     this.blinkTimer = this._randomBlinkDelay();
     this.blinkPhase = null; // null | "closing" | "holding" | "opening"
@@ -40,6 +70,27 @@ export class IdleController {
     this.chestRestY = this.chestBone ? this.chestBone.position.y : 0;
     this.chestRestQuat = this.chestBone ? this.chestBone.quaternion.clone() : null;
     this.headRestQuat = this.headBone ? this.headBone.quaternion.clone() : null;
+    // [bone, side sign, rest] -- a model without shoulder bones just shrugs with its head
+    this.shoulders = [["left", 1], ["right", -1]]
+      .map(([side, sign]) => [this.humanoid.getNormalizedBoneNode(`${side}Shoulder`), sign])
+      .filter(([bone]) => bone)
+      .map(([bone, sign]) => [bone, sign, bone.quaternion.clone()]);
+  }
+
+  gesture(name) {
+    if (!GESTURES[name] || this.gestureName) return; // a new sentence doesn't cut one short
+    this.gestureName = name;
+    this.gestureTime = 0;
+    this.gestureSide = Math.random() < 0.5 ? -1 : 1;
+  }
+
+  _gestureMove(delta) {
+    if (!this.gestureName) return {};
+    const [seconds, move] = GESTURES[this.gestureName];
+    this.gestureTime += delta;
+    if (this.gestureTime < seconds) return move(this.gestureTime / seconds, this.gestureSide);
+    this.gestureName = null;
+    return {};
   }
 
   relaxPose() {
@@ -90,6 +141,7 @@ export class IdleController {
 
   // speechLevel: how open her mouth is right now, 0-1 (BrainClient.speechLevel).
   update(delta, speechLevel = 0) {
+    const move = this._gestureMove(delta);
     if (this.chestBone) {
       this.breathPhase += delta * BREATH_SPEED * Math.PI * 2;
       this.chestBone.position.y = this.chestRestY + Math.sin(this.breathPhase) * BREATH_AMPLITUDE;
@@ -108,7 +160,11 @@ export class IdleController {
       this.headBone.quaternion
         .copy(this.headRestQuat)
         .multiply(_swayQuat.setFromAxisAngle(_axisY, turnAngle))
-        .multiply(_nodQuat.setFromAxisAngle(_axisX, this.talk * TALK_NOD_AMPLITUDE));
+        .multiply(_nodQuat.setFromAxisAngle(_axisX, this.talk * TALK_NOD_AMPLITUDE))
+        .multiply(_nodQuat.setFromEuler(_euler.set(deg(move.pitch), deg(move.yaw), deg(move.roll))));
+    }
+    for (const [bone, sign, rest] of this.shoulders) {
+      bone.quaternion.copy(rest).multiply(_swayQuat.setFromAxisAngle(_axisZ, sign * deg(move.shoulders)));
     }
 
     this._updateBlink(delta);
@@ -155,6 +211,8 @@ export class IdleController {
   }
 }
 
+const deg = (d = 0) => (d * Math.PI) / 180;
+const _euler = new THREE.Euler();
 const _swayQuat = new THREE.Quaternion();
 const _nodQuat = new THREE.Quaternion();
 const _axisX = new THREE.Vector3(1, 0, 0);
