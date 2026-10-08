@@ -55,6 +55,30 @@ html[data-ui="neon-winter"] {
   --muted: #8ea3bd;
 }
 
+/* Spring: blossom-pink lines, fresh leaf green in place of hers, on dark moss glass. */
+html[data-ui="neon-spring"] {
+  --neon: #ff9fd0;
+  --neon-rgb: 255, 159, 208;
+  --green: #94e86b;
+  --green-rgb: 148, 232, 107;
+  --glass: rgba(12, 20, 12, 0.8);
+  --glass-strong: rgba(9, 16, 9, 0.88);
+  --text: #fbf3f6;
+  --muted: #a3ac98;
+}
+
+/* Summer: sun-gold lines, sea turquoise in place of her green, on deep ocean glass. */
+html[data-ui="neon-summer"] {
+  --neon: #ffc93c;
+  --neon-rgb: 255, 201, 60;
+  --green: #2fd8c8;
+  --green-rgb: 47, 216, 200;
+  --glass: rgba(5, 18, 26, 0.8);
+  --glass-strong: rgba(4, 14, 21, 0.88);
+  --text: #fff8e8;
+  --muted: #8fb0b4;
+}
+
 html[data-ui^="neon"] body {
   font-family: "Bahnschrift", "DIN Alternate", "Roboto Condensed", "Segoe UI", system-ui, sans-serif;
 }
@@ -83,6 +107,22 @@ html[data-ui="neon-winter"] body:not(.has-backdrop) {
     radial-gradient(ellipse 70% 50% at 50% -5%, rgba(var(--neon-rgb), 0.16), transparent 70%),
     radial-gradient(ellipse 90% 35% at 50% 108%, rgba(var(--green-rgb), 0.1), transparent 70%),
     #050a14;
+}
+
+/* Spring's: a soft blossom glow behind her, new-grass green along the floor. */
+html[data-ui="neon-spring"] body:not(.has-backdrop) {
+  background:
+    radial-gradient(ellipse 60% 45% at 50% 38%, rgba(var(--neon-rgb), 0.2), transparent 70%),
+    radial-gradient(ellipse 90% 40% at 50% 108%, rgba(var(--green-rgb), 0.14), transparent 70%),
+    #0a070a;
+}
+
+/* Summer's: high sun from above, the sea along the floor. */
+html[data-ui="neon-summer"] body:not(.has-backdrop) {
+  background:
+    radial-gradient(ellipse 70% 50% at 50% -5%, rgba(var(--neon-rgb), 0.16), transparent 70%),
+    radial-gradient(ellipse 90% 40% at 50% 108%, rgba(var(--green-rgb), 0.15), transparent 70%),
+    #03090e;
 }
 
 html[data-ui^="neon"] :focus-visible {
