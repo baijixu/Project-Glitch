@@ -32,7 +32,7 @@ camera.lookAt(0, 1.3, 0);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(0, 1.3, 0);
 controls.enableDamping = true;
-controls.dampingFactor = 0.1;
+controls.dampingFactor = 0.2; // per rendered frame: 0.2 at MAX_FPS feels like 0.1 did at 60
 controls.minDistance = 0.3;
 controls.maxDistance = 4.5;
 controls.maxPolarAngle = Math.PI / 2 + 0.3;
@@ -265,11 +265,19 @@ avatarImageEl?.addEventListener("click", closeOpenPanels);
 // for (no runaway jump after a real long pause) without silently pausing
 // her.
 const MAX_DELTA_SEC = 0.1;
+// She's drawn on the same GPU as her model: every frame drawn is time taken from her
+// thinking (a 3440x1440 page at 60 fps cut her from ~31 to ~20 tokens/s). 30 looks the
+// same on an idle avatar and costs half. 0.9: rAF ticks jitter, don't skip a frame that's due.
+const MAX_FPS = 30;
 const timer = new THREE.Timer();
+let sinceFrame = 0;
 function animate() {
   requestAnimationFrame(animate);
   timer.update();
-  const delta = Math.min(timer.getDelta(), MAX_DELTA_SEC);
+  sinceFrame += timer.getDelta();
+  if (sinceFrame < 0.9 / MAX_FPS) return;
+  const delta = Math.min(sinceFrame, MAX_DELTA_SEC);
+  sinceFrame = 0;
   // A .png avatar has no bones/expressions/orbit to animate at all -- skip
   // idle/lipsync-mood/orbit/render entirely rather than doing that work
   // against a hidden canvas nobody sees (see setActiveAvatar's "png" case).
