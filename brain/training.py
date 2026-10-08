@@ -75,7 +75,14 @@ def parse_facts(raw: str) -> list[str]:
     try:
         items = json.loads(match.group(0)) if match else []
     except ValueError:
-        return []
+        # Most often the commas between items are missing (["a" "b"]) -- a whole
+        # night's proposals were lost to that. Each quoted item on its own still reads.
+        items = []
+        for quoted in re.findall(r'"(?:[^"\\]|\\.)*"', match.group(0)):
+            try:
+                items.append(json.loads(quoted))
+            except ValueError:
+                pass  # a bad escape spoils only its own item
     facts = [item.strip() for item in items if isinstance(item, str)]
     return [fact for fact in facts if 0 < len(fact) <= MAX_FACT_CHARS]
 
