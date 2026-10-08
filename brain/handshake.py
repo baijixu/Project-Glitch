@@ -32,6 +32,7 @@ async def handle_ready(websocket: websockets.ServerConnection, data: dict, brain
     messages = [
         characters.profiles_message(),
         characters.souls_message(),
+        characters.topics_message(),
         protocol.avatars(avatars.list_avatars()),
         *characters.background_messages(),
         protocol.roleplay_state(profiles.read_roleplay_active()),

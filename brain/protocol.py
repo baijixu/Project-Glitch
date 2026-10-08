@@ -131,6 +131,10 @@ def souls(names: list[str], active: str) -> dict:
     return {"type": "souls", "names": names, "active": active}
 
 
+def topics(items: list[str]) -> dict:
+    return {"type": "topics", "items": items}
+
+
 def soul_content(name: str, description: str, examples: str) -> dict:
     return {"type": "soul_content", "name": name, "description": description, "examples": examples}
 

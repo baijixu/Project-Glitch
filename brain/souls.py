@@ -24,6 +24,7 @@ since the Renderer's expression system depends on it regardless of who
 Glitch is currently supposed to be.
 """
 
+import re
 from pathlib import Path
 
 from names import sanitize_name
@@ -117,6 +118,22 @@ def read_main_soul() -> str:
     if SOUL_MD_PATH.exists():
         return SOUL_MD_PATH.read_text(encoding="utf-8")
     return ""
+
+
+def topics(soul: str) -> list[str]:
+    """The things she loves, from a soul's "What you love" section: its comma-separated
+    items, with a leading "Label:" and "and" dropped. A line's first item loses its
+    sentence capital ("Reading" -> "reading"); the rest are kept as written ("Christmas").
+    """
+    section = re.search(r"^#+\s*What you love\s*$(.*?)(?=^#|\Z)", soul, re.MULTILINE | re.DOTALL | re.IGNORECASE)
+    items = []
+    for line in section[1].splitlines() if section else []:
+        parts = [re.sub(r"^and\s+", "", p.strip().rstrip(".")) for p in line.split(":", 1)[-1].split(",")]
+        parts = [p for p in parts if p]
+        if parts:
+            parts[0] = parts[0][0].lower() + parts[0][1:]
+        items += parts
+    return items
 
 
 def read_active_soul() -> str:

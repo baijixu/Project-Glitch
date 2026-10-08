@@ -29,6 +29,13 @@ def souls_message() -> dict:
     return protocol.souls(souls.list_souls(), souls.read_active_soul_name())
 
 
+def topics_message() -> dict:
+    """Her main soul's loves for the chat box's "Talk about ..." hint -- minus the user
+    himself ("Josh, definitely Josh"): he's not a topic to suggest to him."""
+    name = persona.user_name().lower()
+    return protocol.topics([t for t in souls.topics(souls.read_main_soul()) if not name or name not in t.lower()])
+
+
 @hub.handles(protocol.SAVE_PROFILE)
 async def _save_profile(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     name = data.get("name", "")
@@ -161,6 +168,7 @@ async def save_soul_and_user(websocket: websockets.ServerConnection, data: dict,
     profiles.write_main_user(user_content)
     brain.llm.update_soul(persona.effective_soul())  # an edit, not a new her: the conversation carries on
     print("[brain] soul.md/user.md updated via manual editor")
+    await hub.broadcast(topics_message())
 
 
 @hub.handles(protocol.DELETE_SOUL)
