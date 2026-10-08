@@ -29,11 +29,21 @@ def souls_message() -> dict:
     return protocol.souls(souls.list_souls(), souls.read_active_soul_name())
 
 
+# Conversation starters for the "Talk about ..." hint besides her own loves.
+GENERAL_TOPICS = [
+    "goals", "wishes", "dreams", "relationships", "hobbies", "friendship", "the future", "childhood memories",
+    "travel", "favorite movies", "books worth rereading", "fears", "what makes you happy", "regrets",
+    "something new you learned", "a perfect day", "places you'd love to see", "food", "the weekend", "family",
+]
+
+
 def topics_message() -> dict:
-    """Her main soul's loves for the chat box's "Talk about ..." hint -- minus the user
-    himself ("Josh, definitely Josh"): he's not a topic to suggest to him."""
+    """The chat box's "Talk about ..." hints: her main soul's loves -- minus the user
+    himself ("Josh, definitely Josh"), he's not a topic to suggest to him -- and
+    GENERAL_TOPICS."""
     name = persona.user_name().lower()
-    return protocol.topics([t for t in souls.topics(souls.read_main_soul()) if not name or name not in t.lower()])
+    loves = [t for t in souls.topics(souls.read_main_soul()) if not name or name not in t.lower()]
+    return protocol.topics(loves + GENERAL_TOPICS)
 
 
 @hub.handles(protocol.SAVE_PROFILE)
