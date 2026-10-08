@@ -5,6 +5,7 @@ device, then the context meter, memory and curiosity in the background.
 
 import asyncio
 import base64
+import re
 import tempfile
 import time
 from pathlib import Path
@@ -38,6 +39,9 @@ AUDIO_EXTENSION_BY_MIME = {
     "audio/x-wav": ".wav",
 }
 LESSON_PROMPT_TIMEOUT_SEC = 5
+# A first sentence's opening clause, voiced on its own (see reply_to's `say`): 15+ characters
+# up to a comma, with 15+ after it -- shorter and the split costs more than it saves.
+_FIRST_CLAUSE = re.compile(r"(.{15,}?,)\s+(.{15,})", re.DOTALL)
 
 
 @hub.handles(protocol.SET_VOICE_ACTIVE)
@@ -277,10 +281,17 @@ async def reply_to(
 
     async def say(sentence: str, mood: str) -> None:
         nonlocal started
-        if not started:  # her face changes as she starts talking, not a beat behind
+        first = not started
+        if first:  # her face changes as she starts talking, not a beat behind
             started = True
             await hub.send(websocket, protocol.set_expression(mood, 1.0))
         await hub.send(websocket, protocol.speak_text(sentence, partial=True))
+        if first:
+            # Her voice takes ~1 s per 25 characters to make, and her first words wait on all
+            # of the first sentence: a long one is voiced in two, so she starts after a clause.
+            if clause := _FIRST_CLAUSE.match(sentence):
+                said.put_nowait((clause[1], mood))
+                sentence = clause[2]
         said.put_nowait((sentence, mood))
 
     try:
