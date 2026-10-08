@@ -156,6 +156,22 @@ def build_tts(name: str) -> RemoteTTS | NoneTTS:
         print(f"[brain] couldn't load speech engine {name!r}, falling back to {tts_engines.NONE_NAME!r}: {exc!r}")
         return NoneTTS()
     print(f"[brain] using speech engine {name!r} at {engine['endpoint']!r}")
+    tts = _remote_tts(engine)
+    # Her voice shouldn't go with the PC it runs on: the first other saved engine
+    # stands in while this one fails (RemoteTTS.synthesize).
+    for other in tts_engines.list_engines():
+        if other == name:
+            continue
+        try:
+            tts.fallback = _remote_tts(tts_engines.read_engine(other))
+        except (ValueError, OSError):
+            continue
+        print(f"[brain] speech fallback: {other!r}")
+        break
+    return tts
+
+
+def _remote_tts(engine: dict) -> RemoteTTS:
     return RemoteTTS(
         engine["endpoint"],
         engine.get("api_key") or None,

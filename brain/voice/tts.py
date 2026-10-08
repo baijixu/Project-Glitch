@@ -17,7 +17,9 @@ moves the way speech does.
 
 import io
 import re
+import time
 
+import httpx
 import numpy as np
 import soundfile as sf
 from openai import OpenAI
@@ -26,6 +28,10 @@ import protocol
 
 ENVELOPE_WINDOW_MS = 30
 TTS_TIMEOUT_SEC = 120  # ponytail: a guess with room for a long reply on a CPU engine; raise if real replies hit it
+# A switched-off PC on the LAN takes ~20 s to refuse a connection; a live one answers in milliseconds.
+TTS_CONNECT_TIMEOUT_SEC = 3
+# After her engine fails, how long the fallback speaks before her own engine is tried again.
+FALLBACK_SEC = 60
 
 # The LLM's replies routinely include emoji (it's instructed to be
 # conversational, not told to avoid them) -- Kokoro doesn't skip them, it
@@ -149,7 +155,17 @@ class RemoteTTS:
     ) -> None:
         # The client's defaults (600 s, 2 retries) let a hung engine hold the reply
         # queue for ~30 minutes -- every device and her reaching out waited on it.
-        self._client = OpenAI(base_url=endpoint, api_key=api_key or "not-needed", timeout=TTS_TIMEOUT_SEC, max_retries=0)
+        self._client = OpenAI(
+            base_url=endpoint,
+            api_key=api_key or "not-needed",
+            timeout=httpx.Timeout(TTS_TIMEOUT_SEC, connect=TTS_CONNECT_TIMEOUT_SEC),
+            max_retries=0,
+        )
+        self._endpoint = endpoint
+        # Another engine to speak with when this one fails (engines.build_tts sets it),
+        # and until when it does, so a dead engine costs one failed call, not one per sentence.
+        self.fallback: "RemoteTTS | None" = None
+        self._fallback_until = 0.0
         self._voice = voice
         self._model = model
         # Corrected in synthesize() once real audio comes back -- the
@@ -161,6 +177,18 @@ class RemoteTTS:
         self.SAMPLE_RATE = 24000
 
     def synthesize(self, text: str, mood: str = "neutral") -> tuple[bytes, list[protocol.VisemeFrame]]:
+        if self.fallback and time.monotonic() < self._fallback_until:
+            return self.fallback.synthesize(text, mood)
+        try:
+            return self._synthesize(text, mood)
+        except Exception as exc:
+            if not self.fallback:
+                raise
+            print(f"[tts] {self._endpoint} failed ({exc!r}) -- the fallback speaks for the next {FALLBACK_SEC}s")
+            self._fallback_until = time.monotonic() + FALLBACK_SEC
+            return self.fallback.synthesize(text, mood)
+
+    def _synthesize(self, text: str, mood: str) -> tuple[bytes, list[protocol.VisemeFrame]]:
         text = _strip_emoji(text)
         style = {"instructions": MOOD_STYLES[mood]} if mood in MOOD_STYLES else {}
         response = self._client.audio.speech.create(
