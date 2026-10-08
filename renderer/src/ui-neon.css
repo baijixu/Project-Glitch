@@ -129,14 +129,16 @@ html[data-ui^="neon"] .connection-light {
   box-shadow: none;
 }
 
+/* Status colors, not the style's accents: a style that recolors those (Autumn's russet,
+   amber) mustn't make "connected" look like "unreachable". */
 html[data-ui^="neon"] .connection-light.green {
-  background: var(--green);
-  box-shadow: 0 0 10px var(--green), 0 0 2px #fff;
+  background: #3dff9a;
+  box-shadow: 0 0 10px #3dff9a, 0 0 2px #fff;
 }
 
 html[data-ui^="neon"] .connection-light.blue {
-  background: var(--neon);
-  box-shadow: 0 0 10px var(--neon), 0 0 2px #fff;
+  background: #22e3ff;
+  box-shadow: 0 0 10px #22e3ff, 0 0 2px #fff;
 }
 
 html[data-ui^="neon"] .connection-light.yellow {
