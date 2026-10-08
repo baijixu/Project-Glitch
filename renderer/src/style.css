@@ -246,6 +246,15 @@ body.overlay-chat-active #overlay-edit-button {
   right: calc(min(380px, 90vw) + 12px);
 }
 
+/* Phones: an open panel is 90% of the screen, so the squeeze above left the chat bar 14px wide, its Send
+   button spilling over Settings (a tap there could send) and the side buttons half off-screen. Nothing
+   fits beside a panel there, so they step aside until it closes. */
+@media (max-width: 480px) {
+  .slide-panel.open ~ :is(#chat-bar, #side-actions) {
+    visibility: hidden;
+  }
+}
+
 /* Camera/desktop/mic, moved off the chat bar into their own floating
    column on the right edge, vertically centered rather than crowding the
    bottom bar. Same z-index/transition treatment as #chat-bar (including
