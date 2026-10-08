@@ -43,6 +43,18 @@ html[data-ui="neon-autumn"] {
   --muted: #b89a7c;
 }
 
+/* Winter: pale ice-blue lines, frost white in place of her green, on deep night-blue glass. */
+html[data-ui="neon-winter"] {
+  --neon: #9fd6ff;
+  --neon-rgb: 159, 214, 255;
+  --green: #e8f1ff;
+  --green-rgb: 232, 241, 255;
+  --glass: rgba(8, 14, 28, 0.8);
+  --glass-strong: rgba(6, 11, 23, 0.88);
+  --text: #eef5ff;
+  --muted: #8ea3bd;
+}
+
 html[data-ui^="neon"] body {
   font-family: "Bahnschrift", "DIN Alternate", "Roboto Condensed", "Segoe UI", system-ui, sans-serif;
 }
@@ -63,6 +75,14 @@ html[data-ui="neon-autumn"] body:not(.has-backdrop) {
     radial-gradient(ellipse 60% 45% at 50% 40%, rgba(var(--neon-rgb), 0.13), transparent 70%),
     radial-gradient(ellipse 90% 45% at 50% 108%, rgba(var(--green-rgb), 0.16), transparent 70%),
     #0d0704;
+}
+
+/* Winter's has no grid either: cold moonlight from above, a faint snow-glow along the floor. */
+html[data-ui="neon-winter"] body:not(.has-backdrop) {
+  background:
+    radial-gradient(ellipse 70% 50% at 50% -5%, rgba(var(--neon-rgb), 0.16), transparent 70%),
+    radial-gradient(ellipse 90% 35% at 50% 108%, rgba(var(--green-rgb), 0.1), transparent 70%),
+    #050a14;
 }
 
 html[data-ui^="neon"] :focus-visible {
