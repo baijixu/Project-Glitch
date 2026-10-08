@@ -128,6 +128,20 @@ _GAP_MARKER = re.compile(r"^\[[^\]\n]* later -- [^\]\n]*\]\n")
 _PICTURE_GONE = "[picture -- lost when the app restarted, so you can't see it; ask for it again]"
 
 
+def _length_note(words: int) -> str:
+    """How long her answer should be, scaled to his message. The soul's "match his length"
+    rule didn't hold (his median 10 words, hers 128); this note on each message did:
+    median 77 -> 31 words, 8 of 9 short messages answered in one paragraph, longer
+    questions still 43-62 words (12 real messages, thinking on, 2026-10-08)."""
+    if words <= 10:
+        target = "one to three sentences, in one short paragraph"
+    elif words <= 30:
+        target = "one short paragraph"
+    else:
+        target = "a paragraph or two at most"
+    return f"Reply length: his message is {words} words long. Answer in {target}."
+
+
 def _now() -> datetime:
     return datetime.now().astimezone()
 
@@ -1264,7 +1278,10 @@ class LocalLLM(ChatBackend):
             if since := self._since_last_message():
                 parts.append(since)
         latest = self._history[-1]["content"] if self._history else ""
-        if _CRISIS.search(latest if isinstance(latest, str) else " ".join(p.get("text", "") for p in latest)):
+        latest = latest if isinstance(latest, str) else " ".join(p.get("text", "") for p in latest)
+        if not self._persona and self._history and self._history[-1].get("role") == "user":
+            parts.append(_length_note(len(strip_gap_marker(latest).split())))
+        if _CRISIS.search(latest):
             parts.append(CRISIS_NOTE)
         return "\n\n".join(parts)
 
