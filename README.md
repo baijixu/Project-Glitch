@@ -138,10 +138,33 @@ Two independent programs and one small protocol between them:
 | An agent harness with an OpenAI-compatible endpoint, e.g. [Hermes Agent](https://github.com/NousResearch/hermes-agent) or [OpenClaw](https://docs.openclaw.ai/) | The harness mode |
 | [Tailscale](https://tailscale.com) | Reaching her securely from your phone away from home |
 
-**Hardware.** The Brain runs on CPU (speech recognition is pinned to CPU on purpose). What you need is set by your LLM:
-a small quantized model runs on a modest GPU; bigger ones need more VRAM. Expect a few GB of downloads on first setup
-(PyTorch, the speech-recognition model, the avatar assets) and a decent amount of RAM. If you run Hindsight, it needs an
-LLM of its own too (see [Memory](#memory)).
+**Hardware she's built on.** Glitch is developed and used every day on this setup:
+
+| Machine | Hardware | Runs |
+| --- | --- | --- |
+| Main PC | AMD Ryzen 9 5950X, 64 GB RAM, NVIDIA RTX 3060 (12 GB), Windows 11 Pro | The Brain, the Renderer's dev server, and LM Studio with her model: Qwen3.5 9B (uncensored, Q8_0, 65k context, every layer on the GPU) |
+| A second PC on the same network | an NVIDIA GPU | Her voice (Qwen3-TTS) and Hindsight with its own 9B model |
+| Phone | a current phone browser | Talking to her, at home or over Tailscale |
+
+Measured on the 3060: her model fills 11.9 of its 12 GB and writes about 23 tokens a second, with her 3D view open in a
+browser on the same PC. The 3D view itself costs about a tenth of the GPU.
+
+**Recommended hardware.** What you need is set mostly by the LLM:
+
+- **For her model:** an NVIDIA GPU with **12 GB** runs a 9B model at Q8 entirely on the GPU, as above. With less, use a
+  smaller quantization or a smaller model. A **24 GB** card (RTX 3090 or 4090) leaves room for a bigger model, a longer
+  conversation, or her voice on the same card.
+- **For her voice:** the bundled Kokoro server runs on the CPU, no GPU needed. Qwen3-TTS, the more expressive one, needs an
+  NVIDIA GPU with about 4.5 GB free.
+- **For memory:** Hindsight needs an LLM of its own, ideally 7-9B (see [Memory](#memory)). Put it on a second machine, or a
+  card with room to spare: it shouldn't take memory away from her model.
+- **CPU and RAM:** the Brain runs on the CPU, speech recognition included (pinned there on purpose). 16 GB of RAM covers
+  the Brain and the Renderer; you need more if part of your model runs on the CPU.
+- **To talk to her:** any device with a current browser that supports WebGL 2, phones included.
+- **Mind the shared GPU:** if her 3D view and her model are on the same graphics card, anything heavy on screen slows her
+  down. A blur effect over her 3D view once dropped her from about 10 tokens a second to 1.
+
+Expect a few GB of downloads on first setup (PyTorch, the speech-recognition model, the avatar assets).
 
 ## Quick start
 
