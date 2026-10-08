@@ -376,7 +376,7 @@ def take_diary_question(entry: str) -> str:
     so she reaches out with each entry's question once -- else ""."""
     match = _WONDERING.search(entry)
     pacing = _pacing()
-    key = entry.split("\n", 1)[0]  # "# 2026-10-07 -- about Tuesday 06 October"
+    key = entry.split("\n", 1)[0]  # "# 2026-10-06 -- Tuesday 06 October"
     if not match or pacing.get("diary_asked") == key:
         return ""
     pacing["diary_asked"] = key

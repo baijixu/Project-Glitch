@@ -1,10 +1,8 @@
 """Her nightly diary: once a day, after JOURNAL_HOUR, she reads the previous day's
 chat log and writes what stuck with her, what she'd say differently and what she's
-wondering -- brain/self/<date>.md, one file per day, so every entry is kept.
-
-It used to summarize all her memories, but every one of those he'd already approved,
-so it never told him anything new. Days they didn't talk get no entry. Only written,
-not used yet: it goes into her prompt (or her reach-outs) once the entries read like her.
+wondering -- brain/self/<date>.md, named for the day it's about (like that day's chat
+log), one file per day, so every entry is kept. Days they didn't talk get no entry. The
+newest one is in her prompt, and its question can start a reach-out.
 
 With memory training on, the same day's log is where her memory proposals come from too
 (learning.propose_from_log).
@@ -31,8 +29,9 @@ MAX_LOG_CHARS = 100_000  # the newest part of a long day, ~25k tokens
 
 
 def due_path(now: datetime) -> Path | None:
-    """Today's entry, if it's time for it and it isn't written yet."""
-    path = JOURNAL_DIR / f"{now:%Y-%m-%d}.md"
+    """Yesterday's entry, if it's time for it (after JOURNAL_HOUR, once that day is over)
+    and it isn't written yet."""
+    path = JOURNAL_DIR / f"{now.date() - timedelta(days=1):%Y-%m-%d}.md"
     return path if now.hour >= JOURNAL_HOUR and not path.exists() else None
 
 
@@ -66,7 +65,7 @@ async def journal_loop(brain: Brain) -> None:
             path = due_path(datetime.now())
             if not path or not brain.llm.owns_conversation or brain.reply_lock.locked():
                 continue
-            day = date.fromisoformat(path.stem) - timedelta(days=1)
+            day = date.fromisoformat(path.stem)
             name = persona.user_name() or "User"
             log = day_log(day, name)
             if not log:
@@ -76,7 +75,7 @@ async def journal_loop(brain: Brain) -> None:
                 text = await asyncio.to_thread(brain.llm.write_diary, log, name)
             if text.strip():
                 JOURNAL_DIR.mkdir(exist_ok=True)
-                path.write_text(f"# {path.stem} -- about {day:%A %d %B}\n\n{text.strip()}\n", encoding="utf-8")
+                path.write_text(f"# {path.stem} -- {day:%A %d %B}\n\n{text.strip()}\n", encoding="utf-8")
                 print(f"[journal] wrote {path.name}")
                 if memory.read_memory_active() and memory.server_backed() and training.read_active():  # after the lock: his replies first
                     await learning.propose_from_log(log, day, name, brain)
