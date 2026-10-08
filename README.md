@@ -143,7 +143,7 @@ Two independent programs and one small protocol between them:
 | Machine | Hardware | Runs |
 | --- | --- | --- |
 | Main PC | AMD Ryzen 9 5950X, 64 GB RAM, NVIDIA RTX 3060 (12 GB), Windows 11 Pro | The Brain, the Renderer's dev server, and LM Studio with her model: Qwen3.5 9B (uncensored, Q8_0, 65k context, every layer on the GPU) |
-| A second PC on the same network | an NVIDIA GPU | Her voice (Qwen3-TTS) and Hindsight with its own 9B model |
+| A second PC on the same network | NVIDIA RTX 3060 (12 GB) | Her voice (Qwen3-TTS) and Hindsight with its own 9B model |
 | Phone | a current phone browser | Talking to her, at home or over Tailscale |
 
 Measured on the 3060: her model fills 11.9 of its 12 GB and writes about 23 tokens a second, with her 3D view open in a
