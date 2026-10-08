@@ -43,6 +43,8 @@ const SUBTITLE_FADE_DELAY_MS = 10000;
 const SLOW_REPLY_THRESHOLD_MS = 15000;
 // How long the chat bar and side buttons stay up with no activity.
 const CHAT_BAR_IDLE_MS = 10000;
+// The chat box's hint moves on to another thing she loves ("Talk about tea...") this often.
+const TOPIC_HINT_MS = 10000;
 const TOAST_DURATION_MS = 4000;
 
 // This VRM's mood expressions (vrm.expressionManager.expressionMap). "neutral"
@@ -75,6 +77,7 @@ export class BrainClient {
     this.socket = null;
     this.connectionState = "red"; // not connected yet
     this.inputEl = $("message-input");
+    this._defaultHint = this.inputEl?.placeholder || "";
     this.statusEl = $("status");
     this.subtitleEl = $("subtitle");
     this._awaitingReply = false;
@@ -130,6 +133,7 @@ export class BrainClient {
       ping: () => this.send({ type: "pong" }),
       set_expression: (data) => this._setMood(data.name, data.weight),
       speak_text: (data) => this._showReplyText(data),
+      topics: (data) => this._cycleTopicHints(data.items || []),
       thinking: (data) => this._awaitingReply && this._setProcessingLabel(`thinking ${data.tokens}`),
       // Sent instead of speak_text when she had nothing to say (a blank voice
       // message, an empty reply) -- said so, rather than looking broken.
@@ -358,6 +362,23 @@ export class BrainClient {
   _updateReplyControls() {
     const disabled = !this.canSendReply();
     for (const id of REPLY_CONTROLS) if ($(id)) $(id).disabled = disabled;
+  }
+
+  // Every TOPIC_HINT_MS the chat box suggests another of her loves (her main soul's
+  // "What you love", brain/souls.py's topics), never the same one twice in a row.
+  _cycleTopicHints(topics) {
+    clearInterval(this._topicTimer);
+    if (!this.inputEl) return;
+    this.inputEl.placeholder = this._defaultHint;
+    if (topics.length < 2) return;
+    let last = -1;
+    this._topicTimer = setInterval(() => {
+      let i;
+      do i = Math.floor(Math.random() * topics.length);
+      while (i === last);
+      last = i;
+      this.inputEl.placeholder = `Talk about ${topics[i]}...`;
+    }, TOPIC_HINT_MS);
   }
 
   _setConnectionState(state) {
