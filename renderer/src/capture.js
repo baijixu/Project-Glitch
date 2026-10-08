@@ -18,6 +18,9 @@ const VISION_MIN_BRIGHTNESS = 12;
 const VISION_BLACK_BRIGHTNESS = 3;
 const VISION_FRAME_WAIT_MS = 2500;
 const VISION_FRAME_TIMEOUT_MS = 6000;
+// The first good frame is out of focus: a phone camera needs about a second to
+// autofocus and settle exposure after it opens, so frames before this are skipped.
+const VISION_FOCUS_MS = 1200;
 
 // An attached text file goes into the message itself -- capped, so one huge
 // file can't blow up a turn.
@@ -164,10 +167,13 @@ export class Capture {
       return this._app.flashStatus(desktop ? "Screen sharing isn't supported on this browser" : "Camera isn't supported on this browser", 4000);
     }
     // "ideal", not "exact": prefers a phone's rear camera, still works with a laptop's only one.
+    // Without a size a phone camera opens at 640x480 -- ask for 1080p and take what it has.
     const openStream = () =>
       desktop
         ? navigator.mediaDevices.getDisplayMedia({ video: true })
-        : navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } });
+        : navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+          });
 
     // A camera grab that fails gets one retry on a fresh stream -- whatever used
     // the camera last can leave it in a bad state. A screen share isn't retried:
@@ -240,7 +246,8 @@ export class Capture {
           // -1: brightness couldn't be measured -- no evidence the frame is bad.
           const bright = brightness < 0 || brightness >= VISION_MIN_BRIGHTNESS;
           const waited = performance.now() - startedAt;
-          if (!bright && waited < VISION_FRAME_WAIT_MS) return nextFrame();
+          if (waited < VISION_FOCUS_MS || (!bright && waited < VISION_FOCUS_MS + VISION_FRAME_WAIT_MS)) return nextFrame();
+          if (bright) best = { canvas, brightness }; // the newest bright frame is the best focused
           this._app.log(
             "vision",
             `captured ${best.canvas.width}x${best.canvas.height} from ${video.videoWidth}x${video.videoHeight} video ` +
