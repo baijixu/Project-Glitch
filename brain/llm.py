@@ -553,9 +553,14 @@ def _reply_content(content: str | None) -> str:
 
     Some models (seen with an uncensored Qwen3.5-9B GGUF) also write their
     thinking into `content` itself, ending it with "</think>" -- only what
-    comes after the last one is her reply.
+    comes after the last one is her reply. Or they copy the <notes> wrapper of
+    her turn notes and plan inside "[notes] ... [/notes]": that block goes too.
     """
-    return (content or "").rsplit("</think>", 1)[-1].strip()
+    return _NOTES_BLOCK.sub("", (content or "").rsplit("</think>", 1)[-1]).strip()
+
+
+_NOTES_BLOCK = re.compile(r"(?:\[notes\]|<notes>).*?(?:\[/notes\]|</notes>)", re.DOTALL | re.IGNORECASE)
+_NOTES_OPEN = re.compile(r"\[notes\]|<notes>", re.IGNORECASE)
 
 
 _TEXT_TOOL_CALL = re.compile(r"<function=([\w.-]+)>(.*?)</function>", re.DOTALL)
@@ -619,6 +624,10 @@ class Sentences:
                 return []
             self.mood = _mood(tag[1])
             self._text = self._text[tag.end():]
+        # Planning she wrote into a copied notes block isn't her reply: wait for it to close, then drop it.
+        self._text = _NOTES_BLOCK.sub("", self._text)
+        if _NOTES_OPEN.search(self._text):
+            return []
         # Split first: a bare tag still arriving ("mood: rel") must not be taken for a whole one.
         *done, self._text = _SENTENCE_END.split(self._text)
         return [s for sentence in done if (s := _MOOD_TAG.sub("", sentence).strip())]
