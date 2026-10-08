@@ -1153,7 +1153,8 @@ class LocalLLM(ChatBackend):
         self._left_off = note.strip()
 
     def set_journal(self, entry: str) -> None:
-        """Her newest diary entry (journal.py; reply.py sets it every turn, "" in role-play)."""
+        """Her newest diary entry (journal.py; reply.py sets it every turn, "" in role-play). Only
+        shown when a conversation opens (_turn_notes) and in her reach-outs."""
         self._journal = entry.strip()
 
     def write_diary(self, log: str, name: str) -> str:
@@ -1239,8 +1240,6 @@ class LocalLLM(ChatBackend):
             )
         if self._left_off:  # changes only when a chat is cleared, so it stays up here with the rest
             parts.append(f"Where you two left off last time -- your own note from then:\n{self._left_off}")
-        if self._journal:  # a new one once a night
-            parts.append(f"{JOURNAL_HEADER}\n{self._journal}")
         if self._lessons:
             # After the soul on purpose: these are the user's own stated
             # preferences, and should win over her default habits.
@@ -1277,6 +1276,11 @@ class LocalLLM(ChatBackend):
             parts.append(_current_time_line())
             if since := self._since_last_message():
                 parts.append(since)
+            # Her diary only as a conversation opens: in every prompt, one detail of it (a
+            # hoodie's texture, 2026-10-07) came back all day. Here, not in the system prompt,
+            # so the start of the prompt the server has cached never changes.
+            if self._journal and self._opens_a_sitting():
+                parts.append(f"{JOURNAL_HEADER}\n{self._journal}")
         latest = self._history[-1]["content"] if self._history else ""
         latest = latest if isinstance(latest, str) else " ".join(p.get("text", "") for p in latest)
         if not self._persona and self._history and self._history[-1].get("role") == "user":
@@ -1284,6 +1288,12 @@ class LocalLLM(ChatBackend):
         if _CRISIS.search(latest):
             parts.append(CRISIS_NOTE)
         return "\n\n".join(parts)
+
+    def _opens_a_sitting(self) -> bool:
+        """Whether the newest message starts a conversation: nothing before it, or
+        GAP_MARKER_SEC since the one before (when it gets the "... later" marker)."""
+        earlier = [t for m in self._history[:-1] if (t := _message_time(m))]
+        return not earlier or (_now() - earlier[-1]).total_seconds() >= GAP_MARKER_SEC
 
     def _since_last_message(self) -> str:
         """How long ago the previous message in this conversation was (before
@@ -1449,7 +1459,8 @@ class LocalLLM(ChatBackend):
             f"<notes>\n{TURN_NOTES_HEADER}\n\n"
             "They haven't said anything for a while. Reach out to them first -- once, briefly, in your own "
             f"voice, the way a friend might text. {hint}Don't mention these notes or that an app told you to.\n\n"
-            f"{_current_time_line()}\n</notes>"
+            + (f"{JOURNAL_HEADER}\n{self._journal}\n\n" if self._journal else "")
+            + f"{_current_time_line()}\n</notes>"
         )
         messages = [{"role": "system", "content": self._system_prompt()}, *map(_for_model, self._history), {"role": "user", "content": note}]
         result = Reply()
