@@ -1819,8 +1819,7 @@ class HarnessLLM(ChatBackend):
 
 class NoneLLM(ChatBackend):
     """Placeholder used when genuinely no LLM is configured -- a fresh install
-    with nothing in config.yaml's optional brain.llm block and no saved engine
-    chosen yet via Settings (llm_engines.py's NONE_NAME). reply() always
+    with no saved engine chosen yet via Settings (llm_engines.py's NONE_NAME). reply() always
     returns the same honest line instead of crashing or silently doing nothing
     -- someone opening the Renderer for the first time should see *why*
     nothing's happening without reading code to find out.

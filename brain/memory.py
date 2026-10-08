@@ -19,8 +19,7 @@ Settings -> Memory); activate() connects to it. Kinds of backend:
 Adding another server means: a type in memory_profiles.TYPES, a small client
 here, and a branch in each entry point under "Unified
 entry points". Every server function below is a no-op/returns ""/[] if no
-client is connected -- same graceful-degradation pattern as a missing
-brain.llm block, not a crash.
+client is connected, not a crash.
 """
 
 import asyncio
@@ -521,8 +520,7 @@ def read_memory_active() -> bool:
     point is to be on so she actually gets to know the user, so it opts in
     by default rather than requiring the user to find and flip it. The
     local provider is always "available" (nothing to configure); a memory
-    server additionally needs to be connected (activate()), same
-    graceful-degradation reasoning as a missing brain.llm block.
+    server additionally needs to be connected (activate()).
     """
     if server_backed() and not server_configured():
         return False

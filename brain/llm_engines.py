@@ -3,8 +3,7 @@ in llm_engines/ (see store.py) with what LocalLLM needs to connect
 (llm.py): `endpoint`, `model` (empty lets the server use whatever it
 has loaded), an optional `api_key`, and for Ollama `provider`/`think`.
 
-NONE_NAME is reserved: config.yaml's optional brain.llm block, or no LLM at
-all if that's empty -- see llm.py's NoneLLM for what runs then.
+NONE_NAME is reserved: no LLM at all -- see llm.py's NoneLLM for what runs then.
 """
 
 import json
@@ -15,8 +14,7 @@ from store import Choice, NamedStore
 NONE_NAME = "None"
 
 STORE = NamedStore(Path(__file__).parent / "llm_engines", kind="LLM engine", reserved=NONE_NAME)
-# The engine she's on -- NONE_NAME (config.yaml's brain.llm block, or no LLM at
-# all) until one is picked.
+# The engine she's on -- NONE_NAME (no LLM) until one is picked.
 ACTIVE = Choice(Path(__file__).parent / "active_llm_engine_name.txt", default=NONE_NAME)
 # Which engine role-play switches to (Settings -> Role-play), or "" to keep the
 # current one -- see read_roleplay_engine.

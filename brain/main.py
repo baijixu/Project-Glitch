@@ -86,14 +86,6 @@ async def main() -> None:
             "renderer/.env VITE_BRAIN_AUTH_TOKEN to close this off."
         )
 
-    # Optional -- a fresh install with nothing here yet is a real, expected
-    # state now (see llm_engines.NONE_NAME's own docstring), not something
-    # to require upfront. engines.build_llm falls back to NoneLLM when this has
-    # no endpoint, rather than main() crashing on a missing config key the
-    # way it used to (llm_cfg["endpoint"] was required before this).
-    llm_cfg = brain_cfg.get("llm") or {}
-    engines.DEFAULT_LLM_CONFIG.update(endpoint=llm_cfg.get("endpoint"), model=llm_cfg.get("model"), api_key=llm_cfg.get("api_key"))
-
     # Her memory backend: the active memory profile (Settings -> Memory,
     # memory_profiles.py), or the built-in local file. An unreachable server
     # (off, or on a machine that's asleep) must not stop Brain from starting:

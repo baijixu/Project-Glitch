@@ -25,54 +25,28 @@ from hub import Brain
 from llm import ChatBackend, HarnessLLM, LocalLLM, NoneLLM, OllamaLLM, list_models, list_ollama_models
 from voice import NoneTTS, RemoteTTS
 
-# config.yaml's brain.llm block, captured once at startup (main()) -- kept
-# reachable here (not just a local in main()) so build_llm can rebuild
-# llm_engines.NONE_NAME on a live load_llm_engine switch too, the same way
-# main.py's startup does, without needing config.yaml re-read from disk.
-# Optional now (brain.llm itself, and every key inside it) -- an empty
-# dict here (nothing in config.yaml at all) means build_llm falls back to
-# NoneLLM rather than crashing on a missing endpoint, see its own comment.
-DEFAULT_LLM_CONFIG: dict = {}
-
 
 # ============================================================================
 # Building her LLM and speech engine
 # ============================================================================
 
 def build_llm(name: str) -> ChatBackend:
-    """LocalLLM (or OllamaLLM, see below) built from config.yaml's brain.llm
-    block (DEFAULT_LLM_CONFIG) for llm_engines.NONE_NAME, or a saved
-    engine's endpoint/model/api_key otherwise. Always re-primes the fresh
+    """LocalLLM (or OllamaLLM, see below) built from a saved engine's
+    endpoint/model/api_key. Always re-primes the fresh
     instance with whatever soul/profile is currently active -- persona/
     soul state lives on the instance itself (llm.py), not
     externally, so a new instance (main.py's startup, or a live
     load_llm_engine switch) would otherwise silently drop who Glitch
-    currently is. Falls back to NONE_NAME if the named engine's saved
-    config can't be read.
+    currently is.
 
-    Returns a NoneLLM specifically when NONE_NAME resolves to no endpoint
-    at all -- config.yaml's brain.llm block is optional now, so a fresh
-    install with nothing configured there and no saved engine chosen yet
-    is a real, expected state, not something to crash on.
+    A NoneLLM for NONE_NAME (a fresh install with no engine picked yet), or an
+    engine that can't be read or has no endpoint -- not something to crash on.
     """
-    if name == llm_engines.NONE_NAME:
-        config = DEFAULT_LLM_CONFIG
-    else:
-        try:
-            engine = llm_engines.read_engine(name)
-        except (ValueError, OSError) as exc:
-            print(f"[brain] couldn't load LLM engine {name!r}, falling back to {llm_engines.NONE_NAME!r}: {exc!r}")
-            name = llm_engines.NONE_NAME
-            config = DEFAULT_LLM_CONFIG
-        else:
-            config = {
-                "endpoint": engine["endpoint"],
-                "model": engine.get("model") or None,
-                "api_key": engine.get("api_key") or None,
-                "provider": engine.get("provider", "openai"),
-                "think": engine.get("think", False),
-            }
-
+    try:
+        config = {} if name == llm_engines.NONE_NAME else llm_engines.read_engine(name)
+    except (ValueError, OSError) as exc:
+        print(f"[brain] couldn't load LLM engine {name!r}: {exc!r}")
+        config = {}
     if not config.get("endpoint"):
         print(f"[brain] no LLM engine configured ({name!r} has no endpoint) -- add one in Settings under LLM")
         return NoneLLM()
@@ -81,8 +55,8 @@ def build_llm(name: str) -> ChatBackend:
     # switch picks it back up (restore_history below) instead of wiping it.
     connection = {
         "endpoint": config["endpoint"],
-        "model": config.get("model"),
-        "api_key": config.get("api_key"),
+        "model": config.get("model") or None,
+        "api_key": config.get("api_key") or None,
         "on_history_change": lambda history: conversation.save_state(history, persona.conversation_mode()),
     }
     # See OllamaLLM's own docstring for why this distinction matters:

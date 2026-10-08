@@ -237,10 +237,7 @@ Two small files, both created by the setup script and both **gitignored** (they 
 | --- | --- |
 | `brain.host` / `brain.port` | Where the Brain's WebSocket listens. Default `localhost:8765`. Keep it `localhost` unless you know why not. |
 | `brain.auth_token` | Shared secret between Brain and Renderer. **Required if the Brain listens on anything other than localhost.** |
-| `brain.llm` | Optional one-time seed for the first LLM engine (you can also do this in Settings). |
-| `brain.hindsight` | Optional one-time seed: a Hindsight server's `api_url` and `bank_id`, saved as the first memory backend. |
 | `brain.web_search` | `searxng_url`, plus optional `trusted_domains` you consider reliable. |
-| `brain.harness` | Optional harness seed (Hermes and OpenClaw examples included). |
 
 **`renderer/.env`**
 
