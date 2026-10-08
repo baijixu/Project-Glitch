@@ -260,7 +260,7 @@ The ⚙️ panel, top to bottom:
 | **Notes** | A private scratchpad (`brain/notes.md`). She never reads it. |
 | **Quick toggles** | Voice, camera, screen capture, microphone, always-on mic, chat bubbles over the avatar. |
 | **Background** | The picture behind her: add, pick or delete; the same on every device. |
-| **UI Style** | *Classic* or *Neon* (dark glass and glowing lines), per device. |
+| **UI Style** | *Classic*, or *Neon* (dark glass and glowing lines) in cyan, purple or a season's colors (Spring, Summer, Autumn, Winter), per device. |
 | **Role-play** | On/off, the engine role-play uses, and your *User RP Persona*. |
 | **Glitch RP Persona** | Her saved role-play souls. |
 | **Remember Me** | Memory on/off, the memory backend (the Local file, or saved Hindsight servers), Download / Clear Memory. |
