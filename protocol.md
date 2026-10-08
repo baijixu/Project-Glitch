@@ -1,11 +1,11 @@
 # Glitch control protocol (Renderer ↔ Brain)
 
-Source of truth for the WebSocket message contract between the Renderer and the Brain (SPEC.md
-section 6). Both sides must only send message types listed here — nothing undocumented.
+Source of truth for the WebSocket message contract between the Renderer and the Brain.
+Both sides must only send message types listed here — nothing undocumented.
 
 **Direction:** the Brain hosts the WebSocket server; the Renderer is always the client, connecting
 out to whatever `ws://<host>:<port>` it's configured with (same-machine or LAN, just a config
-value on both sides). Fixed by SPEC.md section 5 — browser/WebView JS can only open outbound
+value on both sides) — browser JS can only open outbound
 WebSocket connections, it cannot listen for them.
 
 **Transport:** one JSON object per WebSocket text frame. Every message has a `type` field.

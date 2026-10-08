@@ -1,5 +1,5 @@
 """Manages the user's saved role-play profiles (a Renderer settings-panel
-feature, not in SPEC.md). Each profile is one freeform markdown file in
+feature). Each profile is one freeform markdown file in
 profiles/ -- character description and scenario combined into a single
 blob, not separate structured fields, since it's meant to be loaded
 straight into an LLM prompt rather than parsed.

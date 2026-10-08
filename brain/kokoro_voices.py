@@ -1,6 +1,6 @@
 """Creates a custom voice for a Kokoro-fastapi-shaped speech engine by
 blending existing voices with weights -- a Renderer settings-panel
-feature, not in SPEC.md.
+feature.
 
 kokoro-fastapi has no way to accept an externally-authored voice file at
 all -- confirmed against its own source, after an earlier version of this

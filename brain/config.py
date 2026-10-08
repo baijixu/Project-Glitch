@@ -1,6 +1,6 @@
 """Loads the shared config.yaml (falling back to config.example.yaml if it
 doesn't exist yet) -- the single source of truth for the Brain's WS server
-bind address (SPEC.md section 5).
+bind address.
 """
 
 from pathlib import Path

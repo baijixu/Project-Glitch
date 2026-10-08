@@ -112,7 +112,7 @@ Two independent programs and one small protocol between them:
   `localhost` even when you use Glitch from your phone.
 - There is **one Brain and one conversation**, shared by every connected device: settings you change on your phone show on
   your PC too.
-- The message list is documented in [`protocol.md`](protocol.md); the original design notes are in [`SPEC.md`](SPEC.md).
+- The message list is documented in [`protocol.md`](protocol.md).
 
 ## Requirements
 
@@ -543,7 +543,6 @@ tools/                 backup_local_state.py, qwen_tts_server.py (Qwen3-TTS spee
 config.example.yaml    copy to config.yaml
 docker-compose.yml     optional Kokoro speech server
 protocol.md            Brain <-> Renderer messages
-SPEC.md                original design notes
 ```
 
 ## Troubleshooting

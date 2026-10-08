@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Setup for macOS/Linux (SPEC.md section 7 -- never a .ps1, this repo has none).
+# Setup for macOS/Linux (setup.bat is the Windows one).
 set -euo pipefail
 
 if ! command -v uv >/dev/null 2>&1; then

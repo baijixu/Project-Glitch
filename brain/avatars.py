@@ -2,8 +2,8 @@
 or a flat .png reference image (the Renderer disables camera panning for
 the latter, see brain_client.js/main.js). Brain-hosted (not
 Renderer-local) so the list and file data are correct no matter which
-device the Renderer's browser is actually running on -- SPEC.md's
-same-machine-or-LAN design means that can be a phone on the same wifi,
+device the Renderer's browser is actually running on -- with Brain and
+Renderer on the same machine or the LAN, that can be a phone on the same wifi,
 which can't read this machine's filesystem directly. Binary bytes travel
 over the WS connection base64-encoded, same pattern as speak_audio/
 user_audio.
