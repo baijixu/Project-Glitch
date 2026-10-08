@@ -41,7 +41,7 @@ def topics_message() -> dict:
     """The chat box's "Talk about ..." hints: her main soul's loves -- minus the user
     himself ("Josh, definitely Josh"), he's not a topic to suggest to him -- and
     GENERAL_TOPICS."""
-    name = persona.user_name().lower()
+    name = persona.user_name(profiles.read_main_user()).lower()  # his real name, role-play or not
     loves = [t for t in souls.topics(souls.read_main_soul()) if not name or name not in t.lower()]
     return protocol.topics(loves + GENERAL_TOPICS)
 

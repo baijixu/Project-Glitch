@@ -24,9 +24,10 @@ def effective_soul() -> str:
     return souls.read_main_soul()
 
 
-def user_name() -> str:
-    """Their name from their profile ("Name: Josh", "my name is Josh"), or ""."""
-    found = re.search(r"name\s*(?::|is)\s*([^\n.,]+)", effective_user_info(), re.IGNORECASE)
+def user_name(info: str | None = None) -> str:
+    """Their name from their profile ("Name: Josh", "my name is Josh"), or "". `info` is
+    the profile to read; the effective one by default (none during role-play)."""
+    found = re.search(r"name\s*(?::|is)\s*([^\n.,]+)", effective_user_info() if info is None else info, re.IGNORECASE)
     return found.group(1).strip() if found else ""
 
 
