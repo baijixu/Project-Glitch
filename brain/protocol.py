@@ -261,6 +261,11 @@ def left_off(note: str) -> dict:
     return {"type": "left_off", "note": note}
 
 
+def thinking(tokens: int) -> dict:
+    """She's still thinking before her reply starts: how many tokens of thinking so far."""
+    return {"type": "thinking", "tokens": tokens}
+
+
 def no_reply() -> dict:
     """Nothing to reply to (empty text, a silent voice message): lets the Renderer re-enable its buttons
     without a blank chat bubble."""

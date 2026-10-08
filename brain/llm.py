@@ -747,9 +747,11 @@ class ChatBackend:
         image_mime: str = "image/jpeg",
         web_search_enabled: bool = False,
         on_text: Callable[[str], None] | None = None,
+        on_thinking: Callable[[], None] | None = None,
     ) -> Reply:
         """on_text gets the reply as it streams in -- only LocalLLM streams; the others
-        reply all at once, and reply.py speaks that by the sentence instead."""
+        reply all at once, and reply.py speaks that by the sentence instead. on_thinking
+        is called for each piece of thinking that streams in before it (LocalLLM only)."""
         raise NotImplementedError
 
 
@@ -846,6 +848,7 @@ class LocalLLM(ChatBackend):
         sampling: dict | None = None,
         on_text: Callable[[str], None] | None = None,
         cancelled: Callable[[], bool] | None = None,
+        on_thinking: Callable[[], None] | None = None,
     ) -> dict:
         """Runs exactly one chat completion and returns
         {"content": str, "tool_calls": [{"id", "name", "arguments": dict}],
@@ -860,8 +863,9 @@ class LocalLLM(ChatBackend):
         prompt, mood tag handling) unchanged.
 
         Always streamed: each piece of the answer goes to `on_text` as it's
-        written (her replies are spoken sentence by sentence, see reply.py), and
-        once `cancelled()` turns true the stream is closed -- which stops the
+        written (her replies are spoken sentence by sentence, see reply.py), each
+        piece of thinking (LM Studio streams it as `reasoning_content`) calls
+        `on_thinking`, and once `cancelled()` turns true the stream is closed -- which stops the
         model too (checked live on LM Studio), not just discards its result.
         """
         kwargs = {
@@ -897,6 +901,8 @@ class LocalLLM(ChatBackend):
                 delta = chunk.choices[0].delta if chunk.choices else None
                 if delta is None:
                     continue
+                if on_thinking and (getattr(delta, "model_extra", None) or {}).get("reasoning_content"):
+                    on_thinking()
                 if delta.content:
                     parts.append(delta.content)
                     if on_text:
@@ -948,6 +954,7 @@ class LocalLLM(ChatBackend):
         sampling: dict | None = None,
         on_text: Callable[[str], None] | None = None,
         cancelled: Callable[[], bool] | None = None,
+        on_thinking: Callable[[], None] | None = None,
     ) -> str:
         """Runs _complete_raw once, or -- while `tools` is given and the
         model actually asks to use one -- repeatedly: appends the
@@ -970,12 +977,13 @@ class LocalLLM(ChatBackend):
 
         sampling is her sampling profile (brain/sampling.py) -- passed only by
         reply(), so the background calls keep the server's own settings.
-        on_text/cancelled are _complete_raw's, for her replies only.
+        on_text/cancelled/on_thinking are _complete_raw's, for her replies only.
         """
         working = list(messages)
         for _ in range(MAX_TOOL_ITERATIONS):
             result = self._complete_raw(
-                working, max_tokens, tools, no_thinking=no_thinking, sampling=sampling, on_text=on_text, cancelled=cancelled
+                working, max_tokens, tools, no_thinking=no_thinking, sampling=sampling, on_text=on_text, cancelled=cancelled,
+                on_thinking=on_thinking,
             )
             if into is not None:  # the last call's numbers are the conversation's current size
                 into.usage.update({k: v for k, v in (result.get("usage") or {}).items() if v is not None})
@@ -1290,6 +1298,7 @@ class LocalLLM(ChatBackend):
         image_mime: str = "image/jpeg",
         web_search_enabled: bool = False,
         on_text: Callable[[str], None] | None = None,
+        on_thinking: Callable[[], None] | None = None,
     ) -> Reply:
         """Answers the user's message. The reply's text has the mood tag
         stripped out (never shown/spoken); its mood is one of VALID_MOODS.
@@ -1311,7 +1320,7 @@ class LocalLLM(ChatBackend):
         self._history.append({"role": "user", "content": content, "at": now.isoformat(timespec="seconds")})
         result = Reply(trimmed=self._trim_history())
         tools = [WEB_SEARCH_TOOL] if web_search_enabled else None
-        if not self._answer(self._request_messages(), tools, result, on_text):
+        if not self._answer(self._request_messages(), tools, result, on_text, on_thinking):
             self._history_changed()  # the user's own turn stays (see cancel_reply)
             return Reply(trimmed=result.trimmed)  # cancelled while in flight -- discarded, never reaches _history
         if not result.text.strip():
@@ -1326,7 +1335,12 @@ class LocalLLM(ChatBackend):
         return result
 
     def _answer(
-        self, messages: list[dict], tools: list[dict] | None, result: Reply, on_text: Callable[[str], None] | None = None
+        self,
+        messages: list[dict],
+        tools: list[dict] | None,
+        result: Reply,
+        on_text: Callable[[str], None] | None = None,
+        on_thinking: Callable[[], None] | None = None,
     ) -> bool:
         """Fills result.text/mood from the model. If thinking used up the whole
         budget and left no answer -- this model sometimes keeps re-checking her
@@ -1340,7 +1354,7 @@ class LocalLLM(ChatBackend):
         for no_thinking in (False, True):
             raw = self._complete(
                 messages, MAX_REPLY_TOKENS, tools, no_thinking=no_thinking, into=result, sampling=self._sampling,
-                on_text=on_text, cancelled=cancelled,
+                on_text=on_text, cancelled=cancelled, on_thinking=on_thinking,
             )
             if cancelled():
                 return False
@@ -1677,6 +1691,7 @@ class OllamaLLM(LocalLLM):
         sampling: dict | None = None,
         on_text: Callable[[str], None] | None = None,  # ponytail: not streamed on Ollama -- reply.py speaks the finished reply by the sentence
         cancelled: Callable[[], bool] | None = None,
+        on_thinking: Callable[[], None] | None = None,
     ) -> dict:
         think = self._think and not no_thinking
         payload = {
@@ -1775,6 +1790,7 @@ class HarnessLLM(ChatBackend):
         image_mime: str = "image/jpeg",
         web_search_enabled: bool = False,
         on_text: Callable[[str], None] | None = None,
+        on_thinking: Callable[[], None] | None = None,
     ) -> Reply:
         # web_search_enabled is deliberately unused -- a harness has its own tools
         # (e.g. Hermes's own web search) when it's active. Same MAX_REPLY_TOKENS
@@ -1817,5 +1833,6 @@ class NoneLLM(ChatBackend):
         image_mime: str = "image/jpeg",
         web_search_enabled: bool = False,
         on_text: Callable[[str], None] | None = None,
+        on_thinking: Callable[[], None] | None = None,
     ) -> Reply:
         return Reply(text="(No LLM engine is configured yet -- add one in Settings, under LLM.)")

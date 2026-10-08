@@ -286,7 +286,7 @@ async def reply_to(
     try:
         llm_start = time.monotonic()
         try:
-            reply = await _stream_reply(brain, text, image_b64, image_mime, sentences, say)
+            reply = await _stream_reply(websocket, brain, text, image_b64, image_mime, sentences, say)
         except Exception as exc:
             # No Brain -> Renderer error message type exists yet (protocol.md's
             # `error` is Renderer -> Brain only) -- surfacing this as speak_text
@@ -376,21 +376,34 @@ async def reply_to(
         voicing.cancel()  # a no-op once she's finished; otherwise (Stop, an error) her voice stops too
 
 
-async def _stream_reply(brain: Brain, text: str, image_b64: str | None, image_mime: str, sentences: Sentences, say) -> Reply:
-    """brain.llm.reply in a worker thread, `say`ing each sentence as soon as it's written."""
+async def _stream_reply(
+    websocket: websockets.ServerConnection, brain: Brain, text: str, image_b64: str | None, image_mime: str, sentences: Sentences, say
+) -> Reply:
+    """brain.llm.reply in a worker thread, `say`ing each sentence as soon as it's written. While she's
+    still thinking, the device is told how far she's got (protocol.thinking) every THINKING_EVERY tokens."""
     loop = asyncio.get_running_loop()
-    pieces: asyncio.Queue = asyncio.Queue()  # the reply as it streams in; None once it's done
+    pieces: asyncio.Queue = asyncio.Queue()  # the reply as it streams in (an int: thinking so far); None once it's done
     search = web_search.read_active()
+    thought = 0
+
+    def thinking() -> None:
+        nonlocal thought
+        thought += 1
+        if thought % THINKING_EVERY == 0:
+            loop.call_soon_threadsafe(pieces.put_nowait, thought)
 
     def answer() -> Reply:
         try:
             on_text = lambda piece: loop.call_soon_threadsafe(pieces.put_nowait, piece)  # noqa: E731
-            return brain.llm.reply(text, image_b64, image_mime, search, on_text=on_text)
+            return brain.llm.reply(text, image_b64, image_mime, search, on_text=on_text, on_thinking=thinking)
         finally:
             loop.call_soon_threadsafe(pieces.put_nowait, None)
 
     answering = asyncio.ensure_future(asyncio.to_thread(answer))
     while (piece := await pieces.get()) is not None:
+        if isinstance(piece, int):
+            await hub.send(websocket, protocol.thinking(piece))
+            continue
         for sentence in sentences.feed(piece):
             await say(sentence, sentences.mood)
     return await answering
@@ -444,3 +457,4 @@ async def _send_context_usage(brain: Brain, usage: dict) -> None:
 
 
 SLOW_REPLY_MS = 60_000  # a reply slower than this gets a "which models are loaded" check in the debug log
+THINKING_EVERY = 50  # thinking tokens between progress messages: about every 2 s at her ~23 tokens/s

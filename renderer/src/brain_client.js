@@ -130,6 +130,7 @@ export class BrainClient {
       ping: () => this.send({ type: "pong" }),
       set_expression: (data) => this._setMood(data.name, data.weight),
       speak_text: (data) => this._showReplyText(data),
+      thinking: (data) => this._awaitingReply && this._setProcessingLabel(`thinking ${data.tokens}`),
       // Sent instead of speak_text when she had nothing to say (a blank voice
       // message, an empty reply) -- said so, rather than looking broken.
       no_reply: () => {
@@ -345,6 +346,13 @@ export class BrainClient {
     this._awaitingReply = awaiting;
     this._updateReplyControls();
     for (const id of ["stop-button", "processing-indicator"]) if ($(id)) $(id).hidden = !awaiting;
+    if (awaiting) this._setProcessingLabel("processing");
+  }
+
+  // "processing", then "thinking 350" while she thinks (Brain's `thinking`), then "writing" once her words arrive.
+  _setProcessingLabel(label) {
+    const text = $("processing-indicator")?.firstChild;
+    if (text) text.textContent = label;
   }
 
   _updateReplyControls() {
@@ -459,6 +467,7 @@ export class BrainClient {
     if (!this._awaitingReply && !data.reach_out) return;
     this._acceptingVoice = true;
     if (data.partial) {
+      this._setProcessingLabel("writing");
       this._streamedText = this._streamed ? `${this._streamedText} ${data.text}` : data.text;
       if (this._streamed) this.history.updateText(this._streamed, this._streamedText);
       else this._streamed = this.history.add("glitch", this._streamedText);
