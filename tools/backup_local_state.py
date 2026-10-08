@@ -63,14 +63,20 @@ def ignored_files() -> list[Path]:
 
 
 def export_hindsight() -> None:
-    """Saves the Hindsight bank in brain/hindsight_config.json to
-    brain/backups/hindsight_<bank>.json, sorted so an unchanged bank gives an
-    identical file (and the run is skipped). A server that's down only costs a
-    warning -- the local files still get backed up."""
+    """Saves the bank of her active memory profile (Settings -> Memory, brain/memory_profiles/)
+    to brain/backups/hindsight_<bank>.json, sorted so an unchanged bank gives an identical
+    file (and the run is skipped). Nothing to do when she's on the Local file -- that's
+    backed up with the rest. A server that's down only costs a warning."""
     try:
-        config = json.loads((REPO / "brain" / "hindsight_config.json").read_text(encoding="utf-8"))
+        active = (REPO / "brain" / "active_memory_profile.txt").read_text(encoding="utf-8").strip()
+        profile = REPO / "brain" / "memory_profiles" / f"{active}.json"
+        if not profile.exists():  # the Local file has no profile of its own
+            return
+        config = json.loads(profile.read_text(encoding="utf-8"))
+        if config.get("type") != "hindsight":
+            return
         headers = {"Authorization": f"Bearer {config['api_key']}"} if config.get("api_key") else {}
-        url = f"{config['api_url'].rstrip('/')}/v1/default/banks/{config['bank_id']}/memories/list"
+        url = f"{config['url'].rstrip('/')}/v1/default/banks/{config['space']}/memories/list"
         items = []
         while True:
             request = urllib.request.Request(f"{url}?limit=500&offset={len(items)}", headers=headers)
@@ -82,7 +88,7 @@ def export_hindsight() -> None:
     except (OSError, ValueError, KeyError) as exc:
         print(f"couldn't export the Hindsight memories, backing up without them: {exc!r}")
         return
-    out = REPO / "brain" / "backups" / f"hindsight_{config['bank_id']}.json"
+    out = REPO / "brain" / "backups" / f"hindsight_{config['space']}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(sorted(items, key=lambda m: m["id"]), indent=1, ensure_ascii=False), encoding="utf-8")
     print(f"exported {len(items)} Hindsight memories -> {out}")
