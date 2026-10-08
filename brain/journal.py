@@ -58,8 +58,10 @@ async def _set_status(text: str) -> None:
 
 
 async def journal_loop(brain: Brain) -> None:
+    delay = 0  # check right away: a restart after JOURNAL_HOUR shouldn't push her diary back half an hour
     while True:
-        await asyncio.sleep(CHECK_SEC)
+        await asyncio.sleep(delay)
+        delay = CHECK_SEC
         try:
             path = due_path(datetime.now())
             if not path or not brain.llm.owns_conversation or brain.reply_lock.locked():
