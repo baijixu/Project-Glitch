@@ -31,6 +31,18 @@ html[data-ui="neon-purple"] {
   --muted: #9d8bb8;
 }
 
+/* Autumn: amber lines, russet in place of her green, warm cream text on brown-black glass. */
+html[data-ui="neon-autumn"] {
+  --neon: #ffa03a;
+  --neon-rgb: 255, 160, 58;
+  --green: #e5533b;
+  --green-rgb: 229, 83, 59;
+  --glass: rgba(24, 13, 6, 0.8);
+  --glass-strong: rgba(19, 10, 5, 0.88);
+  --text: #fff0dc;
+  --muted: #b89a7c;
+}
+
 html[data-ui^="neon"] body {
   font-family: "Bahnschrift", "DIN Alternate", "Roboto Condensed", "Segoe UI", system-ui, sans-serif;
 }
@@ -43,6 +55,14 @@ html[data-ui^="neon"] body:not(.has-backdrop) {
     linear-gradient(rgba(var(--neon-rgb), 0.05) 1px, transparent 1px) 0 0 / 44px 44px,
     linear-gradient(90deg, rgba(var(--neon-rgb), 0.05) 1px, transparent 1px) 0 0 / 44px 44px,
     #02050b;
+}
+
+/* Autumn's has no grid: a low amber glow, like late sun, over dark brown. */
+html[data-ui="neon-autumn"] body:not(.has-backdrop) {
+  background:
+    radial-gradient(ellipse 60% 45% at 50% 40%, rgba(var(--neon-rgb), 0.13), transparent 70%),
+    radial-gradient(ellipse 90% 45% at 50% 108%, rgba(var(--green-rgb), 0.16), transparent 70%),
+    #0d0704;
 }
 
 html[data-ui^="neon"] :focus-visible {
