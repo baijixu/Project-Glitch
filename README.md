@@ -504,7 +504,8 @@ python tools/backup_local_state.py
 
 This copies every gitignored local file to a dated folder **outside** the repo (`../glitch-backups/`), verifies each copy by hash,
 skips the run if nothing changed, and keeps the newest 10. Options: `--dest PATH`, `--keep N`, `--force`. To restore, copy the files
-back to the same relative paths and restart the Brain. Memory that lives in a memory server is backed up separately, on that server.
+back to the same relative paths and restart the Brain. Her Hindsight memories live on the Hindsight server, so each run first
+saves them to `brain/backups/hindsight_<bank>.json` and they're backed up with the rest (a copy to read or re-add from).
 
 ## Project layout
 

@@ -19,6 +19,10 @@ inside a folder that is pushed anywhere.
 
 To restore: copy the files back over the repo, keeping the same relative paths
 (e.g. copy <backup>/brain/soul.md to <repo>/brain/soul.md), then restart Brain.
+
+Her Hindsight memories live on the Hindsight server, not in the repo, so each
+run first saves the bank to brain/backups/hindsight_<bank>.json and that file is
+backed up with the rest. It's a copy to read or re-add from, not a one-step restore.
 """
 
 import argparse
@@ -27,6 +31,7 @@ import json
 import shutil
 import subprocess
 import sys
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 
@@ -55,6 +60,32 @@ def ignored_files() -> list[Path]:
         if (REPO / path).is_file():
             files.append(path)
     return sorted(files)
+
+
+def export_hindsight() -> None:
+    """Saves the Hindsight bank in brain/hindsight_config.json to
+    brain/backups/hindsight_<bank>.json, sorted so an unchanged bank gives an
+    identical file (and the run is skipped). A server that's down only costs a
+    warning -- the local files still get backed up."""
+    try:
+        config = json.loads((REPO / "brain" / "hindsight_config.json").read_text(encoding="utf-8"))
+        headers = {"Authorization": f"Bearer {config['api_key']}"} if config.get("api_key") else {}
+        url = f"{config['api_url'].rstrip('/')}/v1/default/banks/{config['bank_id']}/memories/list"
+        items = []
+        while True:
+            request = urllib.request.Request(f"{url}?limit=500&offset={len(items)}", headers=headers)
+            with urllib.request.urlopen(request, timeout=30) as response:
+                page = json.load(response)
+            items += page["items"]
+            if not page["items"] or len(items) >= page["total"]:
+                break
+    except (OSError, ValueError, KeyError) as exc:
+        print(f"couldn't export the Hindsight memories, backing up without them: {exc!r}")
+        return
+    out = REPO / "brain" / "backups" / f"hindsight_{config['bank_id']}.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(sorted(items, key=lambda m: m["id"]), indent=1, ensure_ascii=False), encoding="utf-8")
+    print(f"exported {len(items)} Hindsight memories -> {out}")
 
 
 def sha256(path: Path) -> str:
@@ -127,6 +158,7 @@ def main() -> int:
     if REPO in dest.parents or dest == REPO:
         print(f"refusing: {dest} is inside the repo -- a backup with secrets in it could get committed", file=sys.stderr)
         return 2
+    export_hindsight()
     backup(dest, args.keep, args.force)
     return 0
 
