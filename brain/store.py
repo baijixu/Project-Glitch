@@ -1,7 +1,8 @@
 """The three kinds of saved setting Brain keeps next to its code:
 
-* NamedStore -- saved items of one kind, one JSON file per name (LLM engines,
-  speech engines, harnesses, memory profiles). The name comes from the
+* NamedStore -- saved items of one kind, one file per name: JSON (LLM engines,
+  speech engines, harnesses, memory profiles) or plain text with a `suffix` like
+  ".md" (role-play profiles and souls). The name comes from the
   Renderer, so it's sanitized (names.py) before it becomes a filename, and a
   reserved name ("None") can be neither saved nor deleted -- the Renderer
   always offers it itself.
@@ -18,29 +19,36 @@ from names import sanitize_name
 
 
 class NamedStore:
-    def __init__(self, directory: Path, kind: str, reserved: str | None = None) -> None:
+    def __init__(self, directory: Path, kind: str, reserved: str | None = None, suffix: str = ".json") -> None:
         self.dir = directory
         self.kind = kind  # for error messages: "LLM engine", "speech engine"...
         self.reserved = reserved
+        self.suffix = suffix
 
     def path(self, name: str) -> Path:
-        return self.dir / f"{sanitize_name(name, kind=self.kind)}.json"
+        return self.dir / f"{sanitize_name(name, kind=self.kind)}{self.suffix}"
 
     def names(self) -> list[str]:
         self.dir.mkdir(exist_ok=True)
-        return sorted(p.stem for p in self.dir.glob("*.json"))
+        return sorted(p.stem for p in self.dir.glob(f"*{self.suffix}"))
 
     def read(self, name: str) -> dict:
+        return json.loads(self.read_text(name))
+
+    def read_text(self, name: str) -> str:
         """Raises ValueError for a name with nothing usable in it, OSError for one that isn't saved."""
-        return json.loads(self.path(name).read_text(encoding="utf-8"))
+        return self.path(name).read_text(encoding="utf-8")
 
     def write(self, name: str, data: dict) -> str:
+        return self.write_text(name, json.dumps(data))
+
+    def write_text(self, name: str, text: str) -> str:
         """Creates or overwrites `name`; returns the (sanitized) name it was saved under."""
         path = self.path(name)
         if path.stem == self.reserved:
             raise ValueError(f"{self.reserved!r} is reserved and can't be used as a {self.kind} name")
         self.dir.mkdir(exist_ok=True)
-        path.write_text(json.dumps(data), encoding="utf-8")
+        path.write_text(text, encoding="utf-8")
         return path.stem
 
     def update(self, name: str, **fields) -> None:

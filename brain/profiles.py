@@ -28,16 +28,13 @@ on every reconnect the way the first version of this feature did.
 
 from pathlib import Path
 
-from names import sanitize_name
-from store import Toggle
+from store import Choice, NamedStore, Toggle
 
-PROFILES_DIR = Path(__file__).parent / "profiles"
 USER_MD_PATH = Path(__file__).parent / "user.md"  # the user's main file -- see the module docstring; written only by write_main_user
 RP_USER_MD_PATH = Path(__file__).parent / "rp_user.md"  # the selected role-play profile -- everything here that "loads" a profile writes this
 # Whether the selected profile is layered into her prompt, apart from which one is selected. Off by default:
 # it used to default on, so a fresh install started in role-play with memory, lessons and curiosity paused.
 ROLEPLAY_ACTIVE = Toggle(Path(__file__).parent / "roleplay_active.txt", default=False)
-ACTIVE_PROFILE_NAME_PATH = Path(__file__).parent / "active_profile_name.txt"
 
 # Reserved name for "no profile" -- never a real file in profiles/, always
 # offered by the Renderer's dropdown (main.js/brain_client.js prepend it
@@ -48,23 +45,20 @@ ACTIVE_PROFILE_NAME_PATH = Path(__file__).parent / "active_profile_name.txt"
 # guaranteed to still exist.
 DEFAULT_PROFILE_NAME = "Default"
 
+# One freeform .md per saved profile. DEFAULT_PROFILE_NAME is reserved, so it can't
+# be saved as a real profiles/Default.md -- a second, indistinguishable "Default".
+STORE = NamedStore(Path(__file__).parent / "profiles", kind="profile", reserved=DEFAULT_PROFILE_NAME, suffix=".md")
+# Which one was last loaded, so the dropdown shows it again on reconnect and
+# characters._delete_profile can tell whether it's deleting the one in effect.
+ACTIVE = Choice(Path(__file__).parent / "active_profile_name.txt", default=DEFAULT_PROFILE_NAME)
 
-def list_profiles() -> list[str]:
-    PROFILES_DIR.mkdir(exist_ok=True)
-    return sorted(p.stem for p in PROFILES_DIR.glob("*.md"))
-
-
-def save_profile(name: str, content: str) -> None:
-    sanitized = sanitize_name(name, kind="profile")
-    if sanitized == DEFAULT_PROFILE_NAME:
-        # Would otherwise create profiles/Default.md, a real file colliding
-        # with the reserved name the Renderer always prepends to the
-        # dropdown -- list_profiles() would then return "Default" too,
-        # showing up as a second, indistinguishable "Default" option.
-        raise ValueError(f"{DEFAULT_PROFILE_NAME!r} is reserved and can't be used as a profile name")
-    PROFILES_DIR.mkdir(exist_ok=True)
-    path = PROFILES_DIR / f"{sanitized}.md"
-    path.write_text(content, encoding="utf-8")
+list_profiles = STORE.names
+save_profile = STORE.write_text
+read_profile = STORE.read_text  # pre-fills the editor's Edit (get_profile) without activating it
+# Not the active-name bookkeeping, even for the active one -- characters._delete_profile
+# decides whether to fall back to DEFAULT_PROFILE_NAME (it knows if role-play is on).
+delete_profile = STORE.delete
+read_active_profile_name = ACTIVE.read
 
 
 def load_profile(name: str) -> str:
@@ -81,32 +75,8 @@ def load_profile(name: str) -> str:
     """
     content = "" if name == DEFAULT_PROFILE_NAME else read_profile(name)
     RP_USER_MD_PATH.write_text(content, encoding="utf-8")
-    ACTIVE_PROFILE_NAME_PATH.write_text(name, encoding="utf-8")
+    ACTIVE.write(name)
     return content
-
-
-def read_profile(name: str) -> str:
-    """Reads a profile's content without activating it -- used to
-    pre-fill the profile editor for the Edit button (get_profile).
-    """
-    path = PROFILES_DIR / f"{sanitize_name(name, kind='profile')}.md"
-    return path.read_text(encoding="utf-8")
-
-
-def delete_profile(name: str) -> None:
-    """Deletes a saved profile file. Raises ValueError for
-    DEFAULT_PROFILE_NAME -- it isn't a real file, there's nothing to
-    delete, and it must always stay selectable as the fallback. Does NOT
-    touch user.md, rp_user.md or the active-name bookkeeping itself even if the
-    deleted profile happens to be the active one -- characters.py's
-    _delete_profile decides whether that requires falling back to
-    DEFAULT_PROFILE_NAME, since only it knows whether role-play is
-    currently on (and so whether the LLM's persona needs updating too).
-    """
-    if name == DEFAULT_PROFILE_NAME:
-        raise ValueError("the default profile can't be deleted")
-    path = PROFILES_DIR / f"{sanitize_name(name, kind='profile')}.md"
-    path.unlink()
 
 
 def write_main_user(content: str) -> None:
@@ -132,18 +102,6 @@ def read_active_profile() -> str:
     if RP_USER_MD_PATH.exists():
         return RP_USER_MD_PATH.read_text(encoding="utf-8")
     return ""
-
-
-def read_active_profile_name() -> str:
-    """The name last passed to load_profile, or DEFAULT_PROFILE_NAME if
-    none has ever been explicitly selected -- lets the Renderer's dropdown
-    restore the right selection on reconnect instead of always resetting
-    to nothing, and lets characters._delete_profile tell whether the profile
-    being deleted is the one currently in effect.
-    """
-    if ACTIVE_PROFILE_NAME_PATH.exists():
-        return ACTIVE_PROFILE_NAME_PATH.read_text(encoding="utf-8").strip() or DEFAULT_PROFILE_NAME
-    return DEFAULT_PROFILE_NAME
 
 
 set_roleplay_active = ROLEPLAY_ACTIVE.write
