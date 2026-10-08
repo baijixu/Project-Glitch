@@ -319,9 +319,9 @@ async def _change_background(websocket: websockets.ServerConnection, data: dict,
         await hub.broadcast(message)
 
 
-@hub.handles(protocol.GET_CHAT_LOGS, protocol.GET_CHAT_LOG, protocol.DELETE_CHAT_LOG)
+@hub.handles(protocol.GET_CHAT_LOGS, protocol.GET_CHAT_LOG, protocol.SAVE_CHAT_LOG, protocol.DELETE_CHAT_LOG)
 async def _chat_logs(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-    """Settings -> Chat Logs: list a mode's days, read one, or delete one. Only
+    """Settings -> Chat Logs: list a mode's days, read, edit or delete one. Only
     her daily logs in brain/chat_logs/ (regular), chat_logs/roleplay/ and her journal (self/) -- the
     file is picked by mode and a plain date, never by a path from the Renderer.
     A deletion goes to every device, so their lists stay in step.
@@ -336,6 +336,17 @@ async def _chat_logs(websocket: websockets.ServerConnection, data: dict, brain: 
         except (ValueError, OSError) as exc:
             content, error = "", str(exc)
         await hub.send(websocket, protocol.chat_log_content(mode, day, content, error))
+    elif data["type"] == protocol.SAVE_CHAT_LOG:
+        # No fields_too_long cap: a busy day's log is bigger than any setting, and it's her own file.
+        # ponytail: whole-file replace -- lines logged after the editor opened (today's, mid-chat) are lost.
+        content, error = str(data.get("content") or ""), ""
+        try:
+            conversation.write_log(mode, day, content)
+            print(f"[brain] edited the {mode} chat log for {day}")
+        except (ValueError, OSError) as exc:
+            error = str(exc)
+        await hub.send(websocket, protocol.chat_log_content(mode, day, content, error))
+        await hub.broadcast(protocol.chat_logs(mode, conversation.list_logs(mode)))  # its size changed
     else:
         try:
             conversation.delete_log(mode, day)

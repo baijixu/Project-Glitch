@@ -1421,6 +1421,15 @@ body.overlay-chat-active #side-actions .overlay-rate-button {
   max-width: none;
 }
 
+.chat-log-editor {
+  width: 100%;
+  height: min(65vh, 700px);
+  margin-bottom: 14px;
+  resize: vertical;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 13px;
+}
+
 .chat-log-body {
   max-height: min(65vh, 700px);
   overflow-y: auto;

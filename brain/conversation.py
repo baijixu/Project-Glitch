@@ -184,6 +184,14 @@ def read_log(mode: str, day: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def write_log(mode: str, day: str, content: str) -> None:
+    """Replaces an existing day's log with the user's edited text (Settings -> Chat Logs' Edit)."""
+    path = _day_path(mode, day)
+    if not path.exists():
+        raise ValueError(f"there's no {mode} log for {day}")
+    path.write_text(content, encoding="utf-8")
+
+
 def delete_log(mode: str, day: str) -> None:
     path = _day_path(mode, day)
     if not path.exists():

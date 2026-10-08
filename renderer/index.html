@@ -404,7 +404,7 @@
           <h3>Chat Logs</h3>
           <p class="settings-hint">
             Her daily logs of your conversations, kept on this PC (brain/chat_logs/). Role-play is kept separately, and Journal is what she writes about herself each night.
-            Pick a day to read it, or delete it for good.
+            Pick a day to read or edit it, or delete it for good.
           </p>
           <select id="chat-logs-mode" class="settings-select">
             <option value="main">Chat</option>
@@ -708,7 +708,10 @@
       <div id="chat-log-modal" class="modal chat-log-modal" role="dialog" aria-labelledby="chat-log-modal-title">
         <h2 id="chat-log-modal-title">Chat log</h2>
         <div id="chat-log-body" class="chat-log-body"></div>
+        <textarea id="chat-log-editor" class="chat-log-editor" spellcheck="false" hidden></textarea>
         <div class="modal-actions">
+          <button id="chat-log-edit-button" class="modal-button secondary">Edit</button>
+          <button id="chat-log-save-button" class="modal-button primary" hidden>Save</button>
           <button id="chat-log-close-button" class="modal-button primary">Close</button>
         </div>
       </div>

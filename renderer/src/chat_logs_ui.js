@@ -1,4 +1,4 @@
-// Settings -> Chat Logs: read or delete her daily chat logs (brain/chat_logs/,
+// Settings -> Chat Logs: read, edit or delete her daily chat logs (brain/chat_logs/,
 // role-play in chat_logs/roleplay/ -- see brain/conversation.py) and her nightly
 // journal (brain/self/, brain/journal.py). Self-contained
 // like SamplingUI: finds its own elements by id, only needs `send`, and redraws
@@ -24,13 +24,22 @@ export class ChatLogsUI {
     this.modal = new Modal("chat-log-modal-backdrop");
     this.titleEl = $("chat-log-modal-title");
     this.bodyEl = $("chat-log-body");
+    this.editorEl = $("chat-log-editor");
+    this.editButtonEl = $("chat-log-edit-button");
+    this.saveButtonEl = $("chat-log-save-button");
     this._days = { main: [], roleplay: [], journal: [] };
+    this._open = null; // {mode, date, content} of the log in the pop-up
 
     this.modeEl?.addEventListener("change", () => this.refresh());
     this.dayEl?.addEventListener("change", () => this._updateButtons());
     this.readButtonEl?.addEventListener("click", () => this._read());
     this.deleteButtonEl?.addEventListener("click", () => this._delete());
     $("chat-log-close-button")?.addEventListener("click", () => this.modal.close());
+    // Edit swaps the read view for the raw text; Save sends it back whole.
+    this.editButtonEl?.addEventListener("click", () => this._setEditing(true));
+    this.saveButtonEl?.addEventListener("click", () => {
+      if (this._open) this._send({ type: "save_chat_log", mode: this._open.mode, date: this._open.date, content: this.editorEl.value });
+    });
     this._render();
   }
 
@@ -54,12 +63,23 @@ export class ChatLogsUI {
       window.alert(`Couldn't open that log: ${data.error}`);
       return;
     }
+    this._open = { mode: data.mode, date: data.date, content: data.content || "" };
+    this._setEditing(false);
     const what = data.mode === "journal" ? "Journal" : `${MODE_NAMES[data.mode] || "Chat"} log`;
     this.titleEl.textContent = `${what} -- ${_prettyDate(data.date)}`;
     // A journal entry is her own notes, not messages -- shown as written.
     this.bodyEl.replaceChildren(...(data.mode === "journal" ? _renderJournal(data.content || "") : _renderLog(data.content || "")));
     this.modal.open();
     this.bodyEl.scrollTop = 0;
+  }
+
+  _setEditing(editing) {
+    if (editing) this.editorEl.value = this._open?.content || "";
+    this.bodyEl.hidden = editing;
+    this.editorEl.hidden = !editing;
+    this.editButtonEl.hidden = editing;
+    this.saveButtonEl.hidden = !editing;
+    if (editing) this.editorEl.focus();
   }
 
   _render() {
