@@ -16,9 +16,11 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import conversation
+import hub
 import learning
 import memory
 import persona
+import protocol
 import training
 from hub import Brain
 
@@ -45,6 +47,16 @@ def day_log(day: date, name: str) -> str:
     return re.sub(r"(\*\*[\d:]+\*\*) You:", lambda m: f"{m.group(1)} {name}:", log)[-MAX_LOG_CHARS:]
 
 
+# Shown in every device's status box while she writes (handshake.py sends it to one that connects meanwhile).
+STATUS = ""
+
+
+async def _set_status(text: str) -> None:
+    global STATUS
+    STATUS = text
+    await hub.broadcast(protocol.brain_status(text))
+
+
 async def journal_loop(brain: Brain) -> None:
     while True:
         await asyncio.sleep(CHECK_SEC)
@@ -57,6 +69,7 @@ async def journal_loop(brain: Brain) -> None:
             log = day_log(day, name)
             if not log:
                 continue
+            await _set_status("Journaling...")
             async with brain.reply_lock:  # one model, one job at a time
                 text = await asyncio.to_thread(brain.llm.write_diary, log, name)
             if text.strip():
@@ -67,3 +80,6 @@ async def journal_loop(brain: Brain) -> None:
                     await learning.propose_from_log(log, day, name, brain)
         except Exception as exc:  # never let one bad night stop the loop
             print(f"[journal] couldn't write today's entry: {exc!r}")
+        finally:
+            if STATUS:
+                await _set_status("")

@@ -9,6 +9,7 @@ import characters
 import curiosity
 import engines
 import health
+import journal
 import hub
 import learning
 import llm_engines
@@ -43,6 +44,7 @@ async def handle_ready(websocket: websockets.ServerConnection, data: dict, brain
         reach_out.curiosity_timer_message(),
         engines.sampling_state_message(),
         *([reply.LAST_CONTEXT_USAGE] if reply.LAST_CONTEXT_USAGE else []),
+        *([protocol.brain_status(journal.STATUS)] if journal.STATUS else []),
         learning.training_state_message(),
         protocol.memory_state(memory.read_memory_active()),
         learning.memory_profiles_message(),

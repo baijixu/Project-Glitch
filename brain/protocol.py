@@ -145,6 +145,11 @@ def avatars(avatars: list[dict]) -> dict:
     return {"type": "avatars", "avatars": avatars}
 
 
+def brain_status(text: str) -> dict:
+    """What she's busy with on her own (the nightly journal), for the status box; "" when done."""
+    return {"type": "brain_status", "text": text}
+
+
 def chat_logs(mode: str, days: list[dict]) -> dict:
     """The saved chat logs for one mode ("main" or "roleplay"): [{"date", "size"}], newest first."""
     return {"type": "chat_logs", "mode": mode, "days": days}
