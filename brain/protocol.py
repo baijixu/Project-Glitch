@@ -212,6 +212,13 @@ def conversation_cleared() -> dict:
     return {"type": "conversation_cleared"}
 
 
+def chat_history(messages: list[dict]) -> dict:
+    """Her conversation as the chat panel shows it ({role: "user"/"glitch", text, at, picture?}),
+    so every device shows the same chat: sent after `ready`, and to the other devices after a
+    reply or a delete on one."""
+    return {"type": "chat_history", "messages": messages}
+
+
 def context_usage(used: int, window: int | None, conversation: int | None = None, keep: int | None = None) -> dict:
     """How full her context is, for the Settings meter: `used` of the model's `window` tokens after the latest
     reply (window None if the server doesn't say), and the running `conversation` (estimated) of the `keep`

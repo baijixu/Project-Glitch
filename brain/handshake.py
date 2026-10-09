@@ -48,6 +48,7 @@ async def handle_ready(websocket: websockets.ServerConnection, data: dict, brain
         learning.training_state_message(),
         protocol.memory_state(memory.read_memory_active()),
         learning.memory_profiles_message(),
+        *([protocol.chat_history(chat)] if (chat := brain.llm.screen_messages()) is not None else []),
     ]
     for message in messages:
         await hub.send(websocket, message)

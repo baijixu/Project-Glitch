@@ -393,6 +393,8 @@ async def set_roleplay_active(websocket: websockets.ServerConnection, data: dict
     await hub.debug_broadcast("roleplay", f"role-play {'on' if active else 'off'} (from {device}), LLM engine now {engine!r}")
     await hub.broadcast(protocol.roleplay_state(active))
     await hub.broadcast(protocol.llm_engines(llm_engines.list_engines(), engine))
+    if (chat := brain.llm.screen_messages()) is not None:  # the scene, or the normal chat back
+        await hub.broadcast(protocol.chat_history(chat))
 
 
 def _toggle_roleplay(data: dict, brain: Brain) -> None:

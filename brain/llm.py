@@ -670,13 +670,36 @@ class Sentences:
         return [sentence.strip() for sentence in _SENTENCE_END.split(rest) if sentence.strip()]
 
 
+PICTURE_PROMPT = "What do you see?"  # what a picture sent without a caption asks her
+PICTURE_LABEL = "📷 (photo)"  # how one shows in the chat panel (Renderer's capture.js)
+# A text file sent with 📎 (capture.js): its content follows the caption; the panel shows only its name.
+_ATTACHED_FILE = re.compile(r'(?s)(?:(.*?)\n\n)?Attached file "([^"\n]+)"(?: \(truncated\))?:\n\n')
+
+
+def _for_screen(message: dict) -> dict:
+    """One history message the way the chat panel shows it (chat_history): the words without
+    the gap marker, a picture flagged instead of its "[picture]" note, a file by its name."""
+    text = strip_gap_marker(conversation.text_of(message["content"]))
+    picture = text.endswith(conversation.PICTURE_NOTE) and message["role"] == "user"
+    if picture:
+        text = text.removesuffix(conversation.PICTURE_NOTE).strip()
+        text = "" if text == PICTURE_PROMPT else text
+    if message["role"] == "user" and (attached := _ATTACHED_FILE.match(text)):
+        text = f"{(attached[1] or '').strip()} 📎 {attached[2]}".strip()
+    role = "glitch" if message["role"] == "assistant" else "user"
+    return {"role": role, "text": text or PICTURE_LABEL, "at": message.get("at", ""), **({"picture": True} if picture else {})}
+
+
+SCREEN_MESSAGES = 100  # the latest messages sent to a device's chat panel -- as many as it keeps (history_ui.js)
+
+
 def _image_content(text: str, image_b64: str | None, image_mime: str) -> str | list[dict]:
     """A user turn's content: plain text, or the standard OpenAI multimodal list
     when a picture is attached (a camera/desktop snapshot or an uploaded image)."""
     if not image_b64:
         return text
     return [
-        {"type": "text", "text": text or "What do you see?"},
+        {"type": "text", "text": text or PICTURE_PROMPT},
         {"type": "image_url", "image_url": {"url": f"data:{image_mime};base64,{image_b64}"}},
     ]
 
@@ -763,6 +786,11 @@ class ChatBackend:
 
     def transcript(self, name: str) -> str:
         return ""
+
+    def screen_messages(self) -> list[dict] | None:
+        """Her conversation for every device's chat panel (chat_history); None when she has
+        none of her own (a harness, NoneLLM) -- a device's panel is then left as it is."""
+        return None
 
     def write_left_off(self, transcript: str, name: str) -> str:
         return ""
@@ -1156,6 +1184,9 @@ class LocalLLM(ChatBackend):
             {"role": "user", "content": f"Memory A: {new}\nMemory B: {old}"},
         ]
         return self._complete(messages, MAX_MEMORY_PROPOSAL_TOKENS, no_thinking=True)
+
+    def screen_messages(self) -> list[dict] | None:
+        return [_for_screen(m) for m in self._history if m.get("role") in ("user", "assistant")][-SCREEN_MESSAGES:]
 
     def transcript(self, name: str) -> str:
         """Her conversation as "<name>: ..." / "Glitch: ..." lines, for write_left_off --

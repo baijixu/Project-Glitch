@@ -80,7 +80,7 @@ export class HistoryUI {
   // stored). Returns {bubbleEl, overlayBubbleEl, entry} for updateText.
   add(role, text, thumbnailUrl) {
     const timeText = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-    const entry = { role, text, timeText };
+    const entry = { role, text, timeText, ...(thumbnailUrl && { picture: true }) };
     const bubbleEl = this._render(entry, thumbnailUrl);
     this.entries.push(entry);
     while (this.entries.length > MAX_STORED_ENTRIES) this.entries.shift();
@@ -107,6 +107,35 @@ export class HistoryUI {
     if (this.listEl) this.listEl.innerHTML = "";
     if (this.overlayEl) this.overlayEl.innerHTML = "";
     writePref(STORAGE_KEY, null);
+  }
+
+  // Brain's copy of the conversation (chat_history: on connecting, after a message or a
+  // delete on another device, and when role-play switches conversations). What this screen
+  // already shows of it stays, with its ratings and notices; from where the two differ on,
+  // Brain's version takes over -- whatever this device missed, or no longer happened.
+  sync(messages) {
+    const chat = this.entries.filter((e) => e.role !== "system");
+    const { start, agreed } = matchUp(chat, messages);
+    const firstStale = chat[start + agreed];
+    const cut = firstStale ? this.entries.indexOf(firstStale) : this.entries.length;
+    const missed = messages.slice(agreed);
+    if (cut === this.entries.length && !missed.length) return;
+    if (cut < this.entries.length) {
+      this.entries.length = cut;
+      if (this.listEl) this.listEl.replaceChildren();
+      if (this.overlayEl) this.overlayEl.replaceChildren();
+      for (const entry of this.entries) this._render(entry, null);
+    }
+    for (const { role, text, at, picture } of missed) {
+      const time = new Date(at);
+      const timeText = isNaN(time) ? "" : time.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+      const entry = { role, text, timeText, ...(picture && { picture: true }) };
+      this.entries.push(entry);
+      this._render(entry, null);
+      if (this.overlayActive) this._addOverlayBubble(role, text);
+    }
+    while (this.entries.length > MAX_STORED_ENTRIES) this.entries.shift();
+    this._save();
   }
 
   // Resend Last (and the over-avatar ↻): re-asks her latest message.
@@ -370,6 +399,29 @@ export class HistoryUI {
       { once: true },
     );
   }
+}
+
+// Where Brain's copy of the conversation starts among the messages on screen (it may have
+// dropped the oldest part), and for how many messages the two agree from there. With nothing
+// in common, start is 0: everything this screen said goes.
+export function matchUp(chat, messages) {
+  let [start, agreed] = [0, 0];
+  for (let s = 0; s < chat.length; s++) {
+    let run = 0;
+    while (s + run < chat.length && run < messages.length && sameMessage(chat[s + run], messages[run])) run++;
+    if (run > agreed) [start, agreed] = [s, run];
+  }
+  return { start, agreed };
+}
+
+// One message on screen and in Brain's copy are the same one: the same words, or both a picture
+// (the screen shows "🖥️ (screen)" where Brain has only "📷 (photo)"), or her reply cut short
+// where she was talked over ("... —" in Brain's copy, all of it on the screen that heard it).
+function sameMessage(shown, brain) {
+  if (shown.role !== brain.role) return false;
+  if (shown.text === brain.text || (shown.picture && brain.picture)) return true;
+  const cut = brain.role === "glitch" && brain.text.endsWith(" —") && brain.text.slice(0, -2);
+  return !!cut && shown.text.replace(/\s+/g, " ").startsWith(cut);
 }
 
 // A bubble's text replaced, keeping its picture and name: the text may be split around

@@ -110,17 +110,18 @@ async def send(websocket: websockets.ServerConnection, message: dict) -> None:
     await websocket.send(json.dumps(message))
 
 
-async def broadcast(message: dict) -> None:
+async def broadcast(message: dict, skip: websockets.ServerConnection | None = None) -> None:
     """Sends one message to every currently-connected Renderer. Used for
     anything that's shared state rather than a reply to one device: health
     lights, and every list or selection a device can change (profiles, souls,
     speech/LLM engines, harnesses, role-play) -- otherwise a phone and a PC
     connected at once each kept showing their own stale lists until they
     reconnected. A device that has just dropped is skipped (its send fails and
-    is ignored; handle_renderer removes it from RENDERER_CONNECTIONS).
+    is ignored; handle_renderer removes it from RENDERER_CONNECTIONS). `skip`: the device
+    that already has it.
     """
     encoded = json.dumps(message)
-    for websocket in list(RENDERER_CONNECTIONS):
+    for websocket in list(RENDERER_CONNECTIONS - {skip}):
         try:
             await websocket.send(encoded)
         except Exception:

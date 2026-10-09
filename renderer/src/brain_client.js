@@ -149,6 +149,7 @@ export class BrainClient {
         }),
       user_transcript: (data) => this.capture.handleTranscript(data.text),
       conversation_cleared: () => this.history.clear(),
+      chat_history: (data) => this.history.sync(data.messages || []),
       brain_status: (data) => this.setStatus(data.text || ""),
       memory_learned: (data) => {
         this._showToast(data.fact);

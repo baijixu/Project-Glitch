@@ -162,6 +162,13 @@ async def delete_last(websocket: websockets.ServerConnection, data: dict, brain:
     expected = "assistant" if data.get("answered") else "user"
     if brain.llm.last_role() == expected:
         brain.llm.pop_last_exchange()
+        await _sync_other_devices(websocket, brain)
+
+
+async def _sync_other_devices(websocket: websockets.ServerConnection, brain: Brain) -> None:
+    """What was just said or deleted on this device reaches every other device's chat panel."""
+    if (chat := brain.llm.screen_messages()) is not None:
+        await hub.broadcast(protocol.chat_history(chat), skip=websocket)
 
 
 @hub.handles(protocol.SPEECH_INTERRUPTED)
@@ -354,6 +361,7 @@ async def reply_to(
             await say(sentence, mood)
         print(f"[brain] mood: {mood}")
         await hub.send(websocket, protocol.speak_text(reply_text))  # all of it: the device's record of her reply
+        await _sync_other_devices(websocket, brain)
         # Only her own conversations go in her chat log. With a harness (Hermes) in
         # control she's working under a different soul and memory -- that side keeps
         # its own session logs, and personal and professional are kept apart on
