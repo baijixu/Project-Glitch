@@ -267,7 +267,11 @@ async def propose_from_log(log: str, day: date, name: str, brain: Brain) -> None
         added = 0
         for fact in training.parse_facts(raw):
             owner = await asyncio.to_thread(brain.llm.whose_memory, log, fact, name, pronouns)
-            if not owner_matches(fact, owner, name) or await _compare_with_memories(fact, brain):
+            if not owner_matches(fact, owner, name):
+                continue
+            if "Glitch" in fact:  # her memories are in her voice: "Josh wants to get me a scarf"
+                fact = (await asyncio.to_thread(brain.llm.in_her_voice, fact)).strip() or fact
+            if await _compare_with_memories(fact, brain):
                 continue
             if training.add_pending(fact, f"{day:%A %d %B}'s chat"):
                 added += 1

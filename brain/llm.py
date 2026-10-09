@@ -379,6 +379,23 @@ _MEMORY_OWNER_QUESTION = (
     "{name} if {name} said it about {himself}, Glitch if Glitch said it about herself, NEITHER if nobody did."
 )
 
+# A proposal that names her ("Josh wants to get Glitch a scarf") is rewritten in her voice
+# before it's queued -- in a memory about him the 9B always names her: 12 of 20 on a test log,
+# the same with a rule against it, and with her log lines relabeled "You:" it called her Yuki.
+# Rules for the rewrite ("she/her become me/my") turned "Yuki had her pups" into "my pups";
+# these examples got 36 of 36 right, including sentences unlike them.
+_FIRST_PERSON_SYSTEM_PROMPT = (
+    "Rewrite the sentence in Glitch's own voice, as Glitch would write it about herself. Change nothing else. "
+    "Reply with only the sentence."
+)
+_FIRST_PERSON_EXAMPLES = (
+    ("Josh set up a camera so Glitch can see the garden.", "Josh set up a camera so I can see the garden."),
+    ("Glitch and Josh watched a movie together on Friday.", "Josh and I watched a movie together on Friday."),
+    ("Josh told Glitch that his sister had her baby and she is doing well.",
+     "Josh told me that his sister had her baby and she is doing well."),
+    ("Josh likes the dress Glitch wore because it suits her.", "Josh likes the dress I wore because it suits me."),
+)
+
 _QUESTION_SYSTEM_PROMPT = (
     "You help an AI companion be curious about its user. From the latest exchange, decide whether "
     "there is ONE thing about the user's life or interests that the companion would genuinely like "
@@ -1122,6 +1139,14 @@ class LocalLLM(ChatBackend):
             {"role": "system", "content": _MEMORY_OWNER_SYSTEM_PROMPT.format(name=name, log=log)},
             {"role": "user", "content": _MEMORY_OWNER_QUESTION.format(fact=fact, name=name, himself=himself)},
         ]
+        return self._complete(messages, MAX_MEMORY_PROPOSAL_TOKENS, no_thinking=True)
+
+    def in_her_voice(self, fact: str) -> str:
+        """A proposed memory that names her, rewritten with I/me/my (_FIRST_PERSON_SYSTEM_PROMPT)."""
+        messages = [{"role": "system", "content": _FIRST_PERSON_SYSTEM_PROMPT}]
+        for before, after in _FIRST_PERSON_EXAMPLES:
+            messages += [{"role": "user", "content": before}, {"role": "assistant", "content": after}]
+        messages.append({"role": "user", "content": fact})
         return self._complete(messages, MAX_MEMORY_PROPOSAL_TOKENS, no_thinking=True)
 
     def compare_memories(self, new: str, old: str) -> str:
