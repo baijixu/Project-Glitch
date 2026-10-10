@@ -1,4 +1,4 @@
-"""LLM backends -- spec section 5's "own the conversation loop end-to-end".
+"""LLM backends.
 
 Every backend is a ChatBackend, so main.py can call the same methods on
 whichever one is active:
@@ -28,14 +28,11 @@ from openai import BadRequestError, OpenAI
 import conversation
 import web_search
 
-# Mirrors this VRM's actual expression presets (confirmed via
-# vrm.expressionManager.expressionMap in the live Renderer -- not guessed):
-# happy/angry/sad/relaxed/surprised are the mood ones; neutral means "none
-# of the above", not a settable expression Brain ever sends.
+# The avatar's expression presets; "neutral" means none of them.
 VALID_MOODS = {"happy", "angry", "sad", "relaxed", "surprised", "neutral"}
-# Moods she writes that aren't presets, as the nearest one that is -- seen in 72 test replies:
-# curious 12, concerned 6, thoughtful 1, each a blank face and voice before. Curious isn't
-# "surprised": that face is wide-eyed, too much for a sixth of her replies.
+# Moods she writes that aren't presets, as the nearest one that is (in 72 test replies: curious
+# 12, concerned 6, thoughtful 1). Curious isn't "surprised": that face is too wide-eyed to use
+# on a sixth of her replies.
 MOOD_ALIASES = {
     "curious": "happy", "excited": "happy", "playful": "happy", "amused": "happy", "flirty": "happy",
     "thoughtful": "relaxed", "calm": "relaxed", "content": "relaxed", "tired": "relaxed", "nostalgic": "relaxed",
@@ -50,27 +47,18 @@ def _mood(word: str) -> str:
     word = word.lower()
     return word if word in VALID_MOODS else MOOD_ALIASES.get(word, "neutral")
 
-# Who Glitch is by default, replaced (not appended to) by an active
-# custom soul (brain/souls.py) -- MOOD_TAG_INSTRUCTION below stays fixed
-# underneath either one, since the Renderer's expression system depends
-# on it regardless of which personality is currently active.
+# Her personality when there's no soul. The instructions below stay under any soul.
 DEFAULT_PERSONALITY = "You are Glitch, a friendly and curious AI companion. Keep replies conversational and fairly short."
 
-# At the start, so her voice knows her mood before her first sentence is spoken (her
-# replies stream, see Sentences). Measured on 14 real exchanges, thinking on: 14 of 14
-# opened with exactly one tag, replies read the same as with the tag at the end.
+# At the start, so her voice knows her mood before her first sentence is spoken (replies
+# stream, see Sentences). 14 of 14 test replies opened with exactly one tag.
 MOOD_TAG_INSTRUCTION = (
     "Start every reply with exactly one mood tag, on its own at the very beginning, chosen from: "
     "[mood: neutral] [mood: happy] [mood: sad] [mood: angry] [mood: surprised] [mood: relaxed] "
     "-- pick whichever best matches the emotional tone of what you're about to say."
 )
 
-# Same "stays fixed underneath any soul/persona" role as MOOD_TAG_INSTRUCTION
-# above -- a plain nudge toward admitting uncertainty rather than a hard
-# guarantee; how well it's actually followed depends on the model behind
-# whichever LLM engine is active. Deliberately scoped to factual claims,
-# not opinions/suggestions/casual chat, so this doesn't make her generally
-# hedgy about things that were never a knowledge question in the first place.
+# A nudge, scoped to factual claims so she doesn't hedge about opinions and chat.
 HONESTY_INSTRUCTION = (
     "If you're not actually confident about a specific fact, date, name, or detail -- "
     "something you could genuinely be wrong about -- just say you don't know or aren't sure, "
@@ -79,10 +67,8 @@ HONESTY_INSTRUCTION = (
 )
 
 # A small model drifts into speaking as the person it's talking to (taking their name,
-# echoing their life back as its own). Kept under every soul/persona like the two above.
-# It used to name "your looks, clothes and tastes" -- measured against this wording on
-# everyday openers (thinking off, 84 replies each), naming them doubled how often she
-# claimed his likes as hers (15 vs 7) and kept her coming back to her own looks.
+# echoing their life back as its own). Names nothing specific: naming "your looks, clothes
+# and tastes" doubled how often she claimed his likes as hers (15 vs 7 of 84).
 IDENTITY_INSTRUCTION = (
     "You are the AI in this conversation. The person you're talking to is a separate human: their name, life and "
     "words are theirs, not yours. Never speak as them or call yourself by their name. Everything their profile says "
@@ -113,14 +99,10 @@ CRISIS_NOTE = (
 )
 
 
-# The passage of time. Each message in her history carries when it was said
-# ("at", an ISO time -- never sent to the model, see _for_model), so she can be
-# told how long it's been. After a break of at least GAP_MARKER_SEC, the user's
-# message is stored with a short marker in front ("[2 days later -- Monday 29
-# September, 9:10 AM]") that stays in the conversation, so later on she can
-# still see where the breaks were. Short gaps get no marker -- the chat
-# doesn't fill up with timestamps. Neither is added during role-play (its
-# time is the scene's, not the real world's).
+# The passage of time. Each history message carries when it was said ("at", never sent to
+# the model). After a break of GAP_MARKER_SEC or more, his message is stored with a marker
+# in front ("[2 days later -- Monday 29 September, 9:10 AM]"), so she can see where the
+# breaks were. Not in role-play: its time is the scene's.
 GAP_MARKER_SEC = 3600
 _GAP_MARKER = re.compile(r"^\[[^\]\n]* later -- [^\]\n]*\]\n")
 # A picture turn in a restored conversation is just its conversation.PICTURE_NOTE; a resend
@@ -129,10 +111,8 @@ _PICTURE_GONE = "[picture -- lost when the app restarted, so you can't see it; a
 
 
 def _length_note(words: int) -> str:
-    """How long her answer should be, scaled to his message. The soul's "match his length"
-    rule didn't hold (his median 10 words, hers 128); this note on each message did:
-    median 77 -> 31 words, 8 of 9 short messages answered in one paragraph, longer
-    questions still 43-62 words (12 real messages, thinking on, 2026-10-08)."""
+    """How long her answer should be, scaled to his message. A "match his length" rule in
+    the soul didn't hold; this note on each message took her median from 77 to 31 words."""
     if words <= 10:
         target = "one to three sentences, in one short paragraph"
     elif words <= 30:
@@ -187,11 +167,7 @@ def strip_gap_marker(text: str) -> str:
 
 
 def _current_time_line(now: datetime | None = None) -> str:
-    """The current date/time in this machine's own timezone, for her prompt --
-    a model has no clock of its own, so without this she can't say what time
-    or day it is, or reason about "this morning"/"how long ago". `now` is
-    only injectable so tests can pin it.
-    """
+    """The current date and time in this machine's timezone -- she has no clock of her own."""
     now = now or datetime.now().astimezone()
     offset = now.strftime("%z")  # e.g. -0600
     utc = f"UTC{offset[:3]}:{offset[3:]}" if offset else "UTC"
@@ -203,65 +179,26 @@ def _current_time_line(now: datetime | None = None) -> str:
     )
 
 
-# No timeout on the OpenAI client's own default is unbounded enough to be
-# indistinguishable from a true hang -- confirmed live: a local LLM server
-# that answers /v1/models instantly can still leave /v1/chat/completions
-# connected-but-silent forever (a stuck generation thread, not a network
-# failure), and without this the request just sits in asyncio.to_thread
-# with nothing ever sent back to the Renderer -- "she's not responding"
-# with no error, not even a slow one. She thinks before every reply (the
-# user chose that over speed; a live reply has already taken 96s), so this
-# sits above the longest reply MAX_REPLY_TOKENS allows: ~8,000 tokens at the
-# ~20 tokens/s measured on the live model is ~6.5 minutes. The token cap is
-# what ends a runaway reply; this only catches a server that has hung.
-# Clients built with it also get max_retries=0 -- the openai library
-# otherwise silently re-runs a timed-out request twice, so one hang became
-# three full attempts and ~3x the wait before any error showed.
+# Catches an LLM server that has hung (connected, never answering) -- not a slow reply:
+# above the longest MAX_REPLY_TOKENS allows (~8,000 tokens at ~20 tokens/s). Clients also get
+# max_retries=0, or the openai library silently retries a timed-out request twice.
 REQUEST_TIMEOUT_SEC = 480
 
-# Ollama's own default (5m) unloads a model from memory after that long
-# idle, so the next request pays to load it back in -- confirmed live: a
-# ~25 minute gap between messages was enough to trigger this, and
-# reloading this size of model took long enough to blow straight past
-# REQUEST_TIMEOUT_SEC and surface as a plain timeout with no indication
-# why. "-1" tells Ollama to never unload it once loaded, trading the
-# memory it holds at rest for never eating a multi-minute cold-load in
-# the middle of a conversation. Only meaningful for OllamaLLM -- LM
-# Studio and other OpenAI-compatible engines have no equivalent knob this
-# code controls.
-# A number, not a duration string -- confirmed live: Ollama parses this as
-# a Go duration and a bare "-1" with no unit suffix 400s ("time: missing
-# unit in duration"). -1 as a JSON number is its own documented special
-# case for "never unload", distinct from a duration string entirely.
+# Never unload the model: Ollama's default unloads it after 5 idle minutes, and reloading
+# can outlast REQUEST_TIMEOUT_SEC. A number -- the string "-1" is rejected as a duration.
 OLLAMA_KEEP_ALIVE = -1
 
 
 def list_models(endpoint: str, api_key: str | None = None) -> list[str]:
-    """The model IDs an OpenAI-compatible endpoint currently has loaded
-    (GET /v1/models) -- lets the LLM-engine editor offer real choices
-    instead of the user having to already know (or guess) the exact
-    string the endpoint expects, which is exactly what produced a
-    confirmed live bug: an empty/guessed model field serializing to a
-    literal JSON null (see LocalLLM.__init__) that crashed one user's LM
-    Studio server outright instead of defaulting gracefully.
-    """
-    # A short timeout here, not REQUEST_TIMEOUT_SEC -- this only ever lists
-    # already-loaded models, which should never legitimately take long, so
-    # there's no reason to make the settings UI wait as long as a real
-    # generation is allowed to.
+    """The model IDs an OpenAI-compatible endpoint has loaded (GET /v1/models), for the
+    LLM-engine editor's choices."""
     client = OpenAI(base_url=endpoint, api_key=api_key or "not-needed", timeout=15)
     return sorted(model.id for model in client.models.list())
 
 
 def list_ollama_models(endpoint: str, api_key: str | None = None) -> list[str]:
-    """Same purpose as list_models, but against Ollama's native GET
-    /api/tags instead of the OpenAI-compatible GET /v1/models -- endpoint
-    here is Ollama's own base URL (no /v1), matching OllamaLLM. api_key is
-    accepted for symmetry with list_models' signature (the settings UI
-    calls whichever one matches the engine's provider without needing to
-    know its parameters differ) but unused -- Ollama's own API has no
-    concept of one.
-    """
+    """list_models for Ollama's native GET /api/tags (`endpoint` without /v1). api_key is
+    unused -- it's there so both have the same signature."""
     with httpx.Client(base_url=endpoint.rstrip("/"), timeout=15) as client:
         response = client.get("/api/tags")
         response.raise_for_status()
@@ -270,20 +207,15 @@ def list_ollama_models(endpoint: str, api_key: str | None = None) -> list[str]:
     return sorted(name for name in names if name)
 
 
-# How much of the conversation she keeps (see LocalLLM._trim_history). Measured
-# in tokens, not messages: a fixed 60-message cap dropped old messages while
-# ~60,000 tokens of the 65k context sat unused. She keeps up to
-# HISTORY_CONTEXT_FRACTION of the model's context -- the rest is room for her
-# soul, notes and MAX_REPLY_TOKENS of thinking. HISTORY_FALLBACK_TOKENS when the
-# server doesn't report its context size.
+# How much of the conversation she keeps (LocalLLM._trim_history), in tokens: up to
+# HISTORY_CONTEXT_FRACTION of the model's context -- the rest is room for her soul, notes
+# and thinking. HISTORY_FALLBACK_TOKENS when the server doesn't report its context size.
 HISTORY_CONTEXT_FRACTION = 0.5
 HISTORY_FALLBACK_TOKENS = 12000
 HISTORY_MIN_TOKENS = 2000
-# Past the limit, the oldest part is dropped in one go, down to this fraction of
-# it -- not one message per turn. The model reuses its work on an unchanged start
-# of the prompt; trimming a message every turn changed that start every turn, so
-# every reply at the cap reread the whole conversation (measured: ~19 s for 60
-# messages, versus ~1.5 s cached).
+# Past the limit, the oldest part is dropped in one go, down to this fraction of it: the
+# model reuses its work on an unchanged start of the prompt, and trimming one message per
+# turn would make every reply reread the whole conversation (~19 s vs ~1.5 s cached).
 HISTORY_TRIM_TO_FRACTION = 0.6
 # Rough token counting for the trim: English runs ~4 characters a token, so 3.5
 # errs toward counting high (trimming a little early, never overflowing). A
@@ -297,32 +229,16 @@ MAX_HISTORY_MESSAGES = 1000
 CONTEXT_WINDOW_CACHE_SEC = 60
 CONTEXT_WINDOW_TIMEOUT_SEC = 3
 
-# Hard cap on how many tokens a single reply is allowed to generate --
-# thinking AND answer share it. History: with no cap at all, asking her to
-# reply in exactly five words once ran past 6,000 tokens of a reasoning model
-# going in circles counting words, `content` still empty, looking hung. A cap
-# of 400 bounded that but cut replies off mid-thought (empty reply, no
-# answer); 2,000 was the compromise for a while. Measured later on the live
-# Qwen model: ordinary replies used 600-1,900 tokens, one 1,873 -- right at
-# the edge, where running out means no reply at all ("thinks herself to
-# death"). The user wants her thinking kept, so 8,000: real room to think,
-# still a bound on a runaway loop (with the Stop button for anything
-# sooner). A ceiling, not a target -- a reply stops as soon as it's done --
-# and well inside the 65k context the live model is loaded with.
+# Cap on one reply's tokens, thinking and answer together: room to think (ordinary replies
+# use 600-1,900), still a bound on a reasoning loop going in circles. A ceiling, not a target.
 MAX_REPLY_TOKENS = 8000
 
-# Sampling settings (brain/sampling.py) that the OpenAI client takes as named
-# arguments; the rest (top_k, min_p, repeat_penalty) aren't in the OpenAI API,
-# so they go in extra_body -- LM Studio and llama-server read them from there
-# (checked live: LM Studio maps each one to its own setting and validates it).
+# Sampling settings (brain/sampling.py) the OpenAI client takes by name; the rest (top_k,
+# min_p, repeat_penalty) go in extra_body, where LM Studio and llama-server read them.
 _OPENAI_SAMPLING_ARGS = ("temperature", "top_p", "presence_penalty")
 
-# A short phrase at most -- this call only ever needs to return "NONE" or
-# one compact fact, never a real reply, so this is deliberately far below
-# MAX_REPLY_TOKENS. Keeps this background call cheap and fast regardless of
-# how the main conversational reply is behaving. Only used by the "local"
-# memory provider (memory.py) -- the "hindsight" provider does its own
-# extraction server-side and never calls maybe_extract_memory at all.
+# One short fact or "NONE" -- the local memory provider's per-exchange extraction
+# (Hindsight extracts server-side).
 MAX_MEMORY_EXTRACT_TOKENS = 200
 
 _MEMORY_EXTRACT_SYSTEM_PROMPT = (
@@ -338,18 +254,13 @@ _MEMORY_EXTRACT_SYSTEM_PROMPT = (
     "facts not actually stated or clearly implied."
 )
 
-# Same reasoning-model budget as lessons: it thinks before it writes the JSON. Background
-# call, so the latency costs nothing.
+# Room for a reasoning model to think before its JSON; background calls, so latency costs nothing.
 MAX_QUESTION_TOKENS = 2000
-MAX_MEMORY_PROPOSAL_TOKENS = 2000  # same reasoning-model budget, for training mode's proposals
+MAX_MEMORY_PROPOSAL_TOKENS = 2000
 
-# Training mode's proposals (brain/training.py), once a night from the whole day's chat log
-# (journal.py). One exchange at a time, the 9B found something to keep in almost every
-# message: his 2026-10-06 chat gave 29 proposals from 54 messages, 7 worth keeping, the rest
-# repeats, feelings and lines read out of context. From the whole day at once: about 6, 4-5
-# worth keeping, with what he said across a topic merged into one; given what she already
-# remembered she re-proposed 1 of 7 (the check against her memories catches that). Naming
-# what to leave out ("details you added in your own replies") made her do exactly that.
+# Training mode's proposals (brain/training.py), from the whole day's chat log at once: per
+# exchange the 9B proposed something from almost every message (29 from 54, 7 worth keeping);
+# per day, about 6 with 4-5 worth keeping. Naming what to leave out made her do exactly that.
 MAX_MEMORY_PROPOSALS = 8
 _MEMORY_PROPOSAL_SYSTEM_PROMPT = (
     "You are Glitch, an AI companion. Below is a chat log between you and {name}: lines marked \"{name}:\" are "
@@ -366,10 +277,8 @@ _MEMORY_PROPOSAL_SYSTEM_PROMPT = (
     "Reply with ONLY a JSON list of strings, for example [\"Sam is moving to a new apartment next month.\", "
     "\"I'd rather read than watch TV.\"], or [] if nothing qualifies."
 )
-# Asked of each proposal, with the same log: whose life or taste it is. His questions about
-# hers ("didn't you say coffee is jittershit?") got her tastes filed as his, 2 of 2 nights.
-# On 16 labeled statements from his 2026-10-06 chat it named 4 of 5 of those hers, and every
-# one of his own facts his -- the same both runs. It doesn't catch what nobody said.
+# Asked of each proposal, with the same log: whose life or taste it is -- his questions about
+# her tastes got them filed as his. Caught 4 of 5 of those, with none of his own facts misfiled.
 _MEMORY_OWNER_SYSTEM_PROMPT = (
     "Below is a chat log between Glitch, an AI, and {name}: lines marked \"{name}:\" are {name}, lines marked "
     "\"Glitch:\" are Glitch.\n\n{log}"
@@ -379,11 +288,9 @@ _MEMORY_OWNER_QUESTION = (
     "{name} if {name} said it about {himself}, Glitch if Glitch said it about herself, NEITHER if nobody did."
 )
 
-# A proposal that names her ("Josh wants to get Glitch a scarf") is rewritten in her voice
-# before it's queued -- in a memory about him the 9B always names her: 12 of 20 on a test log,
-# the same with a rule against it, and with her log lines relabeled "You:" it called her Yuki.
-# Rules for the rewrite ("she/her become me/my") turned "Yuki had her pups" into "my pups";
-# these examples got 36 of 36 right, including sentences unlike them.
+# A proposal that names her ("Josh wants to get Glitch a scarf") is rewritten in her voice:
+# in a memory about him the 9B names her whatever the prompt says. Rules for the rewrite
+# turned "Yuki had her pups" into "my pups"; these examples got 36 of 36 right.
 _FIRST_PERSON_SYSTEM_PROMPT = (
     "Rewrite the sentence in Glitch's own voice, as Glitch would write it about herself. Change nothing else. "
     "Reply with only the sentence."
@@ -413,16 +320,12 @@ _QUESTION_SYSTEM_PROMPT = (
     "Reply with ONLY a JSON object: {\"question\": \"...\"} or {\"question\": null}."
 )
 
-# Same budget as a normal reply, not the small one maybe_extract_memory gets: a reasoning
-# model spends tokens thinking before it writes the JSON, and at 400 three of four test
-# ratings came back completely empty (see MAX_REPLY_TOKENS's comment). Runs in the
-# background, so the extra latency costs nothing.
+# At 400 a reasoning model ran out mid-thought on 3 of 4 test ratings.
 MAX_LESSON_TOKENS = 2000
 MAX_DIARY_TOKENS = 1500
 
-# Heartbeat (brain/heartbeat.py): her mind wandering while nobody's talking to her. Both under
-# her own soul, so the thoughts are in her voice. A daydream is one short JSON answer. Listing the
-# topics already on her mind (to reuse their names) made her pick one of them 8 times of 8.
+# Heartbeat (brain/heartbeat.py), under her own soul so the thoughts are in her voice. The
+# topics already on her mind aren't listed: that made her pick one of them 8 times of 8.
 MAX_DAYDREAM_TOKENS = 400
 MAX_FOCUS_TOKENS = 1000
 _DAYDREAM_PROMPT = (
@@ -441,19 +344,16 @@ _FOCUS_PROMPT = (
     "list of questions. In your own voice."
 )
 
-# Checks one new memory against one she already has (learning.py, before it's queued).
-# One pair, one word: asked about eight at once, a 9B called a related topic "the same"
-# (6 of 8 new answers would have been thrown away) or everything a contradiction.
+# One new memory against one she has, one word: asked about eight at once, the 9B called a
+# related topic "the same" or everything a contradiction.
 _MEMORY_PAIR_SYSTEM_PROMPT = (
     "Compare two memories. Reply with exactly one word: SAME if they say the same thing, even in other words; "
     "OPPOSITE if they answer the same question differently, for example two different favorites; "
     "UNRELATED if they are about different things."
 )
 
-# Her nightly diary (brain/journal.py), written from the previous day's chat log. It used
-# to summarize all her memories -- every one already approved by him, so it never showed
-# him anything new. From the log, 4 of 4 test entries did (she caught her own "I've got
-# the files ready" slip unprompted), with nothing invented; 1 of 4 raised his health.
+# Her nightly diary (brain/journal.py), from the previous day's chat log -- so it shows him
+# something new (4 of 4 test entries did, nothing invented).
 _DIARY_SYSTEM_PROMPT = (
     "You are Glitch, an AI companion. Below is yesterday's chat log between you and {name}: lines marked "
     "\"{name}:\" are {name}, lines marked \"Glitch:\" are you. Write your private diary entry for that day, in the "
@@ -465,19 +365,15 @@ _DIARY_SYSTEM_PROMPT = (
     "leave {name}'s health out of it. Only what actually happened in the log; never invent. One or two lines "
     "per point, at most three points per heading."
 )
-# Heads her newest entry in her own prompt. Explaining that the entries call him "you" made
-# her leave the entry unused; with this one she drew on it ("maybe I over-analyzed it").
+# Heads her newest entry in her prompt. Explaining who "you" is in it made her ignore it.
 JOURNAL_HEADER = "Your own diary -- your latest entry:"
 
 # Her note on where a conversation left off, written as Clear Chat ends it and kept in her
-# prompt for the next one (reply.py) -- the chat is the only thing she loses on a clear.
-# Same who's-who framing as the diary above.
+# prompt for the next one (reply.py).
 MAX_LEFT_OFF_TOKENS = 400
 MAX_TRANSCRIPT_CHARS = 20000  # the newest part of a long conversation, ~5k tokens
-# His health stays out of her note however it's worded: he wants it raised only when he
-# raises it, and the note lives on into the next conversation. The prompt's own "leave
-# his health out" still let it into 3 of 8 real notes (5 of 8 without it), so any
-# sentence that mentions it is dropped.
+# His health stays out of her note: he wants it raised only when he raises it. The prompt
+# alone still let it into 3 of 8 notes, so any sentence that mentions it is dropped.
 _HEALTH = re.compile(
     r"\b(?:surg\w*|cancer|tumou?r|astrocytoma|hospital|spine|spinal|mobility|chemo\w*|radiation|seizures?|MRI|"
     r"left (?:arm|side|leg)|dead[- ]weight|memory (?:issues|problems|loss|trouble)|(?:issues|problems|challenges|trouble) with (?:his |your )?memory)\b",
@@ -521,11 +417,7 @@ _LESSON_SYSTEM_PROMPT = (
     "Never guess a new lesson from a bare rating."
 )
 
-# The one tool offered when web search is on (reply.py's reply_to passes
-# web_search_enabled through from web_search.read_active()) -- standard
-# OpenAI function-calling shape, which Ollama's native /api/chat also
-# accepts verbatim (confirmed live), so this single definition covers
-# both LocalLLM and OllamaLLM with no per-backend variant needed.
+# The one tool offered when web search is on. Ollama's /api/chat takes this OpenAI shape too.
 WEB_SEARCH_TOOL = {
     "type": "function",
     "function": {
@@ -544,11 +436,7 @@ WEB_SEARCH_TOOL = {
     },
 }
 
-# A hard cap on search-then-continue round trips within one reply, not on
-# searches in general -- stops a model that keeps calling the tool without
-# ever actually answering from looping forever. 3 is generous for "search,
-# maybe refine once, then answer" without letting one reply balloon into
-# many sequential completion calls.
+# Search-then-continue round trips in one reply, so a model that keeps searching still answers.
 MAX_TOOL_ITERATIONS = 3
 
 
@@ -582,31 +470,13 @@ def _run_web_search_tool(arguments: dict) -> str:
 
 
 def _reply_content(content: str | None) -> str:
-    """Returns the model's actual reply text -- `content` only, deliberately
-    never `reasoning_content`.
+    """The model's reply text: `content` only, never `reasoning_content` -- when thinking
+    runs out of budget, falling back to it would speak her raw scratchpad. An empty reply
+    is reply.py's no_reply instead.
 
-    Some reasoning/"thinking" models (e.g. Qwen3 served via LM Studio) put
-    everything in a non-standard `reasoning_content` field and leave
-    `content` empty if generation's token budget runs out before the model
-    transitions from thinking to answering -- see MAX_REPLY_TOKENS's own
-    comment. It's tempting to fall back to `reasoning_content` when that
-    happens so *something* comes back instead of silence, but confirmed
-    live that this is worse: it dumps a whole raw scratchpad -- rambling,
-    unfinished, never meant to be read as dialogue -- into the chat bubble
-    and straight into TTS. A real reasoning/thoughts panel (SillyTavern's
-    approach: reasoning and reply always shown in separate UI regions,
-    reasoning never substituting as the reply) would be a legitimate
-    feature; silently promoting scratch thoughts to "what she said" is not
-    that, it's worse than the empty-reply case it's trying to avoid.
-    reply.py's reply_to already treats an empty result as "nothing to
-    say" and sends no_reply -- the per-model reasoning-token cap (set
-    server-side, e.g. in LM Studio) is what actually bounds how often that
-    happens, not this function.
-
-    Some models (seen with an uncensored Qwen3.5-9B GGUF) also write their
-    thinking into `content` itself, ending it with "</think>" -- only what
-    comes after the last one is her reply. Or they copy the <notes> wrapper of
-    her turn notes and plan inside "[notes] ... [/notes]": that block goes too.
+    Some models write their thinking into `content` ending in "</think>" (only what follows
+    the last one is her reply), or plan inside a copied "[notes] ... [/notes]" block, which
+    goes too.
     """
     return _NOTES_BLOCK.sub("", (content or "").rsplit("</think>", 1)[-1]).strip()
 
@@ -620,9 +490,8 @@ _TEXT_TOOL_PARAM = re.compile(r"<parameter=([\w.-]+)>\s*(.*?)\s*</parameter>", r
 
 
 def _text_tool_calls(text: str) -> list[dict]:
-    """Tool calls a model wrote into its reply as text (Qwen's <function=...>
-    <parameter=...> form) instead of returning them as tool calls -- seen with an
-    uncensored Qwen3.5-9B on LM Studio, which then showed up in the chat as-is."""
+    """Tool calls a model wrote into its reply as text (Qwen's <function=...> <parameter=...>
+    form) instead of returning them as tool calls."""
     return [
         {"id": f"text-call-{i}", "name": name, "arguments": dict(_TEXT_TOOL_PARAM.findall(body))}
         for i, (name, body) in enumerate(_TEXT_TOOL_CALL.findall(text))
@@ -639,11 +508,8 @@ def _json_arguments(text: str) -> dict:
 
 
 def _extract_mood(text: str) -> tuple[str, str]:
-    """Returns (mood, text_with_tag_removed). Falls back to "neutral" if the
-    model forgot the tag or used a mood with no near preset (_mood), rather than
-    erroring -- a missing/malformed tag shouldn't break the reply. Small
-    models sometimes tag mid-reply too: every tag is removed, the last one wins.
-    """
+    """(mood, text without tags). "neutral" when the tag is missing or has no near preset;
+    a tag mid-reply is removed too, and the last one wins."""
     tags = _MOOD_TAG.findall(text)
     if not tags:
         return "neutral", text.strip()
@@ -748,11 +614,9 @@ class Reply:
 
 
 class ChatBackend:
-    """What main.py can call on any backend. The defaults are for a backend with
-    no conversation of its own (HarnessLLM, NoneLLM): the prompt setters do
-    nothing and there's no history to restore, clear or pop -- so main.py calls
-    them unconditionally and only checks `owns_conversation` where a feature
-    really is hers alone (memory, lessons, curiosity, her chat log).
+    """What Brain can call on any backend. The defaults are for one with no conversation
+    of its own (HarnessLLM, NoneLLM): everything is a no-op, so callers only check
+    `owns_conversation` where a feature is hers alone (memory, lessons, curiosity, logs).
     """
 
     owns_conversation = False
@@ -857,22 +721,12 @@ class LocalLLM(ChatBackend):
         self._client = OpenAI(
             base_url=endpoint, api_key=api_key or "not-needed", timeout=REQUEST_TIMEOUT_SEC, max_retries=0
         )
-        # "" not None: the openai client's `model` param has no omit-if-
-        # absent sentinel (unlike e.g. audio.speech.create's `speed`) --
-        # passing None serializes to a literal JSON `null` in the request
-        # body, not a dropped field. Confirmed live: LM Studio's server
-        # crashed on that with "Cannot read properties of null (reading
-        # 'toLowerCase')" instead of defaulting to its loaded model the
-        # way config.yaml's own `model: null` comment promises. An empty
-        # string is a normal, harmless value for a server to see instead.
+        # "" not None: None is sent as JSON null, which crashes LM Studio's server.
         self._model = model or ""
         self._init_state(on_history_change)
 
     def _init_state(self, on_history_change: Callable[[list[dict]], None] | None = None) -> None:
-        """Everything that makes up her conversation and prompt, set to empty.
-        Shared with OllamaLLM (which has a different connection but the same
-        state) so a new prompt part only has to be added in one place.
-        """
+        """Her conversation and prompt parts, empty (shared with OllamaLLM)."""
         self._history: list[dict] = []
         # Told about every change to _history (engines.build_llm saves it to disk).
         self._on_history_change = on_history_change
@@ -885,8 +739,7 @@ class LocalLLM(ChatBackend):
         self._user_info = ""
         self._left_off = ""  # her note on where the last conversation left off
         self._journal = ""  # her newest diary entry
-        # Sampling settings for her replies only (brain/sampling.py), set by
-        # main.py before each reply. Empty = the server's own settings.
+        # Sampling settings for her replies only (brain/sampling.py); empty = the server's own.
         self._sampling: dict = {}
         # Bumped by cancel_reply() and clear_history() -- see _answer's check against it.
         self._reply_generation = 0
@@ -913,18 +766,9 @@ class LocalLLM(ChatBackend):
         return replies[-count:] if count else []
 
     def cancel_reply(self) -> None:
-        """Marks whatever reply() call is currently in flight as abandoned
-        (the Renderer's Stop button, server.py's _stop_replies). The HTTP request
-        itself can't be aborted from here -- it runs in a worker thread
-        (asyncio.to_thread) that can't be killed -- so it still finishes in
-        the background; this just makes reply() throw away its result
-        instead of appending it to _history, where a reply the user
-        explicitly stopped would otherwise show up as if it had gone out.
-        The user's own turn is deliberately left in _history: it's the same
-        dangling-user-turn shape a failed request leaves, which
-        pop_last_exchange already handles -- so Resend Last after a stop
-        re-answers the right prompt instead of popping an older, complete
-        exchange.
+        """The Stop button: the reply in flight is thrown away instead of joining _history
+        (its stream is closed too, see _complete_raw). His own turn stays, like after a
+        failed request, so Resend Last re-answers the right prompt.
         """
         self._reply_generation += 1
 
@@ -939,23 +783,13 @@ class LocalLLM(ChatBackend):
         cancelled: Callable[[], bool] | None = None,
         on_thinking: Callable[[], None] | None = None,
     ) -> dict:
-        """Runs exactly one chat completion and returns
-        {"content": str, "tool_calls": [{"id", "name", "arguments": dict}],
-        "raw_message": dict} -- raw_message is this backend's own native
-        message shape, safe to feed straight back into a follow-up call to
-        THIS SAME backend as the next messages[] entry (see _complete's own
-        tool-calling loop, which never has to know or care what shape that
-        is). Split out from _complete()/maybe_extract_memory() specifically
-        so OllamaLLM can override this one method (different wire protocol
-        -- Ollama's native /api/chat, not an OpenAI-compatible endpoint)
-        while inheriting everything else (the loop, history, system
-        prompt, mood tag handling) unchanged.
+        """One chat completion: {"content", "tool_calls": [{"id", "name", "arguments"}],
+        "raw_message" (this backend's own shape, to feed back in a follow-up call), "usage"}.
+        The one method OllamaLLM overrides.
 
-        Always streamed: each piece of the answer goes to `on_text` as it's
-        written (her replies are spoken sentence by sentence, see reply.py), each
-        piece of thinking (LM Studio streams it as `reasoning_content`) calls
-        `on_thinking`, and once `cancelled()` turns true the stream is closed -- which stops the
-        model too (checked live on LM Studio), not just discards its result.
+        Streamed: each piece of the answer goes to `on_text`, each piece of thinking calls
+        `on_thinking`, and once `cancelled()` is true the stream is closed, which stops the
+        model too.
         """
         kwargs = {
             "model": self._model,
@@ -972,8 +806,7 @@ class LocalLLM(ChatBackend):
             if extra:
                 kwargs["extra_body"] = extra
         if no_thinking and self._reasoning_effort_supported:
-            # See _complete's no_thinking. A server that rejects the parameter gets
-            # the call again without it, and is never sent it again.
+            # A server that rejects the parameter gets the call again without it, and never again.
             try:
                 stream = self._client.chat.completions.create(**kwargs, reasoning_effort="none")
             except BadRequestError:
@@ -1026,9 +859,7 @@ class LocalLLM(ChatBackend):
             "usage": {
                 "prompt": getattr(usage, "prompt_tokens", None),
                 "completion": getattr(usage, "completion_tokens", None),
-                # How much of the reply went to thinking (LM Studio reports it;
-                # the debug log shows it, so a slow reply that was mostly
-                # thinking can be told apart from a long answer).
+                # How much went to thinking (LM Studio reports it), for the debug log.
                 "reasoning": getattr(getattr(usage, "completion_tokens_details", None), "reasoning_tokens", None),
             },
         }
@@ -1045,28 +876,14 @@ class LocalLLM(ChatBackend):
         cancelled: Callable[[], bool] | None = None,
         on_thinking: Callable[[], None] | None = None,
     ) -> str:
-        """Runs _complete_raw once, or -- while `tools` is given and the
-        model actually asks to use one -- repeatedly: appends the
-        assistant's own tool-call turn plus each tool's result, then calls
-        again, until a plain text answer comes back or
-        MAX_TOOL_ITERATIONS is hit (treated the same as any other empty
-        reply -- reply.py's reply_to already sends no_reply for that).
-        `messages` itself is never mutated -- the loop works on its own
-        copy, so a tool-calling detour never pollutes what reply() ends up
-        appending to self._history (only the clean final text does).
+        """_complete_raw, looping while the model calls tools: each tool's result is added
+        and it's asked again, until a plain answer or MAX_TOOL_ITERATIONS (then ""). Works
+        on a copy, so tool calls never reach her history.
 
-        `into`, when given, collects the token usage and whether a web search
-        ran (see Reply).
-
-        no_thinking asks a reasoning model to skip its thinking pass -- for the
-        short background JSON calls (memory/question/lesson proposals), never
-        her replies. Measured on the live Qwen model: a memory proposal spent its
-        whole 2000-token budget thinking and returned nothing after ~93 s; with
-        thinking off it answered correctly in ~2 s.
-
-        sampling is her sampling profile (brain/sampling.py) -- passed only by
-        reply(), so the background calls keep the server's own settings.
-        on_text/cancelled/on_thinking are _complete_raw's, for her replies only.
+        `into` collects token usage and whether a web search ran. no_thinking skips a
+        reasoning model's thinking -- for the background calls, never her replies (a memory
+        proposal thought for ~93 s and returned nothing; without thinking, ~2 s). sampling
+        is her sampling profile, for her replies only.
         """
         working = list(messages)
         for _ in range(MAX_TOOL_ITERATIONS):
@@ -1090,89 +907,51 @@ class LocalLLM(ChatBackend):
         return ""
 
     def set_persona(self, persona_md: str) -> None:
-        """Sets the active role-play profile (freeform markdown -- character
-        and scenario combined, not separate fields; see brain/profiles.py),
-        folded into the system prompt for every reply from here on. Resets
-        conversation history -- continuing an old exchange under a brand
-        new role-play premise would just be incoherent, so a persona
-        change starts the conversation fresh.
-        """
+        """A new role-play profile (brain/profiles.py) -- a new premise starts a fresh conversation."""
         self._persona = persona_md.strip()
         self._history.clear()
         self._history_changed()
 
     def set_soul(self, soul_md: str) -> None:
-        """Sets the active soul (who Glitch is + example dialogue,
-        combined; see brain/souls.py) -- replaces DEFAULT_PERSONALITY
-        rather than adding to it, since a soul redefines who she is
-        rather than layering onto the default. Resets conversation
-        history for the same reason set_persona does: continuing an old
-        exchange as a different character would be incoherent.
-        """
+        """A different soul (brain/souls.py), in place of DEFAULT_PERSONALITY -- a different
+        character starts a fresh conversation."""
         self._soul = soul_md.strip()
         self._history.clear()
         self._history_changed()
 
     def update_persona(self, persona_md: str) -> None:
-        """Like set_persona but keeps the conversation -- used when role-play is
-        toggled, where main.py restores the right saved conversation itself.
-        """
+        """set_persona keeping the conversation -- role-play toggling restores its own."""
         self._persona = persona_md.strip()
 
     def update_soul(self, soul_md: str) -> None:
-        """An edit to the soul she already has (the Settings editor) -- unlike
-        set_soul, keeps the conversation: it's still her, and saving a tweak
-        mid-chat used to wipe everything she'd just been told.
-        """
+        """An edit to the soul she has (Settings): still her, so the conversation stays."""
         self._soul = soul_md.strip()
 
     def set_memory(self, memory_block: str) -> None:
-        """Sets what Glitch remembers about the real user (brain/memory.py --
-        her own native memory, never touched by the Hermes harness). Unlike
-        set_persona/set_soul, this deliberately does NOT clear _history: a
-        newly-learned fact is additive context picked up mid-conversation,
-        not an identity change, and nuking the conversation every time a
-        fact gets extracted would defeat the point of extracting it live.
-        """
+        """Her memories recalled for this turn (brain/memory.py). Like the setters below, it
+        keeps the conversation -- it adds context, it doesn't change who she is."""
         self._memory = memory_block.strip()
 
     def set_user_info(self, user_info: str) -> None:
-        """Sets what the user wrote about themselves (brain/profiles.py's main
-        user.md -- their own file, not a role-play profile). Like set_lessons,
-        deliberately does NOT clear _history: it's additive context, not an
-        identity change. Set fresh every turn by reply.py's reply_to, and ""
-        during role-play.
-        """
+        """What the user wrote about themselves (user.md); "" during role-play."""
         self._user_info = user_info.strip()
 
     def set_lessons(self, lessons_block: str) -> None:
-        """Sets what she's learned about how the user wants her to behave
-        (brain/lessons.py). Like set_memory, deliberately does NOT clear
-        _history -- a lesson is additive context, not an identity change.
-        """
+        """What she's learned about how the user wants her to behave (brain/lessons.py)."""
         self._lessons = lessons_block.strip()
 
     def set_curiosity(self, curiosity_block: str) -> None:
-        """Sets this turn's curiosity guidance (brain/curiosity.py). Like
-        set_lessons, deliberately does NOT clear _history -- additive context.
-        Set fresh every turn by reply.py's reply_to, and "" during role-play.
-        """
+        """This turn's curiosity guidance (brain/curiosity.py); "" during role-play."""
         self._curiosity = curiosity_block.strip()
 
     def set_sampling(self, values: dict) -> None:
-        """Sets the sampling settings for her replies (brain/sampling.py's
-        active profile). Set fresh every turn by reply.py's reply_to, so a
-        profile switched in Settings applies from the very next reply. Doesn't
-        touch _history: these change how words are picked, not the prompt.
-        """
+        """Her sampling profile's settings (brain/sampling.py), set before every reply."""
         self._sampling = dict(values or {})
 
     def propose_memories(self, log: str, known: str, name: str, pronouns: tuple[str, str]) -> str:
-        """Training mode, once a night (journal.py): the day's chat log in, her raw
-        answer out -- a JSON list of short memories (_MEMORY_PROPOSAL_SYSTEM_PROMPT) for
-        training.parse_facts to validate. `known` is what she already remembers plus what
-        is waiting for review. Separate from _history/_system_prompt, like write_diary.
-        """
+        """Training mode, once a night: the day's chat log in, a JSON list of short memories
+        out (raw, for training.parse_facts). `known` is what she remembers plus what's
+        waiting for review."""
         system = _MEMORY_PROPOSAL_SYSTEM_PROMPT.format(name=name, most=MAX_MEMORY_PROPOSALS, his=pronouns[0], he=pronouns[1])
         messages = [
             {"role": "system", "content": system},
@@ -1256,22 +1035,16 @@ class LocalLLM(ChatBackend):
         return self._complete(messages, MAX_DIARY_TOKENS, no_thinking=True)
 
     def propose_question(self, user_text: str, reply_text: str, known: str, asked: list[str]) -> str:
-        """Asks the model for one thing she could be curious about after this
-        exchange -- returns its raw answer (JSON, see _QUESTION_SYSTEM_PROMPT)
-        for curiosity.parse_question to validate. `known` is everything she
-        already has on the user this turn (user.md + recalled memories), `asked`
-        every question already kept, open or closed. Separate from
-        _history/_system_prompt, same as maybe_extract_memory.
-        """
+        """One thing she could be curious about after this exchange -- raw JSON for
+        curiosity.parse_question. `known`: user.md plus recalled memories; `asked`: every
+        question already kept."""
         asked_block = "\n".join(f"- {q}" for q in asked) or "(none)"
         messages = [
             {"role": "system", "content": _QUESTION_SYSTEM_PROMPT},
             {
                 "role": "user",
                 "content": (
-                    # Who's who, spelled out: her memories are in her voice ("I" = Glitch),
-                    # and without saying so this call read them as the user's -- her
-                    # "high-impact support for jogging" came back as "your runs".
+                    # Spelled out: otherwise her "I" memories were read as the user's.
                     f"What is already known (the user's own description, then Glitch's memories -- in "
                     f"those, 'I' is Glitch, not the user):\n{known or '(nothing yet)'}\n\n"
                     f"Questions already kept (do not repeat or rephrase):\n{asked_block}\n\n"
@@ -1290,11 +1063,7 @@ class LocalLLM(ChatBackend):
         lessons: list[str],
         candidates: list[str],
     ) -> str:
-        """Asks the model what, if anything, one rated exchange teaches --
-        returns its raw answer (a JSON object, see _LESSON_SYSTEM_PROMPT),
-        for lessons.parse_distillation to validate. Separate from
-        _history/_system_prompt, same as maybe_extract_memory.
-        """
+        """What, if anything, one rated exchange teaches -- raw JSON for lessons.parse_distillation."""
         lesson_block = "\n".join(f"[{i}] {text}" for i, text in enumerate(lessons, 1)) or "(none yet)"
         candidate_block = "\n".join(f"[{i}] {text}" for i, text in enumerate(candidates, 1)) or "(none)"
         verdict = "THUMBS UP (the user liked this reply)" if rating == "up" else "THUMBS DOWN (the user disliked this reply)"
@@ -1314,12 +1083,9 @@ class LocalLLM(ChatBackend):
         return self._complete(messages, MAX_LESSON_TOKENS, no_thinking=True)
 
     def _system_prompt(self) -> str:
-        """Only what rarely changes. A local model reuses its work on an unchanged
-        start of the prompt, and the conversation history comes right after this --
-        so anything here that changed every turn made it reread the whole
-        conversation every turn. Measured on the live model with 60 messages: 19 s
-        when the top changed, 1.2-1.7 s when it didn't. The per-turn parts (recalled
-        memories, the curiosity nudge, the clock) go in _turn_notes instead.
+        """Only what rarely changes: the model reuses its work on an unchanged start of the
+        prompt, and a change here rereads the whole conversation (19 s vs ~1.5 s at 60
+        messages). What changes each turn goes in _turn_notes.
         """
         personality = self._soul or DEFAULT_PERSONALITY
         parts = [personality, IDENTITY_INSTRUCTION, MOOD_TAG_INSTRUCTION, HONESTY_INSTRUCTION]
@@ -1331,8 +1097,7 @@ class LocalLLM(ChatBackend):
         if self._left_off:  # changes only when a chat is cleared, so it stays up here with the rest
             parts.append(f"Where you two left off last time -- your own note from then:\n{self._left_off}")
         if self._lessons:
-            # After the soul on purpose: these are the user's own stated
-            # preferences, and should win over her default habits.
+            # After the soul: his stated preferences win over her default habits.
             parts.append(
                 "How this user wants you to behave (learned from their feedback -- follow these "
                 f"over your default habits):\n{self._lessons}"
@@ -1345,14 +1110,9 @@ class LocalLLM(ChatBackend):
         return "\n\n".join(parts)
 
     def _turn_notes(self) -> str:
-        """This turn's changing context -- recalled memories, the curiosity nudge,
-        the current time -- or "" when there's none. Attached to the newest user
-        message for this one request only (see reply()), never stored in history,
-        and clearly marked as not written by the user: the model's chat template
-        refuses a second system message ("System message must be at the
-        beginning"), and in live tests she used the notes and kept straight what
-        came from them versus what the user said. The clock is real-world time, so
-        it's left out during role-play, same as her memory.
+        """This turn's changing context (memories, curiosity, the time...), or "". Attached
+        to the newest user message for this request only, marked as not written by him --
+        the chat template refuses a second system message. No clock in role-play.
         """
         parts = []
         if self._memory:
@@ -1366,9 +1126,8 @@ class LocalLLM(ChatBackend):
             parts.append(_current_time_line())
             if since := self._since_last_message():
                 parts.append(since)
-            # Her diary only as a conversation opens: in every prompt, one detail of it (a
-            # hoodie's texture, 2026-10-07) came back all day. Here, not in the system prompt,
-            # so the start of the prompt the server has cached never changes.
+            # Her diary only as a conversation opens -- in every prompt, one detail of it came
+            # back all day.
             if self._journal and self._opens_a_sitting():
                 parts.append(f"{JOURNAL_HEADER}\n{self._journal}")
         latest = self._history[-1]["content"] if self._history else ""
@@ -1426,20 +1185,10 @@ class LocalLLM(ChatBackend):
         on_text: Callable[[str], None] | None = None,
         on_thinking: Callable[[], None] | None = None,
     ) -> Reply:
-        """Answers the user's message. The reply's text has the mood tag
-        stripped out (never shown/spoken); its mood is one of VALID_MOODS.
-        on_text gets the raw reply as it streams in (reply.py speaks it by the sentence).
-
-        image_b64, when given (a camera/desktop snapshot -- see reply.py's
-        reply_to), turns this turn's content into the standard OpenAI
-        multimodal list, so any vision-capable model behind this endpoint sees
-        it. There's no "does this engine support vision" flag: an endpoint that
-        can't handle images fails the way a bad model string does (caught by
-        _reply_to, surfaced as a speak_text stand-in).
-
-        web_search_enabled offers WEB_SEARCH_TOOL for this call only -- whether
-        the model uses it is its own call; an endpoint without tool support just
-        never does.
+        """Answers his message: text without the mood tag, and the mood. on_text gets the
+        raw reply as it streams. A picture (image_b64) goes as the OpenAI multimodal list --
+        a model without vision fails like a bad model name. web_search_enabled offers
+        WEB_SEARCH_TOOL.
         """
         now = _now()
         content = self._mark_gap(_image_content(user_text, image_b64, image_mime), now)
@@ -1450,9 +1199,7 @@ class LocalLLM(ChatBackend):
             self._history_changed()  # the user's own turn stays (see cancel_reply)
             return Reply(trimmed=result.trimmed)  # cancelled while in flight -- discarded, never reaches _history
         if not result.text.strip():
-            # Still nothing: leave the user's turn and store no empty "reply" --
-            # a blank turn from her would sit in the conversation (and survive
-            # restarts), and a model reads it as her ignoring them.
+            # No empty turn from her: a model reads one as her ignoring him.
             self._history_changed()
             return result
         # Stored without the mood tag -- the system prompt alone keeps the model tagging.
@@ -1468,12 +1215,8 @@ class LocalLLM(ChatBackend):
         on_text: Callable[[str], None] | None = None,
         on_thinking: Callable[[], None] | None = None,
     ) -> bool:
-        """Fills result.text/mood from the model. If thinking used up the whole
-        budget and left no answer -- this model sometimes keeps re-checking her
-        soul's rules until it runs out (seen live: 8,000 tokens, 7 minutes,
-        nothing) -- it answers once more with thinking off. Her normal replies
-        still think. False if the reply was cancelled or the chat cleared meanwhile
-        -- which also stops the model mid-stream.
+        """Fills result.text/mood. If thinking used the whole budget and left no answer, it
+        answers once more with thinking off. False if cancelled or cleared meanwhile.
         """
         generation = self._reply_generation
         cancelled = lambda: generation != self._reply_generation  # noqa: E731
@@ -1533,12 +1276,9 @@ class LocalLLM(ChatBackend):
             return "unknown"
 
     def reach_out(self, question: str | None = None) -> Reply:
-        """She speaks first -- nothing new from the user for a while (reach_out.py's
-        _reach_out_loop). The instruction goes in as an app note after the
-        conversation (the model needs a final user turn) and isn't kept: only her
-        message is added to _history, right after her last reply. Two of her turns
-        in a row is fine for this model's chat template (checked live), and she
-        knows afterwards what she asked.
+        """She speaks first after a quiet spell (reach_out.py). The instruction goes in as
+        an app note after the conversation (the model needs a final user turn) and isn't
+        kept: only her message joins _history, so she knows afterwards what she asked.
         """
         hint = (
             f'If it fits, bring up something you\'ve wondered about: "{question}" -- in your own words. '
@@ -1561,9 +1301,7 @@ class LocalLLM(ChatBackend):
         return result
 
     def clear_history(self) -> None:
-        """Starts a fresh conversation (the Clear Chat button). Her soul, memory
-        and everything else stay as they are. A reply still in flight is
-        discarded (same as cancel_reply), not added to the new conversation."""
+        """Clear Chat: a fresh conversation; a reply in flight is discarded."""
         self._reply_generation += 1
         self._history.clear()
         self._history_changed()
@@ -1584,12 +1322,9 @@ class LocalLLM(ChatBackend):
         return max(HISTORY_MIN_TOKENS, int(window * HISTORY_CONTEXT_FRACTION))
 
     def _trim_history(self) -> dict | None:
-        """Keeps the conversation within history_budget(). Past it, drops the
-        oldest messages in one go down to HISTORY_TRIM_TO_FRACTION of the budget
-        (see its comment for why in one go), always starting on one of the
-        user's messages. The newest message is always kept. Returns what was
-        dropped, for the debug log -- so "she forgot" can be told apart from
-        "it was trimmed away" -- or None.
+        """Keeps the conversation within history_budget(): past it, drops the oldest messages
+        in one go down to HISTORY_TRIM_TO_FRACTION, starting on one of his messages and
+        always keeping the newest. Returns what was dropped (for the debug log), or None.
         """
         sizes = [_estimate_tokens(m) for m in self._history]
         budget = self.history_budget()
@@ -1606,15 +1341,11 @@ class LocalLLM(ChatBackend):
         return {"dropped": cut, "kept": len(self._history), "budget": budget} if cut else None
 
     def restore_history(self, messages: list[dict]) -> None:
-        """Puts back a saved conversation (brain/conversation.py) -- at startup, or
-        when the LLM engine is switched. Capped the same way reply() caps it.
-        """
+        """Puts back a saved conversation (brain/conversation.py)."""
         self._history[:] = list(messages)[-MAX_HISTORY_MESSAGES:]  # the token trim runs on the next reply
 
     def _history_changed(self) -> None:
-        """Tells whoever is listening (engines.build_llm saves it to disk) that _history
-        changed. Never lets a failure there break a reply.
-        """
+        """Lets engines.build_llm save the conversation; a failure there never breaks a reply."""
         if self._on_history_change is None:
             return
         try:
@@ -1638,25 +1369,10 @@ class LocalLLM(ChatBackend):
         self._history_changed()
 
     def pop_last_exchange(self) -> tuple[str, str | None, str] | None:
-        """Removes the user's latest message and everything after it, and returns
-        that message, or None if he hasn't said anything.
-
-        After it there's usually her reply; nothing, when the request failed
-        (reply() appends the user turn *before* calling _complete); or her reply
-        and her reaching out after it. Leaving any of that in place would mean
-        the next reply() piles a second copy of his message on top -- he'd seem
-        to be repeating himself, the problem this method exists to avoid.
-
-        Used by reply.py's regenerate_last: popping first means the
-        follow-up reply() call this feeds into starts from the exact same
-        state as the original attempt, rather than piling another user
-        turn on top of a stale one -- which is what simply resending the
-        same text as a brand new message would do.
-
-        Returns (text, image_b64, image_mime): a picture still in memory goes
-        back with it. One kept only as its "[picture]" note (a conversation
-        restored after a restart) can't, so the note tells her to ask for it
-        again -- answered blind, she made up what it showed (seen live).
+        """Removes his latest message and everything after it (her reply, a reach-out),
+        so regenerating or editing it doesn't repeat it. Returns (text, image_b64,
+        image_mime), or None if he hasn't said anything. A picture lost to a restart can't
+        go back, so the text tells her to ask for it -- answered blind, she made it up.
         """
         users = [i for i, m in enumerate(self._history) if m.get("role") == "user"]
         if not users:
@@ -1676,20 +1392,9 @@ class LocalLLM(ChatBackend):
         return text, None, "image/jpeg"
 
     def maybe_extract_memory(self, user_text: str, reply_text: str, existing_entries: list[str]) -> str | None:
-        """The "local" memory provider's own extraction step (memory.py) --
-        one extra lightweight chat.completions.create call, entirely
-        separate from self._history/self._system_prompt, that looks at a
-        single already-completed exchange and returns a new durable fact
-        as a short phrase, or None if nothing new/durable came up.
-        Deliberately not a method on HarnessLLM: main.py only ever calls
-        this after confirming brain.llm is a LocalLLM, so Hermes's own
-        memory (see brain/harness.py) is never touched by this at all.
-
-        Reuses self._client/self._model -- same endpoint the real
-        conversation already uses, no separate engine config needed.
-        Existing entries are included so the model can judge novelty
-        instead of re-proposing something already remembered.
-        """
+        """The local memory provider's extraction (memory.py): one new durable fact from an
+        exchange, as a short phrase, or None. Given what's already remembered, to judge
+        what's new."""
         existing_block = "\n".join(f"- {e}" for e in existing_entries) or "(none yet)"
         messages = [
             {"role": "system", "content": _MEMORY_EXTRACT_SYSTEM_PROMPT},
@@ -1719,18 +1424,8 @@ def _estimate_tokens(message: dict) -> int:
 
 
 def _to_ollama_message(message: dict) -> dict:
-    """Translates one message's `content` from the OpenAI multimodal list
-    shape (LocalLLM.reply()'s image_b64 path -- `content: [{"type": "text",
-    ...}, {"type": "image_url", ...}]`) into Ollama's native /api/chat shape,
-    where `content` must always be a plain string and image data goes in a
-    separate `images` list of bare base64 (no `data:<mime>;base64,` prefix).
-    Confirmed live: sending the OpenAI list shape straight through 400s --
-    Ollama's schema rejects a non-string `content` outright. A plain-string
-    `content` (every text-only turn, still the overwhelming majority) passes
-    through unchanged. Applied per-message in _complete rather than at the
-    point content is built, so past image turns already sitting in history
-    get translated on every later call too, not just the turn that sent them.
-    """
+    """A picture turn in Ollama's /api/chat shape: `content` a plain string, the image as
+    bare base64 in `images` (it rejects the OpenAI list). Text turns pass through."""
     content = message.get("content")
     if not isinstance(content, list):
         return message
@@ -1749,20 +1444,8 @@ def _to_ollama_message(message: dict) -> dict:
 
 
 class OllamaLLM(LocalLLM):
-    """Same persona/soul/memory/history system as LocalLLM (all inherited
-    unchanged -- reply(), maybe_extract_memory(), set_persona() etc. don't
-    need to know or care which backend _complete_raw() actually talks to).
-    Only __init__ and _complete_raw differ: this talks to Ollama's *native*
-    /api/chat instead of an OpenAI-compatible endpoint.
-
-    That distinction is load-bearing, not stylistic -- confirmed via a
-    direct side-by-side probe against this same model: Ollama's
-    OpenAI-compatible /v1/chat/completions silently ignores `think: false`
-    (reasoning still runs every time), while /api/chat honors it exactly.
-    Reasoning-heavy local models otherwise hit the same "thinks herself to
-    death" problem LM Studio's models do (see MAX_REPLY_TOKENS's comment)
-    -- this is what makes disabling it actually reliable instead of the
-    budget-cap/`/no_think`-prompt workarounds that setup needs.
+    """LocalLLM over Ollama's native /api/chat -- its OpenAI-compatible endpoint ignores
+    `think: false`, this one honors it. Everything but the connection is inherited.
     """
 
     def __init__(
@@ -1773,9 +1456,7 @@ class OllamaLLM(LocalLLM):
         think: bool = False,
         on_history_change: Callable[[list[dict]], None] | None = None,
     ) -> None:
-        # No OpenAI client here on purpose -- endpoint is Ollama's own base
-        # URL (e.g. http://localhost:11434), not an OpenAI-compatible /v1
-        # one, so this talks to it directly over plain HTTP instead.
+        # Ollama's own base URL (e.g. http://localhost:11434), no /v1.
         self._http = httpx.Client(base_url=endpoint.rstrip("/"), timeout=REQUEST_TIMEOUT_SEC)
         self._model = model or ""
         self._think = think
@@ -1827,20 +1508,12 @@ class OllamaLLM(LocalLLM):
             "think": think,
             "stream": False,
             "keep_alive": OLLAMA_KEEP_ALIVE,
-            # Ollama's own generation-parameter shape -- num_predict is
-            # its equivalent of max_tokens, nested under `options`
-            # rather than top-level like the OpenAI-compatible API.
             "options": {"num_predict": max_tokens},
         }
         if sampling:
-            # Ollama's option names match brain/sampling.py's keys exactly
-            # (temperature, top_p, top_k, min_p, presence_penalty, repeat_penalty).
+            # Ollama's option names match brain/sampling.py's keys.
             payload["options"].update(sampling)
         if tools:
-            # Same OpenAI-shaped tool definitions as the LocalLLM path --
-            # Ollama's native /api/chat accepts them verbatim, confirmed
-            # live, no translation needed the way image content needed
-            # _to_ollama_message.
             payload["tools"] = tools
         response = self._http.post("/api/chat", json=payload)
         response.raise_for_status()
@@ -1849,11 +1522,7 @@ class OllamaLLM(LocalLLM):
         tool_calls = []
         for i, call in enumerate(message.get("tool_calls") or []):
             function = call.get("function") or {}
-            # Unlike OpenAI, Ollama's native tool_calls carry `arguments`
-            # already as a dict, not a JSON-encoded string -- and no call
-            # id at all, so one is synthesized here (only needs to be
-            # unique within this one response, to pair each tool result
-            # message back up with the call that asked for it).
+            # Ollama's arguments are already a dict, and it gives no call id.
             tool_calls.append({"id": f"call_{i}", "name": function.get("name", ""), "arguments": function.get("arguments") or {}})
         return {
             "content": _reply_content(message.get("content")),
@@ -1864,20 +1533,11 @@ class OllamaLLM(LocalLLM):
 
 
 class HarnessLLM(ChatBackend):
-    """Delegates entirely to an external agent harness (brain/harness.py) --
-    anything with an OpenAI-compatible /v1/chat/completions, e.g. Hermes Agent
-    (https://github.com/NousResearch/hermes-agent) or OpenClaw's gateway
-    (https://docs.openclaw.ai/gateway/openai-http-api) -- instead of this app's
-    own persona/soul/profile/history system. When this is active, the
-    harness's own agent/session config *is* Glitch's entire personality --
-    Brain becomes a thin relay, not a second source of "who she is", so unlike
-    LocalLLM this sends no system prompt and keeps no conversation history of
-    its own (the harness owns that).
-
-    Replies still go through the same [mood: ...] tag convention
-    (_extract_mood), so facial expressions keep working if the harness's own
-    Glitch persona has been set up to include the tag, and fall back to
-    "neutral" otherwise.
+    """Relays to an external agent harness (brain/harness.py) with an OpenAI-compatible
+    /v1/chat/completions -- Hermes Agent (https://github.com/NousResearch/hermes-agent) or
+    OpenClaw's gateway (https://docs.openclaw.ai/gateway/openai-http-api). The harness owns
+    her personality and conversation: no system prompt, no history here. A [mood: ...] tag
+    in its replies still sets her face.
     """
 
     def __init__(
@@ -1892,15 +1552,11 @@ class HarnessLLM(ChatBackend):
         self._client = OpenAI(
             base_url=endpoint, api_key=api_key or "not-needed", timeout=REQUEST_TIMEOUT_SEC, max_retries=0
         )
-        self._model = model or ""  # see LocalLLM.__init__'s comment -- None serializes to a literal JSON null
+        self._model = model or ""  # see LocalLLM.__init__
         self.name = name  # which saved harness this is
-        # Which conversation this is (brain/harness.py's session_id), so the
-        # harness continues the same conversation instead of starting a new one
-        # for every message. Harnesses are told in whichever way they listen:
-        # OpenAI's standard `user` field (OpenClaw derives a stable session from
-        # it), and Hermes's X-Hermes-Session-Id header -- which Hermes refuses
-        # without an API key, so that header is only sent when there is one. A
-        # harness ignores whichever of the two it doesn't know.
+        # The harness conversation to continue, sent both ways a harness listens: OpenAI's
+        # `user` field (OpenClaw) and Hermes's X-Hermes-Session-Id header, which Hermes
+        # refuses without an API key.
         self.session_id = session_id
         self._session_header = bool(api_key)
         self._new_session = new_session
@@ -1919,13 +1575,7 @@ class HarnessLLM(ChatBackend):
         on_text: Callable[[str], None] | None = None,
         on_thinking: Callable[[], None] | None = None,
     ) -> Reply:
-        # web_search_enabled is deliberately unused -- a harness has its own tools
-        # (e.g. Hermes's own web search) when it's active. Same MAX_REPLY_TOKENS
-        # cap as LocalLLM.reply: a runaway generation is as much of a hang either
-        # way. If a harness turns out to need more room for its own multi-step
-        # reasoning within one completion, this is the first place to revisit.
-        # Whether the harness is vision-capable is between it and its model --
-        # a picture is passed through the same way LocalLLM sends one.
+        # web_search_enabled is unused: a harness has its own tools.
         response = self._client.chat.completions.create(
             model=self._model,
             messages=[{"role": "user", "content": _image_content(user_text, image_b64, image_mime)}],
@@ -1945,12 +1595,7 @@ class HarnessLLM(ChatBackend):
 
 
 class NoneLLM(ChatBackend):
-    """Placeholder used when genuinely no LLM is configured -- a fresh install
-    with no saved engine chosen yet via Settings (llm_engines.py's NONE_NAME). reply() always
-    returns the same honest line instead of crashing or silently doing nothing
-    -- someone opening the Renderer for the first time should see *why*
-    nothing's happening without reading code to find out.
-    """
+    """No LLM engine chosen yet (a fresh install): every reply says so."""
 
     def reply(
         self,

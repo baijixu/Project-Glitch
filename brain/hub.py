@@ -14,38 +14,18 @@ import protocol
 from llm import ChatBackend
 from voice import FasterWhisperSTT, NoneTTS, RemoteTTS
 
-# Defense-in-depth cap on the free-text fields saved to disk (profile
-# content, soul description/examples, engine name/endpoint/model/api_key --
-# NOT the VRM binary itself, which has its own much larger, deliberate
-# max_size on websockets.serve below). An authenticated client is already
-# trusted with real control over Glitch, but there's no reason a name or
-# endpoint string needs to be more than this to be useful, and without a
-# cap a compromised/buggy client could wedge Brain by writing an
-# arbitrarily large file per save (disk fill) or handing an arbitrarily
-# large string to the LLM's system prompt every turn (memory/latency).
-# 100k chars is far beyond any real profile/soul/engine field while still
-# bounding the damage from a single message.
+# Cap on the free-text fields saved to disk (profiles, souls, engine settings -- not
+# avatar files, which have their own limit): a buggy or hostile client can't fill the
+# disk or bloat her prompt. Far beyond any real field.
 MAX_TEXT_FIELD_LENGTH = 100_000
 
 
-# Which currently-open connections have turned on the Renderer's
-# Debugging toggle (set_debug_active) -- a plain set of live
-# ServerConnection objects, not a per-Brain flag, since debugging is a
-# per-device setting (one phone debugging shouldn't spam debug_event
-# messages at a laptop that hasn't asked for them). Membership is added
-# by debugging._set_debug_active and removed both there and in
-# handle_renderer's finally block (a closed connection left in here would
-# just be a dead reference debug_log's own send would silently fail
-# against anyway, but there's no reason to let it accumulate for the life
-# of the process).
+# The connections with the Debugging toggle on -- per device, so one debugging phone
+# doesn't flood a laptop with debug_events.
 DEBUG_CONNECTIONS: set[websockets.ServerConnection] = set()
 
 
-# Every currently-open Renderer connection, unconditionally (unlike
-# DEBUG_CONNECTIONS, which is opt-in per device) -- exists so
-# _harness_health_loop can broadcast to all of them, not just whichever
-# one happened to ask. Added/removed in handle_renderer, same lifecycle
-# as DEBUG_CONNECTIONS.
+# Every open Renderer connection (added and removed in handle_renderer), for broadcast.
 RENDERER_CONNECTIONS: set[websockets.ServerConnection] = set()
 
 
@@ -73,10 +53,8 @@ def device_label(websocket: websockets.ServerConnection) -> str:
     return f"{name} via {'home network' if address.is_private else 'the internet'} ({ip})"
 
 
-# Strong references to every fire-and-forget task (see spawn). asyncio's own
-# event loop only keeps a weak reference to a task, so a task nobody holds can be
-# garbage-collected partway through -- the lessons refresh, memory saving and
-# even the health-check loop used to be started that way.
+# Strong references to every fire-and-forget task (see spawn): asyncio only keeps a weak
+# one, so a task nobody holds can be garbage-collected partway through.
 _BACKGROUND_TASKS: set[asyncio.Task] = set()
 
 
@@ -111,14 +89,9 @@ async def send(websocket: websockets.ServerConnection, message: dict) -> None:
 
 
 async def broadcast(message: dict, skip: websockets.ServerConnection | None = None) -> None:
-    """Sends one message to every currently-connected Renderer. Used for
-    anything that's shared state rather than a reply to one device: health
-    lights, and every list or selection a device can change (profiles, souls,
-    speech/LLM engines, harnesses, role-play) -- otherwise a phone and a PC
-    connected at once each kept showing their own stale lists until they
-    reconnected. A device that has just dropped is skipped (its send fails and
-    is ignored; handle_renderer removes it from RENDERER_CONNECTIONS). `skip`: the device
-    that already has it.
+    """Sends one message to every connected Renderer -- for shared state (lists,
+    selections, switches, health lights), so every device shows the same. A device
+    that just dropped is skipped. `skip`: the device that already has it.
     """
     encoded = json.dumps(message)
     for websocket in list(RENDERER_CONNECTIONS - {skip}):
@@ -129,20 +102,13 @@ async def broadcast(message: dict, skip: websockets.ServerConnection | None = No
 
 
 def fields_too_long(*values: str) -> bool:
-    """True if any of the given field values exceeds MAX_TEXT_FIELD_LENGTH.
-    Checked before every save_* handler writes anything to disk.
-    """
+    """True if any value exceeds MAX_TEXT_FIELD_LENGTH (checked before every save)."""
     return any(len(v) > MAX_TEXT_FIELD_LENGTH for v in values)
 
 
 async def debug_log(websocket: websockets.ServerConnection, category: str, message: str, ms: float | None = None) -> None:
-    """No-op unless this specific connection has debugging turned on.
-    Deliberately never raises -- a debug send racing a connection that
-    just closed (or any other transient send failure) must never take
-    down the real request it's describing, since this is purely
-    diagnostic and the caller's actual work is already done by the time
-    this runs.
-    """
+    """No-op unless this connection has debugging on. Never raises: a diagnostic
+    must not take down the request it describes."""
     if websocket not in DEBUG_CONNECTIONS:
         return
     try:
@@ -161,30 +127,17 @@ async def debug_broadcast(category: str, message: str, ms: float | None = None) 
 
 
 class Brain:
-    """Everything the WebSocket handler needs to answer a message: the
-    active LLM/TTS/STT engines. Exactly one Brain instance is created in
-    main() and shared by every simultaneous Renderer connection (each
-    connection gets its own handle_renderer() task, but they all close
-    over this same object) -- there is no per-connection state. That
-    means two devices connected at once share one conversation history,
-    one active persona/soul, and one TTS/LLM engine: a message from
-    either shows up in both, and switching engines or loading a
-    profile/soul from one affects what the other sees too. Fine for this
-    app's actual use (one person, one Glitch, occasionally two tabs open
-    on the same machine) but worth knowing before assuming connections
-    are isolated the way separate browser tabs usually imply.
+    """The active LLM/TTS/STT engines. One Brain, shared by every connected device:
+    one conversation, one soul, one set of engines -- a change from one device
+    applies to all of them.
     """
 
     def __init__(self, llm: ChatBackend, tts: RemoteTTS | NoneTTS, stt: FasterWhisperSTT) -> None:
         self.llm = llm
         self.tts = tts
         self.stt = stt
-        # One reply at a time, across every connected device. She has one shared
-        # conversation, and reply() appends to it before and after the model call
-        # -- two replies running at once (two devices sending together)
-        # interleaved as user, user, her, her and could pair answers with the
-        # wrong questions. A second message waits for the first reply to finish
-        # (server._run_reply_message), and so does her reaching out.
+        # One model job at a time, across every device: two replies at once would
+        # interleave her one conversation and pair answers with the wrong questions.
         self.reply_lock = asyncio.Lock()
         # She's been talked over (speech_interrupted, or a new message): the rest of
         # the reply she's voicing goes unsaid. Reset as each reply starts (reply.py).
@@ -197,14 +150,11 @@ _LOOPBACK_ADDRESSES = frozenset({"127.0.0.1", "::1", "::ffff:127.0.0.1"})
 def auth_ip(websocket: websockets.ServerConnection) -> str:
     """Which device a connection is, for the failed-login lockout.
 
-    Brain listens on this PC only, so every device reaches it through the
-    Renderer's Vite proxy -- and to Brain they would all look like 127.0.0.1.
-    One stale tab with an old token would then lock out *every* device. Vite
-    is set to pass the real address on (vite.config.js, xfwd), appending it as
-    the LAST entry of X-Forwarded-For. Only that last entry is used -- earlier
-    ones are whatever the device itself sent, and could be made up -- and only
-    when the connection really comes from this machine (the proxy). A direct
-    connection from elsewhere is identified by its own address as before.
+    Every device reaches Brain through the Vite proxy, so they'd all look like
+    127.0.0.1 and one stale tab could lock out every device. The proxy appends the
+    real address as the LAST X-Forwarded-For entry (vite.config.js, xfwd); only
+    that entry is trusted -- earlier ones come from the device and could be made up
+    -- and only for a connection from this machine.
     """
     peer = websocket.remote_address[0] if websocket.remote_address else "unknown"
     if peer in _LOOPBACK_ADDRESSES:

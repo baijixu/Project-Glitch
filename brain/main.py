@@ -1,5 +1,4 @@
-"""Brain entry point -- hosts the WebSocket server the Renderer connects to
-(spec section 5). A message from the Renderer (the chat box, the mic, a
+"""Brain entry point -- hosts the WebSocket server the Renderer connects to. A message from the Renderer (the chat box, the mic, a
 Settings control) comes in over one WebSocket per device; replies go back the
 same way, and anything that's shared state goes to every device.
 
@@ -41,13 +40,8 @@ brain.llm.owns_conversation.
 
 import sys
 
-# The LLM is prompted to be "friendly and conversational" and routinely
-# replies with emoji -- Windows' default console codepage (cp1252) can't
-# encode those, so any print() touching raw LLM text would crash the whole
-# connection handler (confirmed: a debug print of the raw reply took down a
-# live request with UnicodeEncodeError on a party-popper emoji). Reconfigure
-# to UTF-8 with replacement so logging never crashes on content the LLM is
-# explicitly encouraged to produce.
+# Her replies have emoji, which Windows' default console codepage can't encode -- a
+# print() of one would crash the connection handler.
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
@@ -88,26 +82,16 @@ async def main() -> None:
             "renderer/.env VITE_BRAIN_AUTH_TOKEN to close this off."
         )
 
-    # Her memory backend: the active memory profile (Settings -> Memory,
-    # memory_profiles.py), or the built-in local file. An unreachable server
-    # (off, or on a machine that's asleep) must not stop Brain from starting:
-    # memory calls fail softly per turn instead.
+    # An unreachable memory server mustn't stop Brain starting: memory calls fail softly per turn.
     if problem := await learning.activate_memory():
         print(f"[brain] WARNING: {problem} Starting without it.")
 
-    # Optional, same graceful-degradation reasoning as hindsight above --
-    # config.yaml-only (not Settings-managed the way memory's Hindsight
-    # connection is), since this is just a SearXNG base URL, not a
-    # multi-field connection with its own secret worth a saved-file
-    # round trip. The Settings panel only gets the on/off toggle.
+    # Optional SearXNG URL, config.yaml only; Settings just has the on/off toggle.
     web_search_cfg = brain_cfg.get("web_search") or {}
     if web_search_cfg.get("searxng_url"):
         web_search.configure(web_search_cfg["searxng_url"], web_search_cfg.get("trusted_domains") or [])
 
-    # A harness connection (brain/harness.py) persists across restarts the
-    # same as a saved profile/soul/engine -- but the saved harness might be
-    # gone or edited since, so this falls back to her own LLM
-    # engine rather than assuming it's still good.
+    # The harness active before a restart, unless it's gone or broken since -- then her own LLM.
     active_harness_name = harness.read_active_harness()
     harness_llm = engines.build_harness_llm(active_harness_name) if active_harness_name else None
     if harness_llm is not None:
@@ -116,10 +100,6 @@ async def main() -> None:
     else:
         if active_harness_name:
             harness.set_active_harness("")
-        # engines.build_llm also primes the fresh instance with whatever profile/
-        # soul was last active (brain/profiles.py's user.md / brain/souls.py's
-        # soul.md persist across restarts) rather than starting every
-        # restart back at no persona, silently losing it.
         llm = engines.build_llm(llm_engines.read_active_engine_name())
 
     tts = engines.build_tts(tts_engines.read_active_engine_name())
@@ -127,22 +107,9 @@ async def main() -> None:
     stt = FasterWhisperSTT()
     brain = Brain(llm=llm, tts=tts, stt=stt)
 
-    # 20MB was enough for base64 TTS/STT audio, but VRM avatar files
-    # (avatars.py) routinely exceed that once base64-encoded -- the
-    # shipped default alone is ~15MB raw, ~20MB encoded. 100MB gives
-    # real headroom for larger imported avatars.
-    #
-    # ping_timeout defaults to 20s -- confirmed live via a real debug log:
-    # a hung local LLM backend (connected but never responding) left
-    # server.handle_message's `async for` loop stuck inside one long `await`
-    # (llm.reply's blocking call, run via asyncio.to_thread) for longer
-    # than that, and the library's own automatic keepalive ping/pong gave
-    # up and force-closed the connection with 1011 "keepalive ping
-    # timeout" -- well before llm.REQUEST_TIMEOUT_SEC's own
-    # timeout ever got a chance to fire and surface a proper error to the
-    # user. Set comfortably above REQUEST_TIMEOUT_SEC so a slow-or-hung
-    # LLM call gets to time out on its own terms instead of the transport
-    # silently dying underneath it first.
+    # max_size: an imported VRM avatar is ~20 MB once base64-encoded, so 100 MB leaves room.
+    # ping_timeout: above the LLM's own timeout, so a hung model call times out with a
+    # proper error instead of the keepalive closing the connection first.
     print(f"[brain] listening on ws://{host}:{port}")
     hub.spawn(health.health_check_loop())
     hub.spawn(reach_out.reach_out_loop(brain))
