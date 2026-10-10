@@ -379,7 +379,7 @@ shows up in the review list.
 
 ### Her diary
 
-Each night after 3 AM she reads the previous day's chat log and writes her own entry about it, under three headings: what
+Each night after 1 AM she reads the previous day's chat log and writes her own entry about it, under three headings: what
 stuck with her, what she'd say differently, and what she's wondering. Entries are kept by day in `brain/self/`, named for the
 day they're about. Her newest entry reaches her when a conversation opens (your first message, or the first after an hour's
 break) and when she reaches out, so she can pick up where her thoughts left off. Read them in *Settings → Chat Logs → Journal*.

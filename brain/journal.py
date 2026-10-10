@@ -24,7 +24,7 @@ import upkeep
 from hub import Brain
 
 JOURNAL_DIR = conversation.JOURNAL_LOG_DIR
-JOURNAL_HOUR = 3  # local time
+JOURNAL_HOUR = 1  # local time
 CHECK_SEC = 30 * 60
 MAX_LOG_CHARS = 100_000  # the newest part of a long day, ~25k tokens
 
