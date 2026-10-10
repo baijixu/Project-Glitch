@@ -68,8 +68,7 @@ def set_roleplay_engine(name: str) -> None:
 # While role-play has switched her to its own engine: {"previous": the engine to
 # go back to ("" = stay), "engine": the role-play engine, "think": the confirm
 # dialog's choice}. The think choice is applied when that engine is built
-# (engines.build_llm) -- never written into the engine's saved settings, which
-# role-play used to overwrite (and then force back to think=True when it ended).
+# (engines.build_llm), never written into its saved settings.
 ROLEPLAY_SESSION_PATH = Path(__file__).parent / "roleplay_session.json"
 
 

@@ -443,8 +443,7 @@ def _describe(action: dict) -> str:
 async def resolve_pending(proposal_id: str, approve: bool) -> str | None:
     """The user's answer to a queued proposal. Removes it either way;
     applies it only on approve. Returns the applied description, or None if
-    rejected/unknown. An approval that can't reach Hindsight stays queued -- it
-    used to be dropped first and lost.
+    rejected/unknown. An approval that can't reach Hindsight stays queued.
     """
     proposal = next((p for p in read_pending() if p["id"] == proposal_id), None)
     if proposal is None:

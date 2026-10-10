@@ -54,11 +54,8 @@ _RECENT_PROBLEMS: collections.deque = collections.deque(maxlen=30)
 
 
 class ConsoleToDebugLog:
-    """Wraps sys.stdout so a problem printed anywhere in Brain also reaches the
-    debug log (hub.debug_broadcast). Before this, a failed memory save, a failed
-    lesson or a failed reach-out only showed in Brain's console window, and a
-    downloaded debug log said nothing about it. Prints from worker threads are
-    handed to the event loop, since sending is loop-only.
+    """Wraps sys.stdout so a problem printed anywhere in Brain also reaches the debug log
+    (hub.debug_broadcast). Prints from worker threads are handed to the event loop.
     """
 
     def __init__(self, stream, loop: asyncio.AbstractEventLoop) -> None:

@@ -300,9 +300,8 @@ COMPARE_WITH = 3  # her closest existing memories a new proposal is checked agai
 async def _compare_with_memories(fact: str, brain: Brain) -> str:
     """A memory that already says this, or "". One pair at a time, closest first; an
     OPPOSITE answer wins, so when unsure a proposal reaches the user rather than being
-    dropped. Measured on his real exchanges: 14 of 23 repeats caught, 0 of 8 new ones
-    dropped. OPPOSITE used to be shown as a contradiction too, but live it was 0 for 7:
-    a 9B calls any two memories on one topic opposite. Best-effort: a failure means no check.
+    dropped (14 of 23 repeats caught, 0 of 8 new ones dropped). OPPOSITE isn't shown as a
+    contradiction: a 9B calls any two memories on one topic opposite. A failure means no check.
     """
     try:
         block = await memory.recall_for_prompt(fact)

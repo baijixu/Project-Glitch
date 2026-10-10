@@ -10,13 +10,8 @@ import souls
 from hub import Brain
 
 def effective_soul() -> str:
-    """Which soul she should be running right now. During role-play it's the
-    selected role-play soul (rp_soul.md), if one is selected; otherwise --
-    role-play off, or on with no RP soul picked -- it's her main soul
-    (soul.md), and "" from that means LocalLLM's built-in default. The two
-    files are never merged or copied into each other (see souls.py), so a
-    role-play soul can't leak into or overwrite her permanent personality.
-    """
+    """Her soul right now: the role-play soul during role-play (if one is selected),
+    otherwise her main soul -- "" means LocalLLM's built-in default."""
     if profiles.read_roleplay_active():
         rp_soul = souls.read_active_soul()
         if rp_soul.strip():
@@ -37,12 +32,8 @@ MAX_USER_INFO_CHARS = 4000
 
 
 def effective_user_info() -> str:
-    """What the user wrote about themselves (their main user.md), or "" during
-    role-play -- the selected role-play profile (rp_user.md) stands in for
-    "who the user is" then, and their real details pause the same way memory
-    and lessons do. Read from disk fresh each turn, so an edit made in a text
-    editor applies to her very next reply with no restart.
-    """
+    """His user.md, read fresh each turn -- or "" during role-play, when the role-play
+    profile stands in and his real details pause like memory does."""
     if profiles.read_roleplay_active():
         return ""
     return profiles.read_main_user().strip()[:MAX_USER_INFO_CHARS]

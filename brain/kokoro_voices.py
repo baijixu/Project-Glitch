@@ -1,28 +1,11 @@
-"""Creates a custom voice for a Kokoro-fastapi-shaped speech engine by
-blending existing voices with weights -- a Renderer settings-panel
-feature.
+"""Custom voices for a Kokoro-fastapi speech engine, by blending existing ones with
+weights (Settings). Kokoro can't take a voice file from outside, but it can blend its
+own (POST /v1/audio/voices/combine, "voice1(2)+voice2(1)"); the result is written into
+`voices_dir`, the folder its VoiceManager reads (docker-compose.yml's volume mount).
+Needs ALLOW_LOCAL_VOICE_SAVING=true on its side, or combine 403s.
 
-kokoro-fastapi has no way to accept an externally-authored voice file at
-all -- confirmed against its own source, after an earlier version of this
-feature assumed a JSON-upload flow that turned out to match nothing this
-server actually does (there's no export path that ever produces a JSON
-voice file to upload in the first place). What it DOES support natively
-is blending any of its own existing voices by weight (POST /v1/audio/
-voices/combine, its own "voice1(2)+voice2(1)" syntax) and handing back a
-real, correctly-shaped voice file -- this module calls that endpoint
-directly (not through the openai client voice/tts.py's RemoteTTS otherwise
-uses; combine isn't part of the OpenAI-compatible surface that treats
-generically) and writes the result into `voices_dir`, the same shared
-folder kokoro-fastapi's own VoiceManager reads from (see
-docker-compose.yml's volume mount). Also requires that image's own
-ALLOW_LOCAL_VOICE_SAVING=true -- confirmed live, /v1/audio/voices/combine
-403s "Local voice saving is disabled" without it.
-
-Every result is force-prefixed "af_", same reasoning as any other voice
-file here: kokoro-fastapi picks its language/inference pipeline from the
-voice filename's first letter, and a name that doesn't start with one of
-its known letters produces a 200 response with silent, empty audio --
-confirmed live, not documented anywhere.
+Every result is prefixed "af_": Kokoro picks its language pipeline from a voice name's
+first letter, and an unknown one gives silent audio with a 200.
 """
 
 from pathlib import Path
@@ -45,14 +28,9 @@ def voice_id_for(name: str) -> str:
 
 def combine_voices(endpoint: str, api_key: str | None, spec: str, name: str, voices_dir: str) -> str:
     """`spec` is Kokoro's own blend syntax, e.g. "af_sky(1)+af_bella(0.8)"
-    -- passed straight through to /v1/audio/voices/combine, not parsed or
-    validated here; a bad spec (unknown voice name, malformed syntax)
-    raises RuntimeError with Kokoro's own error message pulled out of the
-    response body (confirmed live: it names exactly what's wrong, e.g.
-    "Voice 'af_sky_' not found. Available voices: ..." -- httpx's default
-    exception string for a 400 is just "Client error '400 Bad Request'",
-    which throws that detail away). Returns the voice id actually written
-    under `voices_dir`.
+    -- passed through as-is. A bad one raises RuntimeError with Kokoro's own message
+    ("Voice 'af_sky_' not found...", which httpx's own error leaves out). Returns the
+    voice id written under `voices_dir`.
     """
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     response = httpx.post(

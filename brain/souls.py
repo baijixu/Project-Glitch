@@ -1,27 +1,16 @@
-"""Manages Glitch's saved "souls" -- who she is and how she talks,
-as opposed to profiles.py's user.md (the user's own role-play character
-and scenario). Each soul is one markdown file in souls/ with two parts:
-a free-text description and example dialogue (`<user>`/`<character>`
-turns), kept as two separate fields end to end -- unlike profiles.py's
-single combined blob -- so the editor can show them as two distinct
-boxes and re-populate both correctly when editing a saved soul.
+"""Her saved "souls" -- who she is and how she talks. Each is one markdown file in souls/
+with two parts, a description and example dialogue, kept separate so the editor can show
+them as two boxes.
 
 Two separate files, never mixed up:
 
-- soul.md is her MAIN soul -- her permanent everyday personality. Only ever
-  written by hand (the Settings manual editor, or the file itself); nothing
-  in this module can write it. LocalLLM uses it whenever role-play is off.
-- rp_soul.md is the currently-selected ROLE-PLAY soul. Loading a saved soul
-  copies it here, and this is the only file that copying, saving, editing
-  or deleting a saved soul ever touches. It's only used while role-play is
-  on, replacing soul.md for the duration.
+- soul.md is her MAIN soul. Only written by hand (Settings' editor, or the file itself);
+  used whenever role-play is off.
+- rp_soul.md is the selected ROLE-PLAY soul: loading a saved soul copies it here, and it
+  replaces soul.md while role-play is on.
 
-They used to be one file (soul.md), so loading a role-play soul silently
-overwrote her permanent personality -- keeping them apart is the point.
-Either way, the personality replaces llm.py's DEFAULT_PERSONALITY,
-and the mood-tag instruction stays fixed underneath whichever is active,
-since the Renderer's expression system depends on it regardless of who
-Glitch is currently supposed to be.
+Kept apart so a role-play soul can never overwrite her own. Either replaces llm.py's
+DEFAULT_PERSONALITY; the mood-tag instruction stays under whichever is active.
 """
 
 import re
@@ -32,19 +21,11 @@ from store import Choice, NamedStore
 SOUL_MD_PATH = Path(__file__).parent / "soul.md"  # her main soul -- see the module docstring; written only by write_main_soul
 RP_SOUL_PATH = Path(__file__).parent / "rp_soul.md"  # the selected role-play soul -- everything here that "loads" a soul writes this
 
-# Stable marker splitting description from examples within a soul file --
-# also doubles as the section header the LLM actually sees, so it reads
-# naturally in the prompt rather than being a delimiter that's only
-# meaningful to this code.
+# Splits description from examples in a soul file -- and reads as a heading in her prompt.
 EXAMPLES_HEADER = "## Example dialogue"
 
-# Reserved name for "no custom soul" -- never a real file in souls/,
-# always offered by the Renderer's dropdown (prepended client-side, same
-# pattern as avatars.py's DEFAULT_AVATAR_NAME), and can't be deleted.
-# Selecting it clears rp_soul.md (never soul.md), which persona.py's
-# effective_soul treats as "no role-play soul, use her main soul" -- so it's what
-# the active selection falls back to if the soul that *was* active gets
-# deleted, same role DEFAULT_PROFILE_NAME plays in profiles.py.
+# "No role-play soul" (her main soul then): not a file, always offered, can't be deleted.
+# Selecting it clears rp_soul.md; it's the fallback when the active soul is deleted.
 DEFAULT_SOUL_NAME = "Default"
 
 # One .md per saved soul, reserved name and active-name bookkeeping as in profiles.py.
@@ -63,13 +44,8 @@ def save_soul(name: str, description: str, examples: str) -> None:
 
 
 def load_soul(name: str) -> str:
-    """Copies the named soul's combined content into rp_soul.md (making it
-    the selected role-play soul) and returns that combined content. Never
-    touches soul.md -- her main soul.
-
-    DEFAULT_SOUL_NAME is special-cased to empty content rather than a
-    file read -- it's never a real file (see its own docstring above).
-    """
+    """Copies the named soul into rp_soul.md (selecting it) and returns its content -- ""
+    for DEFAULT_SOUL_NAME. Never touches soul.md."""
     content = "" if name == DEFAULT_SOUL_NAME else STORE.read_text(name)
     RP_SOUL_PATH.write_text(content, encoding="utf-8")
     ACTIVE.write(name)
@@ -84,11 +60,7 @@ def read_soul(name: str) -> tuple[str, str]:
 
 
 def write_main_soul(content: str) -> None:
-    """Overwrites soul.md -- her main soul -- with raw content. The ONLY
-    function that writes that file, and only the Settings manual editor
-    calls it: nothing about creating, editing, saving, loading or deleting a
-    saved role-play soul can reach it.
-    """
+    """Overwrites soul.md -- the only writer of it, called only by Settings' editor."""
     SOUL_MD_PATH.write_text(content, encoding="utf-8")
 
 

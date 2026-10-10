@@ -1,20 +1,6 @@
-"""Web search for Glitch's own LLM path (LocalLLM/OllamaLLM) -- lets her
-search the web via tool-calling when she needs current information,
-independent of the Hermes harness (which already has its own web/session
-search built in when active, see harness.py's own docstring on how the
-harness bypasses everything in this module).
-
-Talks to a self-hosted SearXNG instance (https://docs.searxng.org/) --
-reuses whichever one is configured (config.yaml's brain.web_search block,
-see main.py), even one also used for something else: unlike memory.py's
-Hindsight bank, there's nothing personal/stateful in a search result to
-worry about blending with anything else that happens to share the same
-SearXNG instance.
-
-configure() must be called once at startup. Left uncalled, search()
-always returns [] rather than crashing -- same graceful-degradation
-pattern as memory.py's hindsight functions when configure() was never
-called there either.
+"""Web search for her own LLM (a harness has its own), as a tool she can call: a
+self-hosted SearXNG instance (https://docs.searxng.org/) from config.yaml. Until
+configure() is called, search() returns [].
 """
 
 from pathlib import Path
@@ -87,24 +73,15 @@ set_active = ACTIVE.write
 
 
 def read_active() -> bool:
-    """Defaults to False (off) -- unlike memory, this changes what she can
-    find out and say, not just what she remembers, so it opts in rather
-    than being on by default. Always False when never configured
-    (configure() uncalled), regardless of this file, since there's no
-    backend for the toggle to actually turn on.
-    """
+    """Off by default -- it changes what she can say, not just what she remembers. False
+    without a configured SearXNG."""
     return _base_url is not None and ACTIVE.read()
 
 
 def search(query: str) -> list[dict]:
-    """Up to MAX_RESULTS {title, url, snippet, domain, trust} dicts -- trusted
-    sources first, user-uploaded platforms last, SearXNG's own order kept
-    within each group -- or [] if never configured or the request failed for
-    any reason. Ranked across everything SearXNG returned (not just its first
-    few), so a trusted source further down can still make the cut. llm.py's
-    tool-calling loop turns an empty list into a plain "no results"
-    message for the model rather than raising, so a flaky search backend
-    degrades the answer, not the whole reply.
+    """Up to MAX_RESULTS {title, url, snippet, domain, trust}: trusted first, user-uploaded
+    last, SearXNG's order within each, ranked across everything it returned. [] if not
+    configured or the request failed -- a flaky search degrades the answer, not the reply.
     """
     if _base_url is None:
         return []

@@ -3,12 +3,9 @@
 * conversation.json / conversation_roleplay.json -- what she currently sees of
   the conversation (LocalLLM._history), one file per mode, saved every time it
   changes and restored when Brain starts, the LLM engine is switched, or
-  role-play is toggled. Without it, a Brain restart wiped her short-term memory
-  while the chat history panel still showed everything. Separate files (they
-  used to share one) so a role-play session can't overwrite the normal
-  conversation: turning role-play off brings the normal one back, and turning it
-  on resumes the last scene. Each file is also tagged with its mode, and only
-  restored into that mode. Pictures are stored as a short "[picture]" note, not
+  role-play is toggled. Separate files, so a role-play scene can't overwrite the
+  normal conversation: turning role-play off brings it back, and turning it on
+  resumes the last scene. Each file is tagged with its mode and only restored into it. Pictures are stored as a short "[picture]" note, not
   the image data.
 
 * chat_logs/YYYY-MM-DD.md -- a plain, timestamped, append-only log of every

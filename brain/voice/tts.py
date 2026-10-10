@@ -136,17 +136,7 @@ class RemoteTTS:
     (openai>=1.0 is already a dependency; no new HTTP library needed).
     """
 
-    # Only reached when a saved engine has no `voice`/`model` set at all
-    # (e.g. one saved before tts_engines.py grew those fields) -- "kokoro"/
-    # "af_heart" happen to be real Kokoro values, but this class has no
-    # idea whether the endpoint on the other end is even Kokoro; they're
-    # last-resort guesses, not assumptions every engine should share.
-    # engines.build_tts always prefers the saved engine's own
-    # `model`/`voice` first. Previously "kokoro" was hardcoded directly in
-    # synthesize() below with no way to override it at all -- a non-Kokoro
-    # OpenAI-compatible TTS server (a real one to plug in, not this
-    # process's own model choice) would get the wrong model name on every
-    # single request.
+    # Last-resort guesses for a saved engine with no `model`/`voice` -- real Kokoro values.
     DEFAULT_MODEL = "kokoro"
     DEFAULT_VOICE = "af_heart"
 

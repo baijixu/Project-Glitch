@@ -25,8 +25,7 @@ asking about X" is learned the same way as any other preference.
 
 State: curiosity_active.txt (the toggle), curiosity_questions.json (the list)
 and curiosity_pacing.json (the counters and the reach-out clock), all beside this
-file and gitignored. The counters used to live in memory and restart with Brain,
-so with frequent restarts she rarely got as far as thinking up a new question.
+file and gitignored -- on disk so a restart doesn't reset the counters.
 """
 
 import json
@@ -69,8 +68,7 @@ GUIDANCE = (
 )
 
 # Used instead of GUIDANCE when one of her last QUESTION_COOLDOWN_REPLIES replies
-# already asked something. Seen live: 36 of 41 replies in one evening ended in a
-# question, several near-identical ("Do you like how...?" three times running).
+# already asked something -- without it, 36 of 41 replies in an evening ended in a question.
 QUESTION_COOLDOWN_REPLIES = 2
 NO_QUESTION_GUIDANCE = (
     "You asked a question recently, so don't ask one in this reply. Respond to what they said, share "
@@ -218,10 +216,8 @@ def parse_question(raw: str) -> str | None:
 
 
 def _asked_it(question: str, reply: str) -> bool:
-    """Whether her reply actually asks this question, reworded or not -- one of
-    its question sentences is on the same topic. Any '?' used to count, so the
-    stored question was ticked off whenever she asked anything at all: 11 of 12
-    were closed that way without ever being asked.
+    """Whether her reply actually asks this question, reworded or not: one of its question
+    sentences is on the same topic (any '?' would close questions she never asked).
     """
     asked = [s for s in re.split(r"(?<=[.!?])\s+", reply) if s.strip().endswith("?")]
     # A little looser than the repeat check: she's told to work it in casually, so
