@@ -14,12 +14,7 @@ export async function loadAvatar(source) {
     typeof source === "string" ? await loader.loadAsync(source) : await loader.parseAsync(source, "");
   const vrm = gltf.userData.vrm;
 
-  // VRM 0.x models author their "forward" as +Z; three-vrm's own convention
-  // (matching VRM 1.0 and three.js's default camera-facing direction) is
-  // -Z, so only 0.x needs the flip. Check the actual parsed metaVersion
-  // rather than assume -- this model was previously (incorrectly) assumed
-  // to be 0.x; it's genuinely VRM 1.0 (metaVersion "1"), confirmed by
-  // inspecting the file's own VRMC_vrm.specVersion directly.
+  // VRM 0.x faces +Z; three-vrm (and VRM 1.0) face -Z, so only 0.x is turned around.
   if (vrm.meta?.metaVersion === "0") {
     VRMUtils.rotateVRM0(vrm);
   }

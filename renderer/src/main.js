@@ -251,19 +251,9 @@ function closeOpenPanels() {
 canvas.addEventListener("click", closeOpenPanels);
 avatarImageEl?.addEventListener("click", closeOpenPanels);
 
-// Deliberately NOT using THREE.Timer's Page Visibility integration
-// (timer.connect(document)): it zeroes delta to exactly 0 for the entire
-// time document.hidden is true, which doesn't just "avoid a huge jump on
-// refocus" -- it freezes every delta-driven animation (idle breathing/sway,
-// mood expression crossfade) for as long as the page is backgrounded, and
-// forever if it never receives a visibilitychange transition back to
-// visible. Confirmed hitting this directly: mood weight stayed pinned at
-// exactly 0 across 2s of active playback while testing in an automated
-// browser context that reports document.hidden = true persistently -- the
-// same failure mode a real pywebview window losing OS focus could hit.
-// Capping delta directly gets the one thing that integration was actually
-// for (no runaway jump after a real long pause) without silently pausing
-// her.
+// Delta is capped instead of using THREE.Timer's page-visibility hookup: that zeroes delta
+// while the page counts as hidden, freezing her animations -- forever if it never sees
+// "visible" again.
 const MAX_DELTA_SEC = 0.1;
 // She's drawn on the same GPU as her model: every frame drawn is time taken from her
 // thinking (a 3440x1440 page at 60 fps cut her from ~31 to ~20 tokens/s). 30 looks the
