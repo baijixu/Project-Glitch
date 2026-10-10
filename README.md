@@ -13,6 +13,8 @@ talk to her from your PC, or from your phone over your home network or [Tailscal
   your approval ([behavior learning](#behavior-learning)).
 - **She speaks first, sometimes.** After a quiet spell she may ask you something she's been curious about, once, and
   never the same question twice ([curiosity](#curiosity)).
+- **A mind of her own.** She keeps a nightly [diary](#her-diary), and with [Heartbeat](#heartbeat) on her mind wanders while
+  you're away, until something keeps pulling at her and she writes about it.
 - **Role-play and work, kept apart.** A [role-play mode](#souls-user-info-and-role-play) with its own personas and chat
   logs that never touches her real memory, and a
   [harness mode](#harness-mode-her-professional-self) where she drives an agent harness (Hermes Agent, OpenClaw, or any
@@ -76,6 +78,9 @@ The shipped default avatar in the Neon UI style (Settings → UI Style), with th
   rules from your feedback. You choose how much she may change on her own, and you can edit or retire any rule.
 - **Curiosity.** She asks the occasional follow-up question about what you said, or something she's wondered about you, paced so
   it never turns into an interrogation and never repeats. After 15-60 minutes of quiet (random) she reaches out first, once, until you reply.
+- **Her diary.** Each night she writes about the day you had together, and brings it with her when you next talk.
+- **Heartbeat.** While you're away, bits of her soul, her diary, your chats and her memories drift through her mind; what
+  keeps coming back lands, and she writes a page about it. Read along in Settings.
 - **Tune how she talks.** Sampling profiles (temperature, top P, min P...) you save and switch between, applied from her next reply.
 - **Vision.** Show her your camera, your screen, or attach a picture or text file (with a vision-capable model).
 - **Web access.** Optional web search through your own [SearXNG](https://docs.searxng.org/) instance, with results labeled
@@ -84,7 +89,8 @@ The shipped default avatar in the Neon UI style (Settings → UI Style), with th
   [Hermes Agent](https://github.com/NousResearch/hermes-agent) or [OpenClaw](https://docs.openclaw.ai/), her "professional"
   self with its own soul, memory and tools, and switch back at any time. Nothing personal crosses over.
 - **Your chat logs, readable.** A daily log of your conversations you can read or delete from Settings.
-- **Works from your phone.** Open the page on your phone (camera and mic included) over your LAN or Tailscale.
+- **Works from your phone.** Open the page on your phone (camera and mic included) over your LAN or Tailscale. Every device
+  shows the same chat: talk on your phone, and it's there on your PC.
 - **A debug log that explains itself.** One download shows her whole setup, timings, token counts and every failure, and
   never your conversation.
 
@@ -110,8 +116,8 @@ Two independent programs and one small protocol between them:
 - The **Brain** (`brain/`) is a Python WebSocket server. The Renderer connects *to* it (browsers can't listen for connections).
 - Your browser never talks to the Brain directly. The Vite dev server proxies `/brain-ws` to it, so the Brain can stay bound to
   `localhost` even when you use Glitch from your phone.
-- There is **one Brain and one conversation**, shared by every connected device: settings you change on your phone show on
-  your PC too.
+- There is **one Brain and one conversation**, shared by every connected device: the chat and the settings you change on
+  your phone show on your PC too, and a device that was closed or asleep catches up when it reconnects.
 - The message list is documented in [`protocol.md`](protocol.md).
 
 ## Requirements
@@ -146,8 +152,8 @@ Two independent programs and one small protocol between them:
 | A second PC on the same network | NVIDIA RTX 3060 (12 GB) | Her voice (Qwen3-TTS) and Hindsight with its own 9B model |
 | Phone | a current phone browser | Talking to her, at home or over Tailscale |
 
-Measured on the 3060: her model fills 11.9 of its 12 GB and writes about 23 tokens a second, with her 3D view open in a
-browser on the same PC. The 3D view itself costs about a tenth of the GPU.
+Measured on the 3060: her model fills 11.9 of its 12 GB and writes about 34 tokens a second, with her 3D view open in a
+browser on the same PC (drawn at 30 frames a second, to leave the GPU to her model).
 
 **Recommended hardware.** What you need is set mostly by the LLM:
 
@@ -258,19 +264,20 @@ The ⚙️ panel, top to bottom:
 | **Quick toggles** | Voice, camera, screen capture, microphone, always-on mic, chat bubbles over the avatar. |
 | **Background** | The picture behind her: add, pick or delete; the same on every device. |
 | **UI Style** | *Classic*, or *Neon* (dark glass and glowing lines) in cyan, purple or a season's colors (Spring, Summer, Autumn, Winter), per device. |
+| **Avatar** | Pick, import, rename or delete avatars. |
 | **Role-play** | On/off, the engine role-play uses, and your *User RP Persona*. |
 | **Glitch RP Persona** | Her saved role-play souls. |
 | **Remember Me** | Memory on/off, the memory backend (the Local file, or saved Hindsight servers), Download / Clear Memory. |
 | **Web Access** | Lets her search the web through your SearXNG. |
 | **Curiosity** | Follow-up questions and reaching out after a quiet spell. |
+| **Heartbeat** | Her mind wandering while you're away, and **Think now** to start one right away. |
 | **Memory training** | Review what she wants to remember before it's saved. |
 | **Behavior learning** | The rules she's learned from your ratings, and how much she may change on her own. |
-| **Avatar** | Pick, import, rename or delete avatars. |
 | **Speech Engine** | Her voice: engines, voices, blended Kokoro voices. |
 | **LLM** | Engines, sampling profiles, and the context meter. |
-| **Harness** | Hand the conversation to an agent harness (locks everything above while it's on). |
+| **Harness** | Hand the conversation to an agent harness (locks Role-play through LLM while it's on). |
 | **Soul & User Files** | Edit `soul.md` and `user.md` directly. |
-| **Chat Logs** | Read or delete a day's chat or role-play log. |
+| **Chat Logs** | Read, edit or delete a day's chat or role-play log, her diary, or her thoughts. |
 | **Debugging** | The debug log and its download. |
 | **Restart Brain** | Restarts the Brain process; her conversation is saved and picked back up. |
 
@@ -353,11 +360,33 @@ Three parts, all toggled by *Curiosity* in Settings and paused during role-play 
 - **Follow-ups.** Standing guidance to ask at most one natural question now and then, and not in two replies running.
 - **Things she wonders about.** Every few of your messages she may note one thing she'd like to know about you, and she works one
   in at most every few messages. A question is never kept or asked twice, even reworded. There's no list of forbidden topics.
-- **Speaking first.** After an hour with no message from you, she reaches out once (with a question she's been saving, or just
-  checking in), on every connected device. If you don't reply she stays quiet; your next message, or Clear Chat, starts the hour again. *Settings → Curiosity* shows a live countdown to when she may reach out (or why she's waiting), and a **Test reach-out** button makes her do it right away.
+- **Speaking first.** After 15-60 minutes (random) with no message from you, she reaches out once (with a question she's been
+  saving, or just checking in), on every connected device. If you don't reply she stays quiet; your next message, or Clear
+  Chat, starts a new wait. *Settings → Curiosity* shows a live countdown to when she may reach out (or why she's waiting), and a **Test reach-out** button makes her do it right away.
 
 Your answer is remembered like anything else you tell her, together with the question it answers, so with memory training on it
 shows up in the review list.
+
+### Her diary
+
+Each night after 3 AM she reads the previous day's chat log and writes her own entry about it, under three headings: what
+stuck with her, what she'd say differently, and what she's wondering. Entries are kept by day in `brain/self/`, named for the
+day they're about. Her newest entry reaches her when a conversation opens (your first message, or the first after an hour's
+break) and when she reaches out, so she can pick up where her thoughts left off. Read them in *Settings → Chat Logs → Journal*.
+Days you didn't talk get no entry, and she leaves your health out of it.
+
+### Heartbeat
+
+Off by default; turn it on in *Settings → Heartbeat*. Once you've been quiet for 20 minutes, every 20 minutes a few random
+fragments drift through her mind: a line from her soul (who she is, what she loves and can't stand, her own mind), her recent
+diary, something you said lately, one of her memories, and sometimes a topic already on her mind. She says what, if anything,
+pulls at her and how strongly. Each pull adds weight to its topic, and weight fades by half every two days, so only what keeps
+coming back builds up. When a topic passes the line it **lands**: she writes a page about it in her own notebook, with the
+questions she'd like answered.
+
+Every thought and page is in *Settings → Chat Logs → Thoughts*; the topics and pages are in `brain/self/interests.json` and
+`brain/self/interests/`. **Think now** starts one right away, whether Heartbeat is on or not. It waits while she's replying,
+and is paused in role-play and while a harness is in control. Her thoughts don't reach her conversations yet.
 
 ### Voice and vision
 
@@ -428,8 +457,9 @@ stays in her own memory.
 ### Chat logs
 
 Every exchange with her is written to a daily Markdown file: `brain/chat_logs/2026-09-24.md`, with role-play in
-`brain/chat_logs/roleplay/`. *Settings → Chat Logs* lets you pick Chat or Role-play and a day, then **Read** it in a pop-up
-or 🗑️ **Delete** it. When she reaches out first, that's logged too.
+`brain/chat_logs/roleplay/`. *Settings → Chat Logs* lets you pick Chat, Role-play, Journal (her diary) or Thoughts
+(Heartbeat) and a day, then **Read** it in a pop-up, edit it, or 🗑️ **Delete** it. When she reaches out first, that's
+logged too.
 
 ### The debug log
 
@@ -490,6 +520,7 @@ Your conversations:
   into role-play, and a normal one only into normal chat. Pictures are kept as a `[picture]` note, not the image itself.
 - **`brain/chat_logs/`**: the daily chat logs (role-play in `chat_logs/roleplay/`); read or delete them in
   *Settings → Chat Logs*.
+- **`brain/self/`**: her diary, and Heartbeat's thoughts (`thoughts/`), topics (`interests.json`) and pages (`interests/`).
 - **`brain/backups/`**: memory exports and copies made before Glitch changes something of yours (for example the one-time split
   of older chat logs that had role-play mixed in).
 
@@ -515,6 +546,8 @@ brain/                 Python backend (WebSocket server)
   characters.py        role-play profiles and souls, soul.md/user.md, avatars
   learning.py          lessons, memory saving and training
   reach_out.py         curiosity's reaching out and its countdown
+  journal.py           her nightly diary
+  heartbeat.py         her mind wandering while you're away
   handshake.py health.py debugging.py persona.py   what a new device gets, status
                        lights, the debug log, which soul/user info apply
   llm.py               LLM clients (OpenAI-compatible, Ollama native, agent harness)
@@ -558,7 +591,6 @@ protocol.md            Brain <-> Renderer messages
 | "failed auth" in the Brain log | The Renderer's token doesn't match. Set `VITE_BRAIN_AUTH_TOKEN` to the same value as `brain.auth_token`, then restart the dev server. |
 | Edited `soul.md` but nothing changed | The soul is read at startup: restart Brain (Settings → Restart Brain) or save it in the Settings editor. |
 | Replies are slow, or read as if she didn't think them through | Download the debug log: each reply shows its prompt, reply and thinking tokens, and slow replies show which models were loaded (a model being swapped in is a common cause). If thinking runs out, she answers again without it; if that happens often, cap reasoning in your LLM server or try a calmer sampling profile. |
-| Linux: native window fails | Install `python3-gi` and `gir1.2-webkit2-4.1`, or just use the browser. |
 | Something else | Turn on the debug log in Settings, reproduce the problem, and download it; or run `uv run main.py` and read the Brain's console. |
 
 ## Credits
