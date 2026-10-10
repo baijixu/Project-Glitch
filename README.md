@@ -333,6 +333,16 @@ chat log and proposes a few short facts, which wait in a review list. For each o
 stored as a tag on the memory. It needs a Hindsight memory server. Good for the first weeks, while you're shaping what she
 remembers.
 
+Two checks keep what she remembers accurate:
+
+- **Weekly upkeep.** Once a week, after her journal, she goes over her memories. One about a time that has passed ("Josh
+  is moving next month", saved six weeks ago) comes back dated, "As of 25 August 2026: Josh is moving next month", for you
+  to **Update** (edit the wording first if you like), **Retire** or **Keep**. One that repeats another comes back to
+  **Retire** or **Keep**; a core memory is the one kept. A retired memory leaves her recall but stays in Hindsight's archive.
+- **Ask, don't guess.** When she proposes something about you that she can't find in the chat log, it isn't saved or
+  dropped: it becomes a question she may ask you ("Josh grew up in Ohio -- is that right?"), and your answer is proposed
+  the next night like anything else you tell her. This needs *Curiosity* on.
+
 ### Behavior learning
 
 Rate any reply 👍/👎 and say why in the pop-up (a reason is required). She distills your feedback into short rules ("keep replies

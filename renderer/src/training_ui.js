@@ -75,15 +75,22 @@ export class TrainingUI {
     for (const proposal of pending) this.listEl.appendChild(this._row(proposal));
   }
 
+  // kind "add" (a new memory), or from memory upkeep "update" (new wording for one she has,
+  // `old` its current text) or "retire" (one that repeats another).
   _row(proposal) {
     const row = document.createElement("div");
     row.className = "lesson-row pending";
+    const kind = proposal.kind || "add";
+    const note = (text) => row.appendChild(Object.assign(document.createElement("div"), { className: "lesson-reason", textContent: text }));
+    if (kind === "update") note(`Update this memory? Now: "${proposal.old}"`);
+    if (kind === "retire") note("Retire this memory?");
 
     const box = document.createElement("textarea");
     box.className = "settings-text-input training-fact";
     box.rows = 2;
     box.maxLength = 300;
     box.value = proposal.fact;
+    box.readOnly = kind === "retire";
     box.addEventListener("blur", () => {
       if (this._pendingState) setTimeout(() => !this._editing() && this._pendingState && this._render(this._pendingState), 0);
     });
@@ -92,12 +99,22 @@ export class TrainingUI {
     if (proposal.source) {
       const source = document.createElement("div");
       source.className = "lesson-reason";
-      source.textContent = `From: "${proposal.source}"`;
+      source.textContent = kind === "add" ? `From: "${proposal.source}"` : proposal.source;
       row.appendChild(source);
     }
 
     const meta = document.createElement("div");
     meta.className = "lesson-meta";
+    const resolve = (extra) => this._send({ type: "resolve_memory_proposal", id: proposal.id, ...extra });
+    if (kind !== "add") {
+      if (kind === "update") {
+        meta.appendChild(this._button("✓ Update", "Save the new wording", () => box.value.trim() && resolve({ approve: true, fact: box.value.trim() })));
+      }
+      meta.appendChild(this._button("Retire", "Take it out of her memory (her memory server keeps it archived)", () => resolve({ approve: true, retire: true }), true));
+      meta.appendChild(this._button("Keep", "Leave it as it is", () => resolve({ approve: false })));
+      row.appendChild(meta);
+      return row;
+    }
     const importance = document.createElement("select");
     importance.className = "settings-select training-importance";
     importance.title = "Core facts are always in her prompt; minor ones only come up when relevant";

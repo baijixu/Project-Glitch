@@ -10,6 +10,7 @@ from datetime import date
 
 import websockets
 
+import curiosity
 import hub
 import lessons
 import memory
@@ -237,6 +238,10 @@ async def _change_memory_profile(websocket: websockets.ServerConnection, data: d
     await _broadcast_lessons_state()
 
 
+async def broadcast_training_state() -> None:
+    await hub.broadcast(training_state_message())
+
+
 def training_state_message(error: str = "") -> dict:
     available = memory.server_configured()
     return protocol.training_state(available, training.read_active(), training.read_pending(), error)
@@ -264,9 +269,14 @@ async def propose_from_log(log: str, day: date, name: str, brain: Brain) -> None
     try:
         known = [*await memory.read_entries(), *(p["fact"] for p in training.read_pending())]
         raw = await asyncio.to_thread(brain.llm.propose_memories, log, "\n".join(f"- {k}" for k in known), name, pronouns)
-        added = 0
+        added = asked = 0
         for fact in training.parse_facts(raw):
             owner = await asyncio.to_thread(brain.llm.whose_memory, log, fact, name, pronouns)
+            if fact.startswith(name) and owner.strip().upper().startswith("NEITHER"):
+                # Not found in the log: rather than drop it or keep it, she asks him.
+                if curiosity.read_active() and curiosity.add_question(f"{fact.rstrip('.')} -- is that right?"):
+                    asked += 1
+                continue
             if not owner_matches(fact, owner, name):
                 continue
             if "Glitch" in fact:  # her memories are in her voice: "Josh wants to get me a scarf"
@@ -278,7 +288,7 @@ async def propose_from_log(log: str, day: date, name: str, brain: Brain) -> None
     except Exception as exc:
         print(f"[training] couldn't propose memories from {day}: {exc!r}")
         return
-    print(f"[training] proposed {added} memories from {day}")
+    print(f"[training] proposed {added} memories from {day}" + (f", {asked} to ask him about" if asked else ""))
     if added:
         await hub.broadcast(training_state_message())
 
@@ -330,6 +340,16 @@ async def resolve_memory_proposal(websocket: websockets.ServerConnection, data: 
     proposal = training.get_pending(proposal_id)
     if proposal is None:
         error = "that proposal is no longer in the list"
+    elif data.get("approve") and proposal.get("kind") in ("update", "retire"):
+        retire = proposal["kind"] == "retire" or bool(data.get("retire"))
+        fact = str(data.get("fact") or proposal["fact"]).strip()
+        try:
+            await memory.curate(proposal["memory_id"], "" if retire else fact, retire, proposal.get("source", ""))
+        except Exception as exc:
+            print(f"[brain] changing a memory failed: {exc!r}")
+            error = "couldn't change it on her memory server -- it's still in the list"
+        else:
+            training.remove_pending(proposal_id)
     elif data.get("approve"):
         fact = str(data.get("fact") or proposal["fact"]).strip()
         importance = str(data.get("importance") or training.DEFAULT_IMPORTANCE)

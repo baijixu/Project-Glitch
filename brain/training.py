@@ -87,16 +87,24 @@ def parse_facts(raw: str) -> list[str]:
     return [fact for fact in facts if 0 < len(fact) <= MAX_FACT_CHARS]
 
 
-def add_pending(fact: str, source: str = "") -> dict | None:
-    """None when it repeats something already waiting."""
+# What a queued item asks: a new memory ("add", the default), new wording for one she has
+# ("update": `memory_id`, its `old` text), or retiring one ("retire": `memory_id`) -- the last
+# two from memory upkeep (brain/upkeep.py).
+KINDS = ("add", "update", "retire")
+
+
+def add_pending(fact: str, source: str = "", kind: str = "add", memory_id: str = "", old: str = "") -> dict | None:
+    """None when it repeats something already waiting, or a memory already has a proposal."""
     fact = fact.strip()
     if not fact:
         return None
     pending = _read()
-    if _norm(fact) in {_norm(p["fact"]) for p in pending}:
+    if _norm(fact) in {_norm(p["fact"]) for p in pending} or (memory_id and memory_id in {p.get("memory_id") for p in pending}):
         return None
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     item = {"id": uuid.uuid4().hex, "fact": fact, "source": source.strip()[:200], "created": now}
+    if kind != "add":
+        item.update(kind=kind, memory_id=memory_id, old=old)
     pending.append(item)
     _write(pending)
     return item

@@ -344,6 +344,18 @@ _FOCUS_PROMPT = (
     "list of questions. In your own voice."
 )
 
+# Memory upkeep (brain/upkeep.py): is a memory out of date? Only a verdict -- asked to reword
+# one too, it got the dates wrong ("started on October 15", still weeks away) and lost her
+# voice, so upkeep dates it itself. 33 of 34 right on test memories (one promise flagged).
+_STILL_CURRENT_SYSTEM_PROMPT = (
+    "You keep an AI companion's memories up to date. Each memory was saved on the date shown. Today is {today}.\n\n"
+    "Is the memory still true today, as written? Most memories are lasting: names, likes, history, promises, habits, "
+    "ongoing projects, and plans that are still ahead. A memory is out of date only when it's about a specific time "
+    "that has passed -- an event, an appointment, a plan for a day or week now gone, a temporary state like being "
+    "sick -- so it reads as if it were still coming or still happening.\n\n"
+    "Reply with ONLY a JSON object: {{\"current\": true}} or {{\"current\": false}}."
+)
+
 # One new memory against one she has, one word: asked about eight at once, the 9B called a
 # related topic "the same" or everything a contradiction.
 _MEMORY_PAIR_SYSTEM_PROMPT = (
@@ -975,6 +987,15 @@ class LocalLLM(ChatBackend):
         for before, after in _FIRST_PERSON_EXAMPLES:
             messages += [{"role": "user", "content": before}, {"role": "assistant", "content": after}]
         messages.append({"role": "user", "content": fact})
+        return self._complete(messages, MAX_MEMORY_PROPOSAL_TOKENS, no_thinking=True)
+
+    def still_current(self, text: str, saved: datetime, today: datetime) -> str:
+        """Memory upkeep: whether a memory is still true -- raw JSON (_STILL_CURRENT_SYSTEM_PROMPT)."""
+        days = (today.date() - saved.date()).days
+        messages = [
+            {"role": "system", "content": _STILL_CURRENT_SYSTEM_PROMPT.format(today=f"{today:%A %d %B %Y}")},
+            {"role": "user", "content": f"Memory (saved {saved:%A %d %B %Y}, {days} days ago): {text}"},
+        ]
         return self._complete(messages, MAX_MEMORY_PROPOSAL_TOKENS, no_thinking=True)
 
     def compare_memories(self, new: str, old: str) -> str:

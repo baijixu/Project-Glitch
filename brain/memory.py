@@ -22,6 +22,7 @@ import httpx
 import memory_profiles
 import training
 from hindsight_client import Hindsight
+from hindsight_client_api.models.update_memory_request import UpdateMemoryRequest
 from store import Toggle
 
 MEMORY_PATH = Path(__file__).parent / "memory.md"
@@ -41,6 +42,7 @@ RECALL_MAX_TOKENS = 800
 RECALL_LIMIT = 3
 RECALL_FLOOR = 0.0001
 RECALL_RELATIVE = 0.25
+SIMILAR_MIN = 0.1  # memory upkeep's duplicate check: only real matches (see above) are compared
 CORE_RECALL_MAX_TOKENS = 300  # the always-shown "core" facts (retain_fact / brain/training.py)
 
 # What Hindsight's extraction keeps from each exchange (its per-bank retain_mission) --
@@ -343,6 +345,36 @@ async def _read_hindsight_entries() -> list[str]:
         return []
     response = await _client.memory.list_memories(bank_id=_bank_id, limit=500)
     return [text for item in response.items if (text := _item_text(item))]
+
+
+async def list_memories() -> list[dict]:
+    """Her memories as [{id, text, mentioned_at, tags}] (memory upkeep); [] without a server."""
+    if _client is None or read_provider() != HINDSIGHT_PROVIDER:
+        return []
+    response = await _client.memory.list_memories(bank_id=_bank_id, state="valid", limit=500)
+    rows = [item if isinstance(item, dict) else item.to_dict() for item in response.items]
+    return [{k: row.get(k) for k in ("id", "text", "mentioned_at", "tags")} for row in rows if row.get("id") and row.get("text")]
+
+
+async def similar_memories(text: str) -> list[dict]:
+    """Her memories that really match `text` ([{id, text, mentioned_at, tags}], closest first)."""
+    if _client is None:
+        return []
+    response = await _client.arecall(_bank_id, query=text, max_tokens=RECALL_MAX_TOKENS)
+    return [
+        {"id": r.id, "text": r.text, "mentioned_at": getattr(r, "mentioned_at", None), "tags": getattr(r, "tags", None) or []}
+        for r in response.results
+        if _relevance(r) >= SIMILAR_MIN
+    ]
+
+
+async def curate(memory_id: str, text: str = "", retire: bool = False, reason: str = "") -> None:
+    """New wording for one of her memories, or retiring it -- Hindsight keeps a retired one in
+    its archive, out of recall, and can bring it back. Raises if it couldn't."""
+    if _client is None:
+        raise RuntimeError("no memory server connected")
+    request = UpdateMemoryRequest(text=text or None, state="invalidated" if retire else None, reason=reason or None)
+    await _client.memory.update_memory(_bank_id, memory_id, request)
 
 
 async def _clear_hindsight() -> None:
