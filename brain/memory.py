@@ -1,25 +1,16 @@
-"""Glitch's own native memory of who the user is -- entirely separate
-from, and never touched by, an agent harness (see harness.py's own
-docstring on how the harness bypasses this module completely).
+"""Her own memory of the user -- never touched by an agent harness.
 
-Which backend is in use is the active memory profile (memory_profiles.py,
-Settings -> Memory); activate() connects to it. Kinds of backend:
+The backend is the active memory profile (memory_profiles.py, Settings -> Memory);
+activate() connects to it:
 
-- "local" (the built-in "Local file" -- nothing to set up): one fact per
-  line in memory.md, extracted by a lightweight extra LLM call after every
-  reply (see learning.maybe_retain_memory), and re-injected as one static
-  block every turn regardless of what's being asked.
-- "hindsight", a memory server someone runs themselves
-  (https://pypi.org/project/hindsight-client/), in its own bank, kept separate from whatever memory a harness might use.
-  Extraction and retrieval both happen server-side: retain_exchange() just
-  hands it the raw exchange and lets it decide what's worth keeping, and
-  recall_for_prompt() asks it for whatever's relevant to the CURRENT
-  message instead of one static block every turn.
+- "local" (the built-in "Local file", nothing to set up): one fact per line in
+  memory.md, extracted by an extra LLM call after each reply, all of it in every prompt.
+- "hindsight", a memory server you run (https://pypi.org/project/hindsight-client/),
+  in its own bank: it extracts and stores server-side, and recall_for_prompt asks it for
+  what's relevant to the current message.
 
-Adding another server means: a type in memory_profiles.TYPES, a small client
-here, and a branch in each entry point under "Unified
-entry points". Every server function below is a no-op/returns ""/[] if no
-client is connected, not a crash.
+Another server means a type in memory_profiles.TYPES, a small client here, and a branch
+in each of the unified entry points. With no client connected, every server call is a no-op.
 """
 
 import asyncio
@@ -39,40 +30,22 @@ MEMORY_ACTIVE = Toggle(Path(__file__).parent / "memory_active.txt", default=True
 LOCAL_PROVIDER = "local"
 HINDSIGHT_PROVIDER = memory_profiles.HINDSIGHT
 
-# Over this many chars, the local provider's oldest entries are just
-# dropped (FIFO) rather than intelligently merged -- a deliberate
-# simplification, worth revisiting only if it actually becomes a problem.
+# ponytail: past this, the local file's oldest entries are dropped, not merged.
 MAX_MEMORY_CHARS = 2000
 
-# Keeps a hindsight recall roughly in the same ballpark as the local
-# provider's own MAX_MEMORY_CHARS cap -- plenty for what's actually
-# relevant to one message, not a dump of the whole bank.
 RECALL_MAX_TOKENS = 800
-# The token budget alone didn't make recall selective: her short approved facts
-# fit 34 of 40 into it, so every message got nearly her whole memory (and the
-# user's surgery and pups came up whatever he asked). Results come ranked, so
-# only the best few are kept -- and only ones that actually match. Hindsight's
-# reranker score says how well: on a night of short playful messages the best
-# match for "you look stunning" scored 0.00002 (old university libraries), and
-# she wove such misses in as non sequiturs ("like a Samoyed at 3 AM"); real
-# matches scored 0.1-0.998, a general "how are the dogs?" 0.0004. So a memory
-# needs RECALL_RELATIVE of the best match's score, and none come in at all when
-# even the best is under RECALL_FLOOR.
+# Only the best few, and only real matches: by token budget alone nearly her whole memory
+# came back every message, and she wove the misses in as non sequiturs. Hindsight's
+# reranker scored real matches 0.1-0.998 and misses ~0.00002, so a memory needs
+# RECALL_RELATIVE of the best score, and none come in when the best is under RECALL_FLOOR.
 RECALL_LIMIT = 3
 RECALL_FLOOR = 0.0001
 RECALL_RELATIVE = 0.25
 CORE_RECALL_MAX_TOKENS = 300  # the always-shown "core" facts (retain_fact / brain/training.py)
 
-# Steers what Hindsight's server-side extraction keeps from each retained
-# exchange (its per-bank `retain_mission` setting). Without one it keeps
-# everything -- a live bank filled up with descriptions of camera frames,
-# news headlines from searches, and endless restatements of what Glitch
-# herself is, none of which is a memory of the *user*. Applied by
-# ensure_bank() when the bank has no mission, so it never overwrites one
-# someone set by hand.
-# Her memories are hers, written in her own voice: "I" is Glitch, the human is named. That
-# also lets durable things about herself (opinions, promises) be kept, which the earlier
-# missions excluded outright -- scene/role-play actions and clothing still never are.
+# What Hindsight's extraction keeps from each exchange (its per-bank retain_mission) --
+# without one it kept camera frames, headlines and restatements of what she is. In her own
+# voice: "I" is Glitch, the human is named. Set by ensure_bank only on a bank without one.
 RETAIN_MISSION = (
     "These memories belong to Glitch, an AI companion, and are written in her own voice: in each fact "
     "you keep, 'I' means Glitch, and the human is called by their name when it is known. In the input, "
@@ -89,13 +62,8 @@ RETAIN_MISSION = (
     "what an AI is or can do in general; small talk; or temporary states and debugging chatter."
 )
 
-# Hindsight also writes "observations": its own summaries of the stored facts,
-# made by its model (a 4B one on this setup) and recalled alongside them. With
-# no instruction for that step it read her "I"/"my" as the human's -- a word-
-# for-word "green feels like home because of my hair" came back as "the user
-# associates green with home due to their hair", and "I helped Sam" as "Sam
-# helped". With this set, owners came out right in 5 of 5 runs on throwaway
-# banks. Set by ensure_bank() the same way as RETAIN_MISSION.
+# For Hindsight's "observations" (its own summaries of the facts): without it, her "I" and
+# "my" were read as the human's; with it, owners came out right 5 of 5. Set like RETAIN_MISSION.
 OBSERVATIONS_MISSION = (
     "Every fact in this bank is written by Glitch, an AI companion, in her own voice: 'I', 'me' and 'my' "
     "always mean Glitch, never the human. The human is the person she talks to, called by their name. "
@@ -103,27 +71,17 @@ OBSERVATIONS_MISSION = (
     "say: Glitch's looks, clothes, pictures and feelings stay Glitch's; the human's stay the human's."
 )
 
-# Facts approved in memory training (retain_fact) are stored word for word.
-# Normally Hindsight rewrites whatever it's given with its own model, and for
-# these short first-person facts that rewrite swapped owners: approved "Sam
-# likes the jacket in my winter picture" was stored as "Sam prefers that
-# jacket", "green feels like home because of my hair" as the user's hair, and
-# names got tagged "(user)" or "user's friend". Rewording the context didn't
-# fix it (tried on throwaway banks; it also made the rewrite fail outright
-# about a third of the time). The user already approved the exact wording, so
-# there's nothing left to extract: this named strategy uses Hindsight's
-# "chunks" mode, which stores the text as-is and never calls a model -- tags,
-# recall and the core-only recall all work the same (checked live).
+# Approved facts (retain_fact) are stored word for word: Hindsight's rewrite swapped who owns
+# what in short first-person facts, and he already approved the exact wording. This strategy
+# is its "chunks" mode -- stored as-is, no model call; tags and recall work the same.
 APPROVED_STRATEGY = "glitch-approved"
 _APPROVED_STRATEGY_CONFIG = {"retain_extraction_mode": "chunks"}
-# Only used if the server can't take the strategy (an older Hindsight), when the
-# fact goes through the normal rewrite -- then at least say whose voice it is.
+# Only if the server can't take the strategy: then the rewrite at least knows whose voice it is.
 APPROVED_FACT_CONTEXT = "Glitch's own memory, in her voice: 'I' and 'my' mean Glitch (the AI), not the human"
 
 _client: Hindsight | None = None
 _bank_id = ""
-# The bank APPROVED_STRATEGY was last set up on (see _ensure_approved_strategy),
-# so it's checked once per bank rather than before every approval.
+# The bank APPROVED_STRATEGY was last set up on, so it's checked once per bank.
 _approved_strategy_bank: str | None = None
 
 
@@ -197,10 +155,7 @@ def configure(api_url: str, bank_id: str, api_key: str | None = None) -> None:
 
 
 def hindsight_client() -> Hindsight | None:
-    """The configured Hindsight client, or None if configure() was never
-    called -- for lessons.py, which talks to the same server (though in its
-    own bank, see lessons._bank) rather than opening a second connection.
-    """
+    """The Hindsight client or None -- lessons.py uses it too, in its own bank."""
     return _client
 
 
@@ -225,11 +180,7 @@ def hindsight_configured() -> bool:
 
 
 async def ensure_bank() -> None:
-    """Creates the configured bank, or just updates it if it already
-    exists (create_bank is documented as create-or-update, confirmed live
-    as idempotent) -- safe to call on every startup/reconfigure. A no-op
-    if configure() was never called.
-    """
+    """Creates the bank if it doesn't exist (create-or-update, safe on every start)."""
     if _client is None:
         return
     await _client.acreate_bank(_bank_id)
@@ -237,13 +188,8 @@ async def ensure_bank() -> None:
 
 
 async def _apply_default_retain_mission() -> None:
-    """Sets RETAIN_MISSION on a bank that has no retain_mission -- one already
-    there is the current default or someone's own, left alone either way. Same
-    for OBSERVATIONS_MISSION. Best-effort: a
-    server that has bank-config writes disabled
-    (HINDSIGHT_API_ENABLE_BANK_CONFIG_API=false) just keeps its own extraction
-    behavior -- that must never stop the bank from being usable.
-    """
+    """Sets RETAIN_MISSION and OBSERVATIONS_MISSION where the bank has none, leaving any
+    set by hand. Best-effort: a server with bank-config writes disabled keeps its own."""
     try:
         config = await _client.aget_bank_config(_bank_id)
         overrides = config.get("overrides") or {}
@@ -301,11 +247,8 @@ async def _ensure_approved_strategy() -> None:
 
 
 # -- How old a memory is -------------------------------------------------------
-# A recalled memory gets "(learned 3 days ago)" after it, from when the server
-# says it was saved (Hindsight's mentioned_at), so
-# she can tell that "moving next month" was said a month ago. By calendar day in
-# this machine's timezone. No date known (the local file, an older server): the
-# memory goes in as it is.
+# A recalled memory gets "(learned 3 days ago)" from Hindsight's mentioned_at, so she can
+# tell "moving next month" was said a month ago. No date known: it goes in as it is.
 
 
 def _age(when, now: datetime | None = None) -> str:
@@ -363,11 +306,8 @@ async def _recall_core_items() -> list[tuple[str, str | None]]:
 
 
 async def recall_relevant(query: str) -> str:
-    """Whatever's actually relevant to `query` right now, joined into the
-    same "- fact" block shape LocalLLM.set_memory already expects -- the
-    user's "core" facts first (see brain/training.py), then the rest, each with
-    how long ago it was learned.
-    """
+    """What's relevant to `query` as a "- fact" block: his "core" facts first, then the
+    rest, each with how long ago it was learned."""
     if _client is None:
         return ""
     response, core = await asyncio.gather(
@@ -392,10 +332,7 @@ def _relevance(result) -> float:
 
 
 def _item_text(item) -> str:
-    # list_memories' response items are typed as plain dicts in the
-    # OpenAPI schema, but confirmed live to actually come back as
-    # MemoryUnitListItem objects -- handles either shape rather than
-    # trusting one over the other.
+    # Typed as dicts, but they come back as objects -- either works.
     if isinstance(item, dict):
         return item.get("text", "")
     return getattr(item, "text", "") or ""
@@ -415,9 +352,6 @@ async def _clear_hindsight() -> None:
     await _client.adelete_bank(_bank_id)
     _approved_strategy_bank = None  # the recreated bank has no strategies yet
     await _client.acreate_bank(_bank_id)
-    # A recreated bank starts with no retain_mission -- without this, everything
-    # retained until the next Brain restart (which re-applies it via ensure_bank)
-    # would be extracted with no guidance at all.
     await _apply_default_retain_mission()
 
 
@@ -431,18 +365,13 @@ def read_local_entries() -> list[str]:
 
 
 def read_local_block() -> str:
-    """Joined entries for feeding straight into LocalLLM.set_memory -- ""
-    (not None) when empty, since _system_prompt just skips a falsy block.
-    """
+    """The entries as a "- fact" block for LocalLLM.set_memory."""
     return "\n".join(f"- {entry}" for entry in read_local_entries())
 
 
 def add_local_entry(fact: str) -> bool:
-    """Appends a new fact, skipping an exact-duplicate re-add. Trims the
-    OLDEST entries first when over MAX_MEMORY_CHARS. Returns whether
-    anything was actually added -- main.py uses this to decide whether the
-    memory_learned notification should fire at all.
-    """
+    """Appends a new fact (not a repeat), dropping the oldest past MAX_MEMORY_CHARS.
+    Returns whether it was added."""
     fact = fact.strip()
     if not fact:
         return False
@@ -464,23 +393,16 @@ def _clear_local() -> None:
 
 
 async def retain_exchange(user_text: str, reply_text: str, asked: str = "") -> None:
-    """Fire-and-forget: hands one exchange to the memory server to decide what,
-    if anything, is worth remembering long-term. An empty reply_text retains
-    only what the user said -- main.py passes that for a turn where she
-    searched the web, so the search results in her reply never get saved as
-    if they were something about the user. `asked` is her question he was
-    answering (curiosity.answered_question) -- the answer needs it.
-    """
+    """Hands one exchange to the memory server to keep what's worth keeping. An empty
+    reply_text keeps only his side (a search or picture turn). `asked` is her question he
+    was answering -- the answer needs it."""
     if read_provider() == HINDSIGHT_PROVIDER:
         await _hindsight_retain_exchange(user_text, reply_text, asked)
 
 
 async def retain_fact(text: str, importance: str) -> None:
-    """Retains one fact the user reviewed and approved (brain/training.py),
-    word for word, marked with its importance so core facts can be recalled
-    every turn. Raises if it couldn't be saved at all -- the caller keeps the
-    proposal queued so nothing approved is lost.
-    """
+    """One fact he approved (brain/training.py), word for word, tagged with its importance.
+    Raises if it couldn't be saved, so the proposal stays queued."""
     if read_provider() == HINDSIGHT_PROVIDER:
         await _hindsight_retain_fact(text, importance)
     else:
@@ -516,12 +438,7 @@ set_memory_active = MEMORY_ACTIVE.write
 
 
 def read_memory_active() -> bool:
-    """Defaults to True (on) -- unlike Mic Always-On, this feature's whole
-    point is to be on so she actually gets to know the user, so it opts in
-    by default rather than requiring the user to find and flip it. The
-    local provider is always "available" (nothing to configure); a memory
-    server additionally needs to be connected (activate()).
-    """
+    """On by default. A memory server also has to be connected."""
     if server_backed() and not server_configured():
         return False
     return MEMORY_ACTIVE.read()

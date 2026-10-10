@@ -31,16 +31,8 @@ from voice import NoneTTS, RemoteTTS
 # ============================================================================
 
 def build_llm(name: str) -> ChatBackend:
-    """LocalLLM (or OllamaLLM, see below) built from a saved engine's
-    endpoint/model/api_key. Always re-primes the fresh
-    instance with whatever soul/profile is currently active -- persona/
-    soul state lives on the instance itself (llm.py), not
-    externally, so a new instance (main.py's startup, or a live
-    load_llm_engine switch) would otherwise silently drop who Glitch
-    currently is.
-
-    A NoneLLM for NONE_NAME (a fresh install with no engine picked yet), or an
-    engine that can't be read or has no endpoint -- not something to crash on.
+    """A LocalLLM or OllamaLLM from a saved engine, given the active soul and profile and
+    the saved conversation. A NoneLLM for NONE_NAME or an engine that can't be read.
     """
     try:
         config = {} if name == llm_engines.NONE_NAME else llm_engines.read_engine(name)
@@ -59,9 +51,6 @@ def build_llm(name: str) -> ChatBackend:
         "api_key": config.get("api_key") or None,
         "on_history_change": lambda history: conversation.save_state(history, persona.conversation_mode()),
     }
-    # See OllamaLLM's own docstring for why this distinction matters:
-    # Ollama's OpenAI-compatible endpoint silently ignores `think`, only
-    # its native API (what OllamaLLM talks to) actually honors it.
     if config.get("provider") == "ollama":
         # During role-play on its own engine, the confirm dialog's think
         # choice wins over the engine's saved one (see switch_to_roleplay_engine).
@@ -74,11 +63,8 @@ def build_llm(name: str) -> ChatBackend:
     else:
         llm = LocalLLM(**connection)
 
-    # Her main soul always applies unless role-play is on with an RP soul
-    # selected (see persona.effective_soul); the RP profile only applies during
-    # role-play. update_*, not set_*: those start a fresh conversation, which
-    # would save an empty one over the real one restored just after. No memory
-    # priming here -- reply.reply_to recalls what's relevant to each message.
+    # update_*, not set_*: those start a fresh conversation, which would save an empty one
+    # over the one restored just after.
     llm.update_soul(persona.effective_soul())
     if profiles.read_roleplay_active():
         llm.update_persona(profiles.read_active_profile())
@@ -87,12 +73,8 @@ def build_llm(name: str) -> ChatBackend:
 
 
 def build_harness_llm(name: str) -> HarnessLLM | None:
-    """A HarnessLLM for the named saved harness (brain/harness.py), or None
-    if it's unknown/unreadable or has no endpoint saved -- callers fall
-    back to build_llm in that case, same "don't leave Brain with nothing
-    to talk to" reasoning as build_llm's own fallback when a saved LLM
-    engine can't be read.
-    """
+    """A HarnessLLM for the named saved harness, or None if it can't be read (callers then
+    fall back to build_llm)."""
     try:
         config = harness.read_harness(name)
     except (ValueError, OSError) as exc:
@@ -102,8 +84,7 @@ def build_harness_llm(name: str) -> HarnessLLM | None:
         print(f"[brain] couldn't activate harness {name!r}: no endpoint saved")
         return None
     print(f"[brain] using harness {name!r} at {config['endpoint']!r}")
-    # Continue the same conversation across messages (and Brain restarts) --
-    # see HarnessLLM.__init__ for how each harness is told which one.
+    # The same harness conversation across messages and restarts.
     if not config.get("api_key"):
         print(f"[brain] harness {name!r} has no API key -- Hermes needs one to continue a conversation")
     return HarnessLLM(
@@ -117,11 +98,7 @@ def build_harness_llm(name: str) -> HarnessLLM | None:
 
 
 def build_tts(name: str) -> RemoteTTS | NoneTTS:
-    """NoneTTS for tts_engines.NONE_NAME, or a RemoteTTS pointed at a saved
-    engine's endpoint/api_key otherwise. Falls back to NoneTTS if the named
-    engine's saved config can't be read (deleted out from under a stale
-    reference, corrupted file, etc.) rather than crashing.
-    """
+    """A RemoteTTS for a saved engine; NoneTTS for NONE_NAME or one that can't be read."""
     if name == tts_engines.NONE_NAME:
         return NoneTTS()
     try:
@@ -167,11 +144,7 @@ def llm_engines_message() -> dict:
 
 
 def harness_state_message() -> dict:
-    """The current harness_state, read fresh from harness.py each time. While a
-    harness is active the selected one is by definition the active one -- only
-    fall back to the separately-kept "last selected" while inactive (see
-    protocol.py's harness_state docstring).
-    """
+    """The current harness_state: the active harness, or the last one picked while none is."""
     active = harness.read_active_harness()
     return protocol.harness_state(bool(active), active, active or harness.read_selected_harness_name(), harness.list_harnesses())
 
@@ -319,10 +292,6 @@ async def _load_tts_engine(websocket: websockets.ServerConnection, data: dict, b
         return
     start = time.monotonic()
     try:
-        # Off the event loop on principle -- neither engine blocks meaningfully
-        # right now, but a future one might. Caught broadly (not just
-        # ValueError/OSError, which build_tts already handles) since a real
-        # client/library failure here could raise nearly anything.
         brain.tts = await asyncio.to_thread(build_tts, name)
     except Exception as exc:
         await hub.debug_log(websocket, "tts", f"couldn't switch to speech engine {name!r}: {exc!r}", (time.monotonic() - start) * 1000)
@@ -335,12 +304,8 @@ async def _load_tts_engine(websocket: websockets.ServerConnection, data: dict, b
 
 
 def _tts_voices_message(name: str, error: str = "") -> dict:
-    """Which custom voices exist for this saved engine, its current default,
-    and whether creating another is possible for it (voices_dir configured).
-    Empty/false across the board for NONE_NAME or a name that isn't a saved
-    engine, rather than an error -- picking "None" or briefly seeing a stale
-    name in the dropdown shouldn't need special-casing on the Renderer side.
-    """
+    """A saved engine's custom voices, its default, and whether it can make more (a
+    voices_dir). Empty for NONE_NAME or an unknown name, not an error."""
     try:
         engine = tts_engines.read_engine(name)
     except (ValueError, OSError):
@@ -359,12 +324,8 @@ async def _get_tts_voices(websocket: websockets.ServerConnection, data: dict, br
 
 @hub.handles(protocol.SET_TTS_VOICE)
 async def _set_tts_voice(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-    """Changes a saved speech engine's default voice. If it's the active
-    engine, brain.tts is rebuilt with the new voice right away; otherwise only
-    the saved file changes, taking effect when it's next loaded. voice="" is a
-    real value here -- it clears back to RemoteTTS.DEFAULT_VOICE, the picker's
-    "Default" entry.
-    """
+    """A saved speech engine's default voice -- right away if it's the active one. voice=""
+    is the picker's "Default" (RemoteTTS.DEFAULT_VOICE)."""
     name = data.get("name", "")
     voice = data.get("voice", "")
     if not name:
@@ -385,13 +346,8 @@ async def _set_tts_voice(websocket: websockets.ServerConnection, data: dict, bra
 
 @hub.handles(protocol.COMBINE_KOKORO_VOICE)
 async def _combine_kokoro_voice(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-    """Asks the named engine's own server to blend existing voices by weight
-    (kokoro_voices.combine_voices, `spec` in Kokoro's "voice1(2)+voice2(1)"
-    syntax) and makes the result that engine's new default voice. Refused if
-    the engine has no voices_dir (nowhere to save the result). Every refusal
-    answers with a tts_voices carrying the reason -- doing nothing would look
-    exactly like "worked, still shows the old voice".
-    """
+    """Blends voices on the engine's own server (`spec` like "voice1(2)+voice2(1)") and makes
+    the result its default voice. Needs a voices_dir; a refusal answers with the reason."""
     name = data.get("name", "")
     display_name = data.get("voice_name", "")
     spec = data.get("spec", "")
@@ -432,12 +388,8 @@ async def _combine_kokoro_voice(websocket: websockets.ServerConnection, data: di
 
 @hub.handles(protocol.GET_LLM_MODELS)
 async def _get_llm_models(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-    """Fills the LLM-engine editor's model field with the endpoint's actual
-    loaded models (GET /v1/models, or Ollama's own /api/tags) instead of
-    leaving the user to guess a string. `endpoint` is echoed back so the
-    Renderer can tell this reply apart from a stale one for an endpoint the
-    user has since changed in the still-open editor.
-    """
+    """The endpoint's loaded models for the LLM-engine editor. `endpoint` is echoed back so
+    an answer for an endpoint since changed in the editor can be told apart."""
     endpoint = data.get("endpoint", "")
     if not endpoint.strip():
         return
@@ -460,8 +412,6 @@ async def _load_llm_engine(websocket: websockets.ServerConnection, data: dict, b
     if not name.strip():
         return
     try:
-        # Cheap (a client constructor and a few small file reads) -- no model
-        # loading happens here, so it stays on the event loop.
         brain.llm = build_llm(name)
     except Exception as exc:
         await hub.debug_log(websocket, "llm", f"couldn't switch to LLM engine {name!r}: {exc!r}")
@@ -475,9 +425,7 @@ async def _load_llm_engine(websocket: websockets.ServerConnection, data: dict, b
 
 @hub.handles(protocol.SET_HARNESS_ACTIVE)
 async def _set_harness_active(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-    """Always answers with the true harness_state afterwards, success or not,
-    so the Renderer's optimistic toggle can resync when a harness can't be
-    reached or isn't set up."""
+    """Always answers with the true harness_state, so a toggle that failed flips back."""
     name = data.get("name", "")
     if data.get("active"):
         harness_llm = build_harness_llm(name)
@@ -499,9 +447,7 @@ async def _set_harness_active(websocket: websockets.ServerConnection, data: dict
 
 @hub.handles(protocol.SELECT_HARNESS)
 async def _select_harness(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-    """Just moves the dropdown's pick -- no connection attempt. Only meaningful
-    while no harness is active (the Renderer disables the dropdown while one
-    is), and lets picking None stick across a refresh."""
+    """Moves the dropdown's pick while no harness is active -- no connection attempt."""
     name = data.get("name", "")
     harness.set_selected_harness_name("" if name == harness.NONE_NAME else name)
     await hub.broadcast(harness_state_message())
@@ -521,12 +467,8 @@ async def _set_roleplay_engine(websocket: websockets.ServerConnection, data: dic
 
 
 def switch_to_roleplay_engine(name: str, think: bool, brain: Brain, was_active: bool) -> None:
-    """Switches her to the role-play engine, recording where she was (so turning
-    role-play off can put her back) and the think choice, which build_llm
-    applies -- the engine's saved settings are left alone. think only takes
-    effect on an Ollama-provider engine, the one kind that can reliably turn
-    thinking off (see OllamaLLM's docstring). Leaves her on her current engine
-    if the role-play one can't be read or built.
+    """Switches her to the role-play engine, remembering where she was and the think choice
+    (Ollama engines only). Stays put if the role-play engine can't be built.
     """
     try:
         llm_engines.read_engine(name)
@@ -549,11 +491,7 @@ def switch_to_roleplay_engine(name: str, think: bool, brain: Brain, was_active: 
 
 
 def end_roleplay_engine(brain: Brain) -> None:
-    """If role-play switched engines (see switch_to_roleplay_engine): puts her
-    back on the engine she was using before, or rebuilds the role-play engine
-    without role-play's think choice if that's where she was all along. With no
-    session -- role-play kept her current engine -- nothing changes.
-    """
+    """Puts her back on the engine she had before role-play switched it, if it did."""
     session = llm_engines.end_roleplay_session()
     if not session:
         return
