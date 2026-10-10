@@ -18,10 +18,10 @@ moves the way speech does.
 import io
 import re
 import time
+import wave
 
 import httpx
 import numpy as np
-import soundfile as sf
 from openai import OpenAI
 
 import protocol
@@ -195,8 +195,11 @@ class RemoteTTS:
             model=self._model, voice=self._voice, input=text, response_format="wav", **style
         )
         wav_bytes = response.content
-        audio, sample_rate = sf.read(io.BytesIO(wav_bytes), dtype="float32")
-        if audio.ndim > 1:
-            audio = audio.mean(axis=1)  # collapse to mono for the envelope calc
+        with wave.open(io.BytesIO(wav_bytes)) as wav:  # 16-bit PCM from both Qwen3-TTS and Kokoro
+            if wav.getsampwidth() != 2:
+                raise ValueError(f"expected 16-bit WAV, got {8 * wav.getsampwidth()}-bit")
+            channels, sample_rate = wav.getnchannels(), wav.getframerate()
+            audio = np.frombuffer(wav.readframes(wav.getnframes()), dtype="<i2").astype("float32") / 32768
+        audio = audio.reshape(-1, channels).mean(axis=1)  # mono for the envelope calc
         self.SAMPLE_RATE = sample_rate
         return wav_bytes, _viseme_frames_from_audio(audio, sample_rate)
