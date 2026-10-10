@@ -58,6 +58,7 @@ DELETE_LESSON = "delete_lesson"
 RESOLVE_LESSON_PROPOSAL = "resolve_lesson_proposal"
 SET_CURIOSITY_ACTIVE = "set_curiosity_active"
 SET_HEARTBEAT_ACTIVE = "set_heartbeat_active"
+THINK_NOW = "think_now"
 TEST_REACH_OUT = "test_reach_out"
 SET_SAMPLING_PROFILE = "set_sampling_profile"
 SAVE_SAMPLING_PROFILE = "save_sampling_profile"
@@ -237,6 +238,11 @@ def curiosity_timer(state: str, due_at: float | None, error: str = "") -> dict:
 def heartbeat_state(active: bool) -> dict:
     """Whether her heartbeat (heartbeat.py) is on."""
     return {"type": "heartbeat_state", "active": active}
+
+
+def heartbeat_note(text: str) -> dict:
+    """What came of Think now (heartbeat.py): her thought, or why she couldn't."""
+    return {"type": "heartbeat_note", "text": text}
 
 
 def curiosity_state(active: bool) -> dict:

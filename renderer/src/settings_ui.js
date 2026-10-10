@@ -23,6 +23,12 @@ export class SettingsUI {
     this._waitingFor = new Set();
 
     for (const { id, set } of SWITCHES) $(id)?.addEventListener("change", (e) => app.send({ type: set, active: e.target.checked }));
+    // Heartbeat's Think now: one wander right away; what she thought comes back as heartbeat_note.
+    $("think-now-button")?.addEventListener("click", () => {
+      $("think-now-button").disabled = true;
+      this._showThinkNote("Thinking...");
+      app.send({ type: "think_now" });
+    });
     $("download-memory-button")?.addEventListener("click", () => this._ask("get_memory_content"));
     $("clear-memory-button")?.addEventListener("click", () => {
       if (window.confirm("Clear everything Glitch remembers about you? This can't be undone.")) app.send({ type: "clear_memory" });
@@ -63,6 +69,10 @@ export class SettingsUI {
         if ($("notes-textarea")) $("notes-textarea").value = data.content || "";
         this.notesModal.open();
       },
+      heartbeat_note: (data) => {
+        if ($("think-now-button")) $("think-now-button").disabled = false;
+        this._showThinkNote(data.text || "");
+      },
       soul_and_user_content: (data) => {
         if (!this._answered("get_soul_and_user") || !this.soulUserModal.el) return;
         if ($("soul-user-editor-soul")) $("soul-user-editor-soul").value = data.soul || "";
@@ -81,6 +91,13 @@ export class SettingsUI {
   // The context meter goes back to empty with the conversation.
   resetContextMeter() {
     for (const id of ["context-meter", "context-meter-conversation"]) this._setBar(id, 0, "after her next reply", "low");
+  }
+
+  _showThinkNote(text) {
+    const note = $("think-now-note");
+    if (!note) return;
+    note.textContent = text;
+    note.hidden = !text;
   }
 
   _ask(type) {

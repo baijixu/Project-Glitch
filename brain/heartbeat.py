@@ -205,18 +205,19 @@ def _free(brain: Brain, now: float) -> bool:
     )
 
 
-async def beat(brain: Brain) -> None:
-    """One wander: fragments in, maybe a thought out -- and a page, if a topic lands."""
+async def beat(brain: Brain) -> str:
+    """One wander: fragments in, maybe a thought out -- and a page, if a topic lands.
+    Returns what happened, in a line (for Think now)."""
     now = datetime.now()
     interests = read_interests()
     drifted = await fragments(now, interests)
     if not drifted:
-        return
+        return "Nothing to think about yet -- no soul, diary, chats or memories to wander through."
     async with brain.reply_lock:  # one model, one job at a time -- his message waits a few seconds at most
         found = parse_daydream(await asyncio.to_thread(brain.llm.daydream, "\n".join(f"- {d}" for d in drifted)))
     if not found:
         print("[heartbeat] nothing pulled at her")
-        return
+        return "Nothing pulled at her this time."
     topic, landed = add_pull(interests, found["topic"], found["pull"], found["thought"], found["question"], time.time())
     _save_interests(interests)
     conversation.log_thought(f"{found['thought']}  \n*{topic} · pull {found['pull']}*", now=now)
@@ -231,6 +232,8 @@ async def beat(brain: Brain) -> None:
             (folder / f"{sanitize_name(topic, kind='topic')}.md").write_text(f"# {topic}\n\n*Landed {now:%A %d %B %Y}*\n\n{page}\n", encoding="utf-8")
             conversation.log_thought(f"💡 **{topic}** landed -- it kept pulling at her, so she wrote about it:\n\n{page}", now=datetime.now())
             print(f"[heartbeat] {topic!r} landed")
+            return f"{found['thought']} -- and {topic} landed: she wrote a page about it (Chat Logs -> Thoughts)."
+    return f"{found['thought']} ({topic}, pull {found['pull']})"
 
 
 async def heartbeat_loop(brain: Brain) -> None:
@@ -241,6 +244,24 @@ async def heartbeat_loop(brain: Brain) -> None:
                 await beat(brain)
         except Exception as exc:  # never let one bad beat stop the loop
             print(f"[heartbeat] couldn't wander: {exc!r}")
+
+
+@hub.handles(protocol.THINK_NOW)
+async def _think_now(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    """Settings -> Heartbeat's Think now: one wander right away, whether the toggle is on or he's
+    been quiet. Answered to that device with what she thought (heartbeat_note)."""
+    if not brain.llm.owns_conversation:
+        note = "She can't while a harness is in control, or with no LLM set up."
+    elif profiles.read_roleplay_active():
+        note = "Not during role-play."
+    elif brain.reply_lock.locked():
+        note = "She's busy right now -- try again in a moment."
+    else:
+        try:
+            note = await beat(brain)
+        except Exception as exc:
+            note = f"Couldn't think: {exc}"
+    await hub.send(websocket, protocol.heartbeat_note(note))
 
 
 @hub.handles(protocol.SET_HEARTBEAT_ACTIVE)
