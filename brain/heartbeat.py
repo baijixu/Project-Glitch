@@ -243,7 +243,7 @@ async def beat(brain: Brain) -> str:
     if not drifted:
         return "Nothing to think about yet -- no soul, diary, chats or memories to wander through."
     async with brain.reply_lock:  # one model, one job at a time -- his message waits a few seconds at most
-        found = parse_daydream(await asyncio.to_thread(brain.llm.daydream, "\n".join(f"- {d}" for d in drifted)))
+        found = parse_daydream(await asyncio.to_thread(brain.llm.daydream, "\n".join(f"- {d}" for d in drifted), persona.user_name() or "he"))
     if not found:
         print("[heartbeat] nothing pulled at her")
         return "Nothing pulled at her this time."
@@ -254,7 +254,7 @@ async def beat(brain: Brain) -> str:
     if landed:
         thoughts = "\n".join(f"- {t}" for t in interests[topic]["thoughts"] + interests[topic]["questions"])
         async with brain.reply_lock:
-            page = (await asyncio.to_thread(brain.llm.focus, topic, thoughts)).strip()
+            page = (await asyncio.to_thread(brain.llm.focus, topic, thoughts, persona.user_name() or "him")).strip()
         if page:
             folder = conversation.JOURNAL_LOG_DIR / "interests"
             folder.mkdir(parents=True, exist_ok=True)

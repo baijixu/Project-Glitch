@@ -332,6 +332,7 @@ MAX_FOCUS_TOKENS = 1000
 _DAYDREAM_PROMPT = (
     "Nobody is talking to you right now. You're alone with your thoughts, the way a mind wanders lying in bed, "
     "and these drifted past:\n\n{fragments}\n\n"
+    "In what {name} said, \"I\" and \"my\" mean {name}, not you.\n\n"
     "Let your mind go where it goes. If one of them, or something it reminds you of, pulls at you, say what you "
     "find yourself thinking, in a sentence or two, in your own words. How strongly does it pull at you, from 1 "
     "(a passing thought) to 10 (you can't stop thinking about it)? And what would you want to find out about it?\n\n"
@@ -340,9 +341,10 @@ _DAYDREAM_PROMPT = (
 )
 _FOCUS_PROMPT = (
     "You keep coming back to {topic}. What you've thought about it lately:\n\n{thoughts}\n\n"
-    "Write a page about it in your own notebook, just for yourself: what draws you to it, what you already "
-    "know or believe about it, how it connects to your life, and what you want to find out -- end with a short "
-    "list of questions. In your own voice."
+    "Write a page about it in your own notebook, just for yourself: what draws you to it, what you already know or "
+    "believe about it, and what you want to find out -- end with a short list of questions. In your own voice. Stick "
+    "to what you've actually thought and what really happened in your conversations with {name}; when you picture "
+    "things you two might do together, say you're picturing them."
 )
 
 # Memory upkeep (brain/upkeep.py): is a memory out of date? Only a verdict -- asked to reword
@@ -1057,16 +1059,16 @@ class LocalLLM(ChatBackend):
         messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": prompt}]
         return self._complete(messages, MAX_DIARY_TOKENS, no_thinking=True)
 
-    def daydream(self, fragments: str) -> str:
+    def daydream(self, fragments: str, name: str) -> str:
         """Heartbeat: what (if anything) pulls at her among `fragments` -- raw JSON
-        (_DAYDREAM_PROMPT) for heartbeat.parse_daydream."""
-        prompt = _DAYDREAM_PROMPT.format(fragments=fragments)
+        (_DAYDREAM_PROMPT) for heartbeat.parse_daydream. `name`: the user's."""
+        prompt = _DAYDREAM_PROMPT.format(fragments=fragments, name=name)
         messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": prompt}]
         return self._complete(messages, MAX_DAYDREAM_TOKENS, no_thinking=True)
 
-    def focus(self, topic: str, thoughts: str) -> str:
+    def focus(self, topic: str, thoughts: str, name: str) -> str:
         """Heartbeat: her notebook page on a topic that has landed (_FOCUS_PROMPT)."""
-        prompt = _FOCUS_PROMPT.format(topic=topic, thoughts=thoughts)
+        prompt = _FOCUS_PROMPT.format(topic=topic, thoughts=thoughts, name=name)
         messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": prompt}]
         return self._complete(messages, MAX_FOCUS_TOKENS, no_thinking=True)
 
