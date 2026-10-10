@@ -121,3 +121,5 @@ run-tests.sh
 # Her note on where the last conversation left off (brain/conversation.py) -- personal content.
 brain/left_off.md
 brain/upkeep_last.txt
+brain/friends_active.txt
+brain/friends/

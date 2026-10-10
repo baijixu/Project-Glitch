@@ -16,7 +16,7 @@
 //   capture.js ........ camera/screen/file, push-to-talk and Always-On mic
 //   settings_ui.js .... on/off switches, memory, Notes and soul/user editors, context meter
 //   debug_ui.js ....... the debug log and Restart Brain
-//   (lessons, training, sampling, chat logs, memory profiles, curiosity countdown: *_ui.js)
+//   (lessons, training, sampling, chat logs, memory profiles, friends, curiosity countdown: *_ui.js)
 
 import { AvatarsUI } from "./avatars_ui.js";
 import { BackgroundsUI } from "./backgrounds_ui.js";
@@ -25,6 +25,7 @@ import { CharactersUI } from "./characters_ui.js";
 import { ChatLogsUI } from "./chat_logs_ui.js";
 import { CuriosityTimerUI } from "./curiosity_timer_ui.js";
 import { DebugUI, describeSettingChange, deviceSummary } from "./debug_ui.js";
+import { FriendsUI } from "./friends_ui.js";
 import { HarnessUI, LlmEnginesUI, SpeechEnginesUI } from "./engines_ui.js";
 import { HistoryUI } from "./history_ui.js";
 import { LessonsUI } from "./lessons_ui.js";
@@ -113,7 +114,13 @@ export class BrainClient {
     this.avatars = new AvatarsUI(this, { onAvatarSwap });
     this.backgrounds = new BackgroundsUI(this);
     this.speechEngines = new SpeechEnginesUI(this);
-    this.llmEngines = new LlmEnginesUI(this, { onEnginesChanged: (names) => this.characters.setEngineNames(names) });
+    this.friends = new FriendsUI(this);
+    this.llmEngines = new LlmEnginesUI(this, {
+      onEnginesChanged: (names) => {
+        this.characters.setEngineNames(names);
+        this.friends.setEngineNames(names);
+      },
+    });
     this.lessons = new LessonsUI({ send });
     this.training = new TrainingUI({ send, onNewProposals: (fact) => this._showToast(fact, "🧠 Memory proposed (review in Settings): ") });
     this.sampling = new SamplingUI({ send });
@@ -122,7 +129,7 @@ export class BrainClient {
     this.curiosityTimer = new CuriosityTimerUI({ send });
     this.harness = new HarnessUI(this, {
       onLockChange: (locked) => {
-        for (const ui of [this.characters, this.speechEngines, this.llmEngines, this.avatars, this.sampling, this.memoryProfiles]) {
+        for (const ui of [this.characters, this.speechEngines, this.llmEngines, this.avatars, this.sampling, this.memoryProfiles, this.friends]) {
           ui.setLocked(locked);
         }
       },
@@ -171,6 +178,7 @@ export class BrainClient {
       memory_profile_content: (data) => this.memoryProfiles.handleContent(data),
       curiosity_timer: (data) => this.curiosityTimer.handleTimer(data),
       ...this.characters.handlers,
+      ...this.friends.handlers,
       ...this.settings.handlers,
       ...this.avatars.handlers,
       ...this.backgrounds.handlers,

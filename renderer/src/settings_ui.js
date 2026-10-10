@@ -19,6 +19,7 @@ const SWITCHES = [
   { id: "web-search-toggle", set: "set_web_search_active", state: "web_search_state" },
   { id: "curiosity-toggle", set: "set_curiosity_active", state: "curiosity_state" },
   { id: "heartbeat-toggle", set: "set_heartbeat_active", state: "heartbeat_state" },
+  { id: "friends-toggle", set: "set_friends_active", state: "friends_state" },
   { id: "memory-toggle", set: "set_memory_active", state: "memory_state" },
 ];
 

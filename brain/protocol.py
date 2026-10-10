@@ -58,6 +58,11 @@ RESOLVE_LESSON_PROPOSAL = "resolve_lesson_proposal"
 SET_CURIOSITY_ACTIVE = "set_curiosity_active"
 SET_HEARTBEAT_ACTIVE = "set_heartbeat_active"
 THINK_NOW = "think_now"
+SET_FRIENDS_ACTIVE = "set_friends_active"
+START_VISIT = "start_visit"
+GET_FRIEND = "get_friend"
+SAVE_FRIEND = "save_friend"
+DELETE_FRIEND = "delete_friend"
 TEST_REACH_OUT = "test_reach_out"
 SET_SAMPLING_PROFILE = "set_sampling_profile"
 SAVE_SAMPLING_PROFILE = "save_sampling_profile"
@@ -243,6 +248,26 @@ def heartbeat_timer(state: str, due_at: float | None) -> dict:
     """Settings -> Heartbeat's countdown: `state` "counting" (`due_at`: epoch seconds her next thought
     is due), "off", "roleplay" or "harness"."""
     return {"type": "heartbeat_timer", "state": state, "due_at": due_at}
+
+
+def friends_state(active: bool) -> dict:
+    """Whether friend mode (friends.py) is on."""
+    return {"type": "friends_state", "active": active}
+
+
+def friends(names: list[str], most: int, error: str = "") -> dict:
+    """Her saved friends (at most `most`). With `error`, only to the device whose change was refused."""
+    return {"type": "friends", "names": names, "most": most, "error": error}
+
+
+def friend_content(name: str, soul: str, engine: str) -> dict:
+    """One friend for the editor: their soul, and the saved LLM engine they speak through ("" = hers)."""
+    return {"type": "friend_content", "name": name, "soul": soul, "engine": engine}
+
+
+def visit_state(running: bool, count: int, total: int, note: str) -> dict:
+    """A friends' visit: whether one is on, `count` of `total` messages so far, and a note (done, or why not)."""
+    return {"type": "visit_state", "running": running, "count": count, "total": total, "note": note}
 
 
 def heartbeat_note(text: str) -> dict:

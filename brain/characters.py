@@ -326,7 +326,7 @@ async def _chat_logs(websocket: websockets.ServerConnection, data: dict, brain: 
     file is picked by mode and a plain date, never by a path from the Renderer.
     A deletion goes to every device, so their lists stay in step.
     """
-    mode = data.get("mode") if data.get("mode") in (conversation.ROLEPLAY, conversation.JOURNAL, conversation.THOUGHTS) else conversation.MAIN
+    mode = data.get("mode") if data.get("mode") in (conversation.ROLEPLAY, conversation.JOURNAL, conversation.THOUGHTS, conversation.VISITS) else conversation.MAIN
     day = str(data.get("date") or "")
     if data["type"] == protocol.GET_CHAT_LOGS:
         await hub.send(websocket, protocol.chat_logs(mode, conversation.list_logs(mode)))

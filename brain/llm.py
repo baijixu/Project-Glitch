@@ -326,6 +326,7 @@ MAX_DIARY_TOKENS = 1500
 
 # Heartbeat (brain/heartbeat.py), under her own soul so the thoughts are in her voice. The
 # topics already on her mind aren't listed: that made her pick one of them 8 times of 8.
+MAX_GROUP_TOKENS = 400  # one message in a friends' visit (brain/friends.py)
 MAX_DAYDREAM_TOKENS = 400
 MAX_FOCUS_TOKENS = 1000
 _DAYDREAM_PROMPT = (
@@ -354,6 +355,17 @@ _STILL_CURRENT_SYSTEM_PROMPT = (
     "that has passed -- an event, an appointment, a plan for a day or week now gone, a temporary state like being "
     "sick -- so it reads as if it were still coming or still happening.\n\n"
     "Reply with ONLY a JSON object: {{\"current\": true}} or {{\"current\": false}}."
+)
+
+# Her journal right after a visit (brain/friends.py), under her own soul like a daydream.
+_VISIT_JOURNAL_PROMPT = (
+    "Your friends {names} just came over and you all talked. The chat:\n\n{transcript}\n\n"
+    "Write your private journal entry about it, in the first person (\"I\" is always you, Glitch), under these "
+    "three headings:\n\n"
+    "What stuck with me -- moments from the visit you're still thinking about, and why.\n"
+    "Where I pushed back or changed my mind -- what you argued for, and anything that moved you.\n"
+    "What I want to tell Josh -- something from the visit you'd like to bring up with him.\n\n"
+    "Only what actually happened in the chat; never invent. One or two lines per point."
 )
 
 # One new memory against one she has, one word: asked about eight at once, the 9B called a
@@ -1033,6 +1045,17 @@ class LocalLLM(ChatBackend):
         """Her newest diary entry (journal.py; reply.py sets it every turn, "" in role-play). Only
         shown when a conversation opens (_turn_notes) and in her reach-outs."""
         self._journal = entry.strip()
+
+    def group_message(self, soul: str | None, prompt: str) -> str:
+        """One message in a friends' visit, under `soul` (None: her own)."""
+        system = soul or self._soul or DEFAULT_PERSONALITY
+        return self._complete([{"role": "system", "content": system}, {"role": "user", "content": prompt}], MAX_GROUP_TOKENS, no_thinking=True)
+
+    def write_visit_journal(self, transcript: str, names: list[str]) -> str:
+        """Her journal entry about a visit (_VISIT_JOURNAL_PROMPT)."""
+        prompt = _VISIT_JOURNAL_PROMPT.format(names=", ".join(names), transcript=transcript)
+        messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": prompt}]
+        return self._complete(messages, MAX_DIARY_TOKENS, no_thinking=True)
 
     def daydream(self, fragments: str) -> str:
         """Heartbeat: what (if anything) pulls at her among `fragments` -- raw JSON

@@ -8,6 +8,7 @@ import avatars
 import characters
 import curiosity
 import engines
+import friends
 import health
 import heartbeat
 import journal
@@ -44,6 +45,9 @@ async def handle_ready(websocket: websockets.ServerConnection, data: dict, brain
         protocol.curiosity_state(curiosity.read_active()),
         protocol.heartbeat_state(heartbeat.ACTIVE.read()),
         heartbeat.timer_message(brain),
+        protocol.friends_state(friends.ACTIVE.read()),
+        friends.friends_message(),
+        protocol.visit_state(**friends.STATUS),
         reach_out.curiosity_timer_message(),
         engines.sampling_state_message(),
         *([reply.LAST_CONTEXT_USAGE] if reply.LAST_CONTEXT_USAGE else []),

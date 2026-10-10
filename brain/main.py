@@ -49,6 +49,7 @@ import asyncio
 
 import debugging
 import engines
+import friends  # noqa: F401 -- registers its message handlers
 import harness
 import health
 import heartbeat

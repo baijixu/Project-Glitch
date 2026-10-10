@@ -271,6 +271,7 @@ The ⚙️ panel, top to bottom:
 | **Web Access** | Lets her search the web through your SearXNG. |
 | **Curiosity** | Follow-up questions and reaching out after a quiet spell. |
 | **Heartbeat** | Her mind wandering while you're away, and **Think now** to start one right away. |
+| **Friend mode** | Her friends (up to three), and **Start a visit**. |
 | **Memory training** | Review what she wants to remember before it's saved. |
 | **Behavior learning** | The rules she's learned from your ratings, and how much she may change on her own. |
 | **Speech Engine** | Her voice: engines, voices, blended Kokoro voices. |
@@ -398,6 +399,20 @@ Every thought and page is in *Settings → Chat Logs → Thoughts*; the topics a
 `brain/self/interests/`. **Think now** starts one right away, whether Heartbeat is on or not. It waits while she's replying,
 and is paused in role-play and while a harness is in control. Her thoughts don't reach her conversations yet.
 
+### Friends
+
+*Settings → Friend mode*: up to three friends with souls of their own, edited like her role-play souls, each speaking
+through whichever saved LLM engine you pick. It ships with three to start from: Rex (a blunt metalhead comic), Mira (an
+astrophysicist who bakes) and Juno (a chaotic art student). **Start a visit** and they and Glitch take turns in a group
+chat on a starter (a debate, a would-you-rather, a story to build, or a random Wikipedia article) for 50 messages. Then
+she writes her journal entry about it right away: what stuck with her, where she pushed back or changed her mind, and what
+she wants to tell you. That entry reaches her when you next start talking, like her diary.
+
+Give the friends **different models** from hers if you can, ideally on another machine, so they sound like different
+people; a friend on her own engine shares her voice. A message that repeats eight or more words from earlier in the chat
+is thrown out, so nobody just echoes. Read every visit in *Settings → Chat Logs → Visits*. Nothing from a visit reaches
+her memory on its own.
+
 ### Voice and vision
 
 - **Speech in:** hold-to-talk, or an always-on mic option, transcribed locally with
@@ -468,7 +483,7 @@ stays in her own memory.
 
 Every exchange with her is written to a daily Markdown file: `brain/chat_logs/2026-09-24.md`, with role-play in
 `brain/chat_logs/roleplay/`. *Settings → Chat Logs* lets you pick Chat, Role-play, Journal (her diary) or Thoughts
-(Heartbeat) and a day, then **Read** it in a pop-up, edit it, or 🗑️ **Delete** it. When she reaches out first, that's
+(Heartbeat), Visits (her friends) and a day, then **Read** it in a pop-up, edit it, or 🗑️ **Delete** it. When she reaches out first, that's
 logged too.
 
 ### The debug log

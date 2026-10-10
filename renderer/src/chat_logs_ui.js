@@ -9,7 +9,7 @@
 
 import { $, Modal } from "./ui.js";
 
-const MODE_NAMES = { main: "Chat", roleplay: "Role-play", journal: "Journal", thoughts: "Thoughts" };
+const MODE_NAMES = { main: "Chat", roleplay: "Role-play", journal: "Journal", thoughts: "Thoughts", visits: "Visits" };
 const HER_OWN = ["journal", "thoughts"]; // her own notes, not messages -- shown as written
 // Where a new entry starts in a log -- same shape as conversation.py's _ENTRY_START.
 const MESSAGE_LINE = /^\*\*(\d{2}:\d{2}:\d{2})\*\* ([^:]+): ?(.*)$/;
@@ -28,7 +28,7 @@ export class ChatLogsUI {
     this.editorEl = $("chat-log-editor");
     this.editButtonEl = $("chat-log-edit-button");
     this.saveButtonEl = $("chat-log-save-button");
-    this._days = { main: [], roleplay: [], journal: [], thoughts: [] };
+    this._days = { main: [], roleplay: [], journal: [], thoughts: [], visits: [] };
     this._open = null; // {mode, date, content} of the log in the pop-up
 
     this.modeEl?.addEventListener("change", () => this.refresh());

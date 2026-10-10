@@ -31,7 +31,7 @@ JOURNAL_LOG_DIR = _DIR / "self"
 # Her note on where the last conversation left off, written as Clear Chat ends it (reply.py).
 LEFT_OFF_PATH = _DIR / "left_off.md"
 
-MAIN, ROLEPLAY, JOURNAL, THOUGHTS = "main", "roleplay", "journal", "thoughts"  # thoughts: heartbeat.py, in self/thoughts/
+MAIN, ROLEPLAY, JOURNAL, THOUGHTS, VISITS = "main", "roleplay", "journal", "thoughts", "visits"  # thoughts: heartbeat.py, visits: friends.py
 PICTURE_NOTE = "[picture]"
 
 
@@ -115,7 +115,7 @@ def read_latest_journal() -> str:
 
 
 def _log_dir(mode: str) -> Path:
-    return {ROLEPLAY: ROLEPLAY_LOG_DIR, JOURNAL: JOURNAL_LOG_DIR, THOUGHTS: JOURNAL_LOG_DIR / "thoughts"}.get(mode, LOG_DIR)
+    return {ROLEPLAY: ROLEPLAY_LOG_DIR, JOURNAL: JOURNAL_LOG_DIR, THOUGHTS: JOURNAL_LOG_DIR / "thoughts", VISITS: JOURNAL_LOG_DIR / "visits"}.get(mode, LOG_DIR)
 
 
 def _append(mode: str, text: str, now: datetime) -> None:
@@ -124,7 +124,7 @@ def _append(mode: str, text: str, now: datetime) -> None:
         folder = _log_dir(mode)
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / f"{now:%Y-%m-%d}.md"
-        title = {ROLEPLAY: "Role-play log", THOUGHTS: "Thoughts"}.get(mode, "Chat log")
+        title = {ROLEPLAY: "Role-play log", THOUGHTS: "Thoughts", VISITS: "Visits"}.get(mode, "Chat log")
         header = "" if path.exists() else f"# {title} -- {now:%A %d %B %Y}\n\n"
         with path.open("a", encoding="utf-8") as handle:
             handle.write(header + text)
@@ -150,6 +150,12 @@ def log_thought(text: str, *, now: datetime | None = None) -> None:
     _append(THOUGHTS, f"**{now:%H:%M}** {text.strip()}\n\n", now)
 
 
+def log_visit(text: str, *, now: datetime | None = None) -> None:
+    """Part of a friends' visit (friends.py), in today's visits log."""
+    now = now or datetime.now()
+    _append(VISITS, text, now)
+
+
 def log_exchange(user_text: str, reply_text: str, *, roleplay: bool, picture: bool = False, now: datetime | None = None) -> None:
     """Appends one exchange to today's log -- the role-play one when role-play is on."""
     now = now or datetime.now()
@@ -166,7 +172,7 @@ _DAY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 def _day_path(mode: str, day: str) -> Path:
     """The log file for one day. Only a plain YYYY-MM-DD date is accepted, so a
     request can never reach a file outside the log folder."""
-    if mode not in (MAIN, ROLEPLAY, JOURNAL, THOUGHTS) or not isinstance(day, str) or not _DAY.match(day):
+    if mode not in (MAIN, ROLEPLAY, JOURNAL, THOUGHTS, VISITS) or not isinstance(day, str) or not _DAY.match(day):
         raise ValueError(f"not a chat log: {mode!r} {day!r}")
     return _log_dir(mode) / f"{day}.md"
 

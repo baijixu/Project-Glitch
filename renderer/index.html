@@ -252,6 +252,30 @@
             <button id="think-now-button" class="settings-action-button">Think now</button>
             <p id="think-now-note" class="settings-hint" hidden></p>
           </section>
+          <section id="friends-section" class="settings-section">
+            <label class="settings-toggle-row">
+              <span>Friend mode</span>
+              <span class="settings-toggle">
+                <input type="checkbox" id="friends-toggle" class="settings-toggle-input" />
+                <span class="settings-toggle-track"></span>
+              </span>
+            </label>
+            <p class="settings-hint">
+              Up to three friends with souls of their own drop by when you press Start a visit. They and Glitch take
+              turns in a group chat on a starter (a debate, a game, a story, a random article) for 50 messages, then
+              she writes about it in her journal and brings it up next time you talk. Give each friend a different LLM
+              engine for a voice of their own. Read visits in Chat Logs -> Visits.
+            </p>
+            <select id="friend-select" class="settings-select"></select>
+            <div class="settings-button-row">
+              <button id="edit-friend-button" class="icon-button" title="Edit friend">✏️</button>
+              <button id="new-friend-button" class="icon-button" title="New friend">➕</button>
+              <button id="delete-friend-button" class="icon-button danger" title="Delete friend">🗑️</button>
+            </div>
+            <p id="friends-error" class="settings-hint sampling-error" hidden></p>
+            <p id="visit-status" class="settings-hint curiosity-timer"></p>
+            <button id="start-visit-button" class="settings-action-button">Start a visit</button>
+          </section>
           <section id="training-section" class="settings-section">
             <h3>Memory training<span id="training-count"></span></h3>
             <p class="settings-hint">
@@ -422,7 +446,7 @@
         <section id="chat-logs-section" class="settings-section">
           <h3>Chat Logs</h3>
           <p class="settings-hint">
-            Her daily logs of your conversations, kept on this PC (brain/chat_logs/). Role-play is kept separately, Journal is what she writes about herself each night, and Thoughts is her mind wandering (Heartbeat).
+            Her daily logs of your conversations, kept on this PC (brain/chat_logs/). Role-play is kept separately, Journal is what she writes about herself each night, and Thoughts is her mind wandering (Heartbeat), and Visits her friends' visits.
             Pick a day to read or edit it, or delete it for good.
           </p>
           <select id="chat-logs-mode" class="settings-select">
@@ -430,6 +454,7 @@
             <option value="roleplay">Role-play</option>
             <option value="journal">Journal</option>
             <option value="thoughts">Thoughts</option>
+            <option value="visits">Visits</option>
           </select>
           <select id="chat-logs-day" class="settings-select"></select>
           <div class="settings-button-row">
@@ -503,6 +528,21 @@
         <div class="modal-actions">
           <button id="lesson-cancel-button" class="modal-button secondary">Cancel</button>
           <button id="lesson-save-button" class="modal-button primary">Save</button>
+        </div>
+      </div>
+    </div>
+    <div id="friend-modal-backdrop" class="modal-backdrop" hidden>
+      <div id="friend-modal" class="modal" role="dialog" aria-labelledby="friend-modal-title">
+        <h2 id="friend-modal-title">New Friend</h2>
+        <label for="friend-name">Name</label>
+        <input id="friend-name" type="text" placeholder="e.g. Rex" autocomplete="off" />
+        <label for="friend-soul">Who they are</label>
+        <textarea id="friend-soul" rows="8" placeholder="Their personality, what they love and can't stand, how they talk, and how they know Glitch..."></textarea>
+        <label for="friend-engine">Speaks through</label>
+        <select id="friend-engine" class="settings-select"></select>
+        <div class="modal-actions">
+          <button id="friend-cancel-button" class="modal-button secondary">Cancel</button>
+          <button id="friend-save-button" class="modal-button primary">Save</button>
         </div>
       </div>
     </div>
