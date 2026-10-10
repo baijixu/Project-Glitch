@@ -6,7 +6,6 @@ from dataclasses import asdict, dataclass
 # Renderer -> Brain message type strings.
 PONG = "pong"
 READY = "ready"
-ERROR = "error"
 USER_TEXT = "user_text"
 USER_AUDIO = "user_audio"
 SAVE_PROFILE = "save_profile"

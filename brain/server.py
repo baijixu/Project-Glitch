@@ -275,11 +275,6 @@ async def _pong(websocket: websockets.ServerConnection, data: dict, brain: Brain
     pass
 
 
-@hub.handles(protocol.ERROR)
-async def _renderer_error(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-    print(f"[brain] renderer reported error: {data.get('message')!r}")
-
-
 async def serve_when_free(handler, host: str, port: int, attempts: int = SERVE_BIND_ATTEMPTS, **serve_kwargs):
     """websockets.serve, retrying while the port is still in use -- which is
     normal for a moment during a restart, when the old process hasn't quite
