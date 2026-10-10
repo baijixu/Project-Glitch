@@ -110,6 +110,34 @@ _GAP_MARKER = re.compile(r"^\[[^\]\n]* later -- [^\]\n]*\]\n")
 _PICTURE_GONE = "[picture -- lost when the app restarted, so you can't see it; ask for it again]"
 
 
+# Words she keeps reaching for (hoodie, Ducati, quiet...): one in REPEAT_IN of her last
+# REPEAT_REPLIES replies gets named in that turn's note. On questions that pulled them out
+# (what she's wearing, how she feels), 9 test replies had 14 of them with no note, 7 with a
+# generic "fresh images" note, 5 naming them -- mostly her moving away ("swapping the hoodie for").
+REPEAT_REPLIES = 6
+REPEAT_IN = 3
+_WORD = re.compile(r"[a-z]+(?:'[a-z]+)?")
+_COMMON = frozenset(
+    "about after again always around because before being could doing enough every feels feeling first going gonna "
+    "honestly actually little maybe never other people pretty really right should something sounds still there their "
+    "these thing things think thinking those through today tonight where which while without would makes getting "
+    "glitch kinda wanna yeah want gets made make know mean just like even much more also good great kind sure "
+    "though anything everything nothing someone everyone looks looking sense stuff time times while"
+    .split()
+)
+
+
+def _pet_words(replies: list[str], latest: str) -> list[str]:
+    """Words in REPEAT_IN of her `replies` -- not common ones, and not ones he just used."""
+    his = set(_WORD.findall(latest.lower()))
+    seen: dict[str, int] = {}
+    for reply in replies:
+        for word in set(_WORD.findall(reply.lower())):
+            if len(word) >= 5 and "'" not in word and word not in _COMMON and word not in his:
+                seen[word] = seen.get(word, 0) + 1
+    return [w for w, n in sorted(seen.items(), key=lambda item: -item[1]) if n >= REPEAT_IN][:4]
+
+
 def _length_note(words: int) -> str:
     """How long her answer should be, scaled to his message. A "match his length" rule in
     the soul didn't hold; this note on each message took her median from 77 to 31 words."""
@@ -1180,6 +1208,9 @@ class LocalLLM(ChatBackend):
         latest = latest if isinstance(latest, str) else " ".join(p.get("text", "") for p in latest)
         if not self._persona and self._history and self._history[-1].get("role") == "user":
             parts.append(_length_note(len(strip_gap_marker(latest).split())))
+            replies = [m["content"] for m in self._history if m.get("role") == "assistant" and isinstance(m.get("content"), str)]
+            if pets := _pet_words(replies[-REPEAT_REPLIES:], latest):
+                parts.append(f"You've leaned on {', '.join(pets)} a lot in your last few replies. This time leave those out and reach for something fresh.")
         if _CRISIS.search(latest):
             parts.append(CRISIS_NOTE)
         return "\n\n".join(parts)
