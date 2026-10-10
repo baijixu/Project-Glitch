@@ -9,6 +9,7 @@ import characters
 import curiosity
 import engines
 import health
+import heartbeat
 import journal
 import hub
 import learning
@@ -41,6 +42,7 @@ async def handle_ready(websocket: websockets.ServerConnection, data: dict, brain
         protocol.voice_state(voice_settings.read_voice_active()),
         protocol.web_search_state(web_search.read_active()),
         protocol.curiosity_state(curiosity.read_active()),
+        protocol.heartbeat_state(heartbeat.ACTIVE.read()),
         reach_out.curiosity_timer_message(),
         engines.sampling_state_message(),
         *([reply.LAST_CONTEXT_USAGE] if reply.LAST_CONTEXT_USAGE else []),

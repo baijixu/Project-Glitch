@@ -1,0 +1,249 @@
+"""Heartbeat: her mind wandering while nobody's talking to her (Settings toggle, off
+by default).
+
+Once he's been quiet for IDLE_SEC, every TICK_SEC a few random fragments of what she
+has drift past -- lines from her soul, her diary, what he said lately, her memories, a
+topic already on her mind -- and she says what, if anything, pulls at her and how
+strongly (llm.daydream). Each pull adds weight to its topic (self/interests.json);
+weight fades by half every HALF_LIFE_HOURS, so only what keeps coming back builds up.
+A topic that passes LAND_AT lands: she turns it over properly (llm.focus) and writes a
+page about it (self/interests/<topic>.md). Every thought, and each page, also goes in
+the day's thoughts log (self/thoughts/, Settings -> Chat Logs -> Thoughts).
+
+Step one: nothing here reaches her prompt, and there's no web yet -- it's watched first.
+"""
+
+import asyncio
+import json
+import random
+import re
+import time
+from datetime import datetime, timedelta
+from pathlib import Path
+
+import websockets
+
+import conversation
+import curiosity
+import hub
+import memory
+import persona
+import profiles
+import protocol
+import souls
+from hub import Brain
+from names import sanitize_name
+from store import Toggle
+
+ACTIVE = Toggle(Path(__file__).parent / "heartbeat_active.txt", default=False)
+
+# ponytail: hand-picked numbers -- tune once there are a few weeks of her thoughts to look at.
+TICK_SEC = 20 * 60
+IDLE_SEC = 20 * 60  # since his last message
+HALF_LIFE_HOURS = 48
+LAND_AT = 20  # a pull is 1-10: about three strong pulls within a day or two
+MAX_INTERESTS = 30  # the faintest are forgotten past this
+KEEP_THOUGHTS = 5  # per topic, the newest
+# How often a topic already on her mind drifts past again. Every time, and she thought about
+# nothing else (8 of 8 in a test); a landed one doesn't -- she's had her think about it.
+RUMINATE_CHANCE = 1 / 3
+
+# Her soul's sections about who she is -- not the ones about how the app works, her
+# looks, or how to talk.
+SOUL_SECTIONS = ("Who you are", "What you love", "What you can't stand", "Your own mind")
+RECENT_DAYS = 3  # his chats and her diary from this far back
+_SENTENCE = re.compile(r"(?<=[.!?])\s+")
+_HIS_LINE = re.compile(r"^\*\*[\d:]+\*\* You: (.+)$", re.MULTILINE)
+
+
+def _interests_path() -> Path:
+    return conversation.JOURNAL_LOG_DIR / "interests.json"
+
+
+def read_interests() -> dict:
+    """{topic: {weight, at (time.time()), thoughts, questions, landed}}."""
+    try:
+        data = json.loads(_interests_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _save_interests(interests: dict) -> None:
+    path = _interests_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(interests, indent=1, ensure_ascii=False), encoding="utf-8")
+
+
+def weight_now(item: dict, now: float) -> float:
+    return item["weight"] * 0.5 ** ((now - item["at"]) / 3600 / HALF_LIFE_HOURS)
+
+
+_SMALL_WORDS = {"the", "a", "an", "of", "and", "at", "in", "on", "my", "your", "his", "her"}
+
+
+def _words(topic: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9']+", topic.lower())) - _SMALL_WORDS
+
+
+def same_topic(a: str, b: str) -> bool:
+    """"The warehouse" and "warehouse at night" are one topic; "octopus dreams" and
+    "octopus intelligence" aren't. ponytail: word overlap -- a synonym is a new topic."""
+    x, y = _words(a), _words(b)
+    return bool(x and y) and (x <= y or y <= x or len(x & y) / len(x | y) >= 0.5)
+
+
+def add_pull(interests: dict, topic: str, pull: int, thought: str, question: str, now: float) -> tuple[str, bool]:
+    """Adds one pull to `topic` (an existing one if it's the same_topic). Returns the
+    topic's name and whether it landed just now."""
+    name = next((t for t in interests if same_topic(t, topic)), topic)
+    item = interests.setdefault(name, {"weight": 0.0, "at": now, "thoughts": [], "questions": [], "landed": None})
+    item["weight"] = weight_now(item, now) + pull
+    item["at"] = now
+    item["thoughts"] = [*item["thoughts"], thought][-KEEP_THOUGHTS:]
+    if question and question not in item["questions"]:
+        item["questions"] = [*item["questions"], question][-KEEP_THOUGHTS:]
+    landed = item["landed"] is None and item["weight"] >= LAND_AT
+    if landed:
+        item["landed"] = now
+    for faint in sorted(interests, key=lambda t: weight_now(interests[t], now))[: max(0, len(interests) - MAX_INTERESTS)]:
+        del interests[faint]
+    return name, landed
+
+
+def parse_daydream(raw: str) -> dict | None:
+    """The model's JSON answer (llm.daydream) as {thought, topic, pull, question}, or None
+    when nothing pulled at her or it can't be read."""
+    match = re.search(r"\{.*\}", raw or "", re.DOTALL)
+    try:
+        data = json.loads(match.group(0)) if match else {}
+    except ValueError:
+        return None
+    topic, thought = data.get("topic"), data.get("thought")
+    if not isinstance(topic, str) or not topic.strip() or not isinstance(thought, str) or not thought.strip():
+        return None
+    try:
+        pull = min(10, max(1, int(data.get("pull"))))
+    except (TypeError, ValueError):
+        pull = 1
+    question = data.get("question") if isinstance(data.get("question"), str) else ""
+    return {"topic": topic.strip()[:60], "thought": thought.strip()[:500], "pull": pull, "question": question.strip()[:300]}
+
+
+# -- What drifts past ----------------------------------------------------------
+
+
+def _sentences(text: str) -> list[str]:
+    return [s.strip("-* ").strip() for line in text.splitlines() for s in _SENTENCE.split(line) if len(s.strip("-* ").strip()) > 15]
+
+
+def soul_sentences() -> list[str]:
+    try:
+        text = souls.SOUL_MD_PATH.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    sections = re.split(r"^#+\s*(.+)$", text, flags=re.MULTILINE)  # [before, heading, body, heading, body...]
+    return [s for heading, body in zip(sections[1::2], sections[2::2]) if heading.strip() in SOUL_SECTIONS for s in _sentences(body)]
+
+
+def _recent_days(now: datetime) -> list[str]:
+    return [f"{now.date() - timedelta(days=n):%Y-%m-%d}" for n in range(RECENT_DAYS + 1)]
+
+
+def diary_sentences(now: datetime) -> list[str]:
+    found = []
+    for day in _recent_days(now):
+        try:
+            found += _sentences(conversation.read_log(conversation.JOURNAL, day).split("\n", 1)[-1])  # past its heading
+        except ValueError:
+            pass
+    return found
+
+
+def his_lines(now: datetime) -> list[str]:
+    found = []
+    for day in _recent_days(now):
+        try:
+            found += [line for line in _HIS_LINE.findall(conversation.read_log(conversation.MAIN, day)) if len(line.split()) >= 4]
+        except ValueError:
+            pass
+    return found
+
+
+async def fragments(now: datetime, interests: dict) -> list[str]:
+    """One random line from each kind of thing she has, labeled, in random order."""
+    name = persona.user_name() or "He"
+    kinds = [
+        ("About you: ", soul_sentences()),
+        ("From your diary: ", diary_sentences(now)),
+        (f"{name} said: ", his_lines(now)),
+    ]
+    if memory.read_memory_active():
+        try:
+            kinds.append(("You remember: ", await memory.read_entries()))
+        except Exception:
+            pass  # a memory server that's down just means one fragment fewer
+    open_topics = [t for t, item in interests.items() if not item["landed"]]
+    if open_topics and random.random() < RUMINATE_CHANCE:
+        kinds.append(("On your mind lately: ", [random.choices(open_topics, [interests[t]["weight"] for t in open_topics])[0]]))
+    picked = [label + random.choice(lines) for label, lines in kinds if lines]
+    random.shuffle(picked)
+    return picked
+
+
+# -- The beat ------------------------------------------------------------------
+
+
+def _free(brain: Brain, now: float) -> bool:
+    last = curiosity.last_user_at()
+    return (
+        ACTIVE.read()
+        and brain.llm.owns_conversation
+        and not profiles.read_roleplay_active()
+        and not brain.reply_lock.locked()
+        and (last is None or now - last >= IDLE_SEC)
+    )
+
+
+async def beat(brain: Brain) -> None:
+    """One wander: fragments in, maybe a thought out -- and a page, if a topic lands."""
+    now = datetime.now()
+    interests = read_interests()
+    drifted = await fragments(now, interests)
+    if not drifted:
+        return
+    async with brain.reply_lock:  # one model, one job at a time -- his message waits a few seconds at most
+        found = parse_daydream(await asyncio.to_thread(brain.llm.daydream, "\n".join(f"- {d}" for d in drifted)))
+    if not found:
+        print("[heartbeat] nothing pulled at her")
+        return
+    topic, landed = add_pull(interests, found["topic"], found["pull"], found["thought"], found["question"], time.time())
+    _save_interests(interests)
+    conversation.log_thought(f"{found['thought']}  \n*{topic} · pull {found['pull']}*", now=now)
+    print(f"[heartbeat] a thought about {topic!r} (pull {found['pull']})")
+    if landed:
+        thoughts = "\n".join(f"- {t}" for t in interests[topic]["thoughts"] + interests[topic]["questions"])
+        async with brain.reply_lock:
+            page = (await asyncio.to_thread(brain.llm.focus, topic, thoughts)).strip()
+        if page:
+            folder = conversation.JOURNAL_LOG_DIR / "interests"
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / f"{sanitize_name(topic, kind='topic')}.md").write_text(f"# {topic}\n\n*Landed {now:%A %d %B %Y}*\n\n{page}\n", encoding="utf-8")
+            conversation.log_thought(f"💡 **{topic}** landed -- it kept pulling at her, so she wrote about it:\n\n{page}", now=datetime.now())
+            print(f"[heartbeat] {topic!r} landed")
+
+
+async def heartbeat_loop(brain: Brain) -> None:
+    while True:
+        await asyncio.sleep(TICK_SEC)
+        try:
+            if _free(brain, time.time()):
+                await beat(brain)
+        except Exception as exc:  # never let one bad beat stop the loop
+            print(f"[heartbeat] couldn't wander: {exc!r}")
+
+
+@hub.handles(protocol.SET_HEARTBEAT_ACTIVE)
+async def _set_heartbeat_active(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    ACTIVE.write(bool(data.get("active")))
+    await hub.broadcast(protocol.heartbeat_state(ACTIVE.read()))

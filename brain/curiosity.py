@@ -341,6 +341,11 @@ def restart_quiet_hour(now: float) -> None:
     note_user_message(now)
 
 
+def last_user_at() -> float | None:
+    """When he last said something (time.time()), None before he ever has."""
+    return _pacing()["last_user_at"]
+
+
 def should_reach_out(now: float) -> bool:
     """True once her wait has passed since his last message and she hasn't reached
     out since. Nothing to measure from yet (a fresh install) starts the clock now.

@@ -57,6 +57,7 @@ RETIRE_LESSON = "retire_lesson"
 DELETE_LESSON = "delete_lesson"
 RESOLVE_LESSON_PROPOSAL = "resolve_lesson_proposal"
 SET_CURIOSITY_ACTIVE = "set_curiosity_active"
+SET_HEARTBEAT_ACTIVE = "set_heartbeat_active"
 TEST_REACH_OUT = "test_reach_out"
 SET_SAMPLING_PROFILE = "set_sampling_profile"
 SAVE_SAMPLING_PROFILE = "save_sampling_profile"
@@ -231,6 +232,11 @@ def curiosity_timer(state: str, due_at: float | None, error: str = "") -> dict:
     "waiting" (for a reply to her), "off", "roleplay" or "harness". With `error`, only to the device whose
     test_reach_out couldn't run."""
     return {"type": "curiosity_timer", "state": state, "due_at": due_at, "error": error}
+
+
+def heartbeat_state(active: bool) -> dict:
+    """Whether her heartbeat (heartbeat.py) is on."""
+    return {"type": "heartbeat_state", "active": active}
 
 
 def curiosity_state(active: bool) -> dict:

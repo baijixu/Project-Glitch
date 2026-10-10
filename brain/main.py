@@ -28,6 +28,7 @@ Where things live
   characters.py . role-play profiles and souls, soul.md/user.md, avatars, logs
   learning.py ... lessons, memory saving and training, memory server profiles
   reach_out.py .. curiosity: her reaching out after an hour, its countdown
+  heartbeat.py .. her mind wandering while he's away, until a topic lands
   health.py ..... status lights for harnesses and speech engines
   debugging.py .. the debug log and Restart Brain
 
@@ -56,6 +57,7 @@ import debugging
 import engines
 import harness
 import health
+import heartbeat
 import hub
 import journal
 import learning
@@ -145,6 +147,7 @@ async def main() -> None:
     hub.spawn(health.health_check_loop())
     hub.spawn(reach_out.reach_out_loop(brain))
     hub.spawn(journal.journal_loop(brain))
+    hub.spawn(heartbeat.heartbeat_loop(brain))
     listener = await server.serve_when_free(
         lambda ws: server.handle_renderer(ws, brain, auth_token),
         host,

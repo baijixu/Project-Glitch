@@ -1,6 +1,6 @@
 // Settings -> Chat Logs: read, edit or delete her daily chat logs (brain/chat_logs/,
 // role-play in chat_logs/roleplay/ -- see brain/conversation.py) and her nightly
-// journal (brain/self/, brain/journal.py). Self-contained
+// journal and passing thoughts (brain/self/, journal.py and heartbeat.py). Self-contained
 // like SamplingUI: finds its own elements by id, only needs `send`, and redraws
 // from each `chat_logs` / `chat_log_content` message Brain sends.
 //
@@ -9,7 +9,8 @@
 
 import { $, Modal } from "./ui.js";
 
-const MODE_NAMES = { main: "Chat", roleplay: "Role-play", journal: "Journal" };
+const MODE_NAMES = { main: "Chat", roleplay: "Role-play", journal: "Journal", thoughts: "Thoughts" };
+const HER_OWN = ["journal", "thoughts"]; // her own notes, not messages -- shown as written
 // Where a new entry starts in a log -- same shape as conversation.py's _ENTRY_START.
 const MESSAGE_LINE = /^\*\*(\d{2}:\d{2}:\d{2})\*\* ([^:]+): ?(.*)$/;
 const NOTE_LINE = /^\*(\d{2}:\d{2}:\d{2}) -- (.*)\*$/;
@@ -27,7 +28,7 @@ export class ChatLogsUI {
     this.editorEl = $("chat-log-editor");
     this.editButtonEl = $("chat-log-edit-button");
     this.saveButtonEl = $("chat-log-save-button");
-    this._days = { main: [], roleplay: [], journal: [] };
+    this._days = { main: [], roleplay: [], journal: [], thoughts: [] };
     this._open = null; // {mode, date, content} of the log in the pop-up
 
     this.modeEl?.addEventListener("change", () => this.refresh());
@@ -65,10 +66,9 @@ export class ChatLogsUI {
     }
     this._open = { mode: data.mode, date: data.date, content: data.content || "" };
     this._setEditing(false);
-    const what = data.mode === "journal" ? "Journal" : `${MODE_NAMES[data.mode] || "Chat"} log`;
+    const what = HER_OWN.includes(data.mode) ? MODE_NAMES[data.mode] : `${MODE_NAMES[data.mode] || "Chat"} log`;
     this.titleEl.textContent = `${what} -- ${_prettyDate(data.date)}`;
-    // A journal entry is her own notes, not messages -- shown as written.
-    this.bodyEl.replaceChildren(...(data.mode === "journal" ? _renderJournal(data.content || "") : _renderLog(data.content || "")));
+    this.bodyEl.replaceChildren(...(HER_OWN.includes(data.mode) ? _renderJournal(data.content || "") : _renderLog(data.content || "")));
     this.modal.open();
     this.bodyEl.scrollTop = 0;
   }

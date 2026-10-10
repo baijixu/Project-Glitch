@@ -420,6 +420,27 @@ _QUESTION_SYSTEM_PROMPT = (
 MAX_LESSON_TOKENS = 2000
 MAX_DIARY_TOKENS = 1500
 
+# Heartbeat (brain/heartbeat.py): her mind wandering while nobody's talking to her. Both under
+# her own soul, so the thoughts are in her voice. A daydream is one short JSON answer. Listing the
+# topics already on her mind (to reuse their names) made her pick one of them 8 times of 8.
+MAX_DAYDREAM_TOKENS = 400
+MAX_FOCUS_TOKENS = 1000
+_DAYDREAM_PROMPT = (
+    "Nobody is talking to you right now. You're alone with your thoughts, the way a mind wanders lying in bed, "
+    "and these drifted past:\n\n{fragments}\n\n"
+    "Let your mind go where it goes. If one of them, or something it reminds you of, pulls at you, say what you "
+    "find yourself thinking, in a sentence or two, in your own words. How strongly does it pull at you, from 1 "
+    "(a passing thought) to 10 (you can't stop thinking about it)? And what would you want to find out about it?\n\n"
+    "Reply with ONLY a JSON object: {{\"thought\": \"...\", \"topic\": \"2-5 words naming what it's about\", "
+    "\"pull\": 1-10, \"question\": \"...\"}}, or {{\"topic\": null}} if nothing pulls at you."
+)
+_FOCUS_PROMPT = (
+    "You keep coming back to {topic}. What you've thought about it lately:\n\n{thoughts}\n\n"
+    "Write a page about it in your own notebook, just for yourself: what draws you to it, what you already "
+    "know or believe about it, how it connects to your life, and what you want to find out -- end with a short "
+    "list of questions. In your own voice."
+)
+
 # Checks one new memory against one she already has (learning.py, before it's queued).
 # One pair, one word: asked about eight at once, a 9B called a related topic "the same"
 # (6 of 8 new answers would have been thrown away) or everything a contradiction.
@@ -1212,6 +1233,19 @@ class LocalLLM(ChatBackend):
         """Her newest diary entry (journal.py; reply.py sets it every turn, "" in role-play). Only
         shown when a conversation opens (_turn_notes) and in her reach-outs."""
         self._journal = entry.strip()
+
+    def daydream(self, fragments: str) -> str:
+        """Heartbeat: what (if anything) pulls at her among `fragments` -- raw JSON
+        (_DAYDREAM_PROMPT) for heartbeat.parse_daydream."""
+        prompt = _DAYDREAM_PROMPT.format(fragments=fragments)
+        messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": prompt}]
+        return self._complete(messages, MAX_DAYDREAM_TOKENS, no_thinking=True)
+
+    def focus(self, topic: str, thoughts: str) -> str:
+        """Heartbeat: her notebook page on a topic that has landed (_FOCUS_PROMPT)."""
+        prompt = _FOCUS_PROMPT.format(topic=topic, thoughts=thoughts)
+        messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": prompt}]
+        return self._complete(messages, MAX_FOCUS_TOKENS, no_thinking=True)
 
     def write_diary(self, log: str, name: str) -> str:
         """Her nightly diary entry (brain/journal.py) about one day's chat log."""

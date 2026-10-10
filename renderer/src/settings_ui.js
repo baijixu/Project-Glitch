@@ -1,5 +1,5 @@
 // The Settings controls small enough not to need a module of their own: the
-// Brain-side on/off switches (voice, web search, curiosity, memory), memory's
+// Brain-side on/off switches (voice, web search, curiosity, heartbeat, memory), memory's
 // download and clear, the Notes and soul.md/user.md editors, and the context
 // meter.
 
@@ -10,6 +10,7 @@ const SWITCHES = [
   { id: "voice-toggle", set: "set_voice_active", state: "voice_state" },
   { id: "web-search-toggle", set: "set_web_search_active", state: "web_search_state" },
   { id: "curiosity-toggle", set: "set_curiosity_active", state: "curiosity_state" },
+  { id: "heartbeat-toggle", set: "set_heartbeat_active", state: "heartbeat_state" },
   { id: "memory-toggle", set: "set_memory_active", state: "memory_state" },
 ];
 
