@@ -1,18 +1,17 @@
-// Settings -> Friends (brain/friends.py): her friends -- each a soul and the LLM engine they
-// speak through, edited like souls (SavedItems) -- and Start a visit with its progress. The
-// Friend mode toggle itself is one of settings_ui.js's switches.
+// Settings -> Friends (brain/friends.py): her friends -- each a soul, and the server and model
+// they speak through (picked from what that server has loaded), edited like souls (SavedItems)
+// -- and Start a visit with its progress. The Friend mode toggle is one of settings_ui.js's switches.
 
 import { $, renderDropdown } from "./ui.js";
 import { SavedItems } from "./saved_items.js";
 
 const NO_FRIEND = "Friends";
-const HER_ENGINE = ""; // a friend with no engine of their own speaks through hers
 
 export class FriendsUI {
   constructor(app) {
     this._app = app;
-    this._engineNames = [];
     this._most = 3;
+    this._modelsFor = ""; // the server the model list was last asked for
     this.items = new SavedItems(app, {
       label: "friend",
       title: "Friend",
@@ -22,13 +21,13 @@ export class FriendsUI {
         backdrop: "friend-modal-backdrop", title: "friend-modal-title", name: "friend-name",
         save: "friend-save-button", cancel: "friend-cancel-button",
       },
-      fields: { soul: "friend-soul", engine: "friend-engine" },
+      fields: { soul: "friend-soul", endpoint: "friend-endpoint", model: "friend-model" },
       messages: { get: "get_friend", save: "save_friend", delete: "delete_friend" },
-      defaults: { engine: HER_ENGINE },
       canSave: (name, v) => name && v.soul,
       onSelect: () => this.items.updateEditControls(), // picking one only chooses what ✏️/🗑️ act on
-      onOpen: (values) => this._fillEngines(values.engine),
+      onOpen: (values) => this._askModels(values.model),
     });
+    $("friend-endpoint")?.addEventListener("change", () => this._askModels($("friend-model")?.value || ""));
     this.items.render([], NO_FRIEND);
     $("start-visit-button")?.addEventListener("click", () => {
       $("start-visit-button").disabled = true; // back on with the visit_state Brain answers with
@@ -59,19 +58,35 @@ export class FriendsUI {
     };
   }
 
-  setEngineNames(names) {
-    this._engineNames = names;
+  // llm_models (brain_client routes it here and to the LLM engine editor): the models on the
+  // server this editor asked about, keeping the friend's saved one selected.
+  handleModels(data) {
+    if (data.endpoint !== this._modelsFor) return;
+    const select = $("friend-model");
+    const keep = select?.value || "";
+    this._fillModels(keep && !(data.models || []).includes(keep) ? [keep, ...(data.models || [])] : data.models || [], keep);
   }
 
   setLocked(locked) {
     this.items.setLocked(locked);
   }
 
-  _fillEngines(selected) {
-    const select = $("friend-engine");
+  // No server: she speaks through her own LLM, so there's nothing to pick. Otherwise Brain is asked
+  // what that server has loaded; the saved model shows until the answer comes.
+  _askModels(model) {
+    const endpoint = $("friend-endpoint")?.value.trim() || "";
+    this._modelsFor = endpoint;
+    if (endpoint) this._app.send({ type: "get_llm_models", endpoint });
+    this._fillModels(model ? [model] : [], model);
+  }
+
+  _fillModels(models, selected) {
+    const select = $("friend-model");
     if (!select) return;
-    renderDropdown(select, [HER_ENGINE, ...this._engineNames], selected || HER_ENGINE);
-    const her = select.querySelector('option[value=""]');
-    if (her) her.textContent = "Her own LLM engine";
+    const endpoint = $("friend-endpoint")?.value.trim() || "";
+    renderDropdown(select, endpoint ? ["", ...models] : [""], endpoint ? selected : "");
+    const first = select.querySelector('option[value=""]');
+    if (first) first.textContent = endpoint ? "The server's loaded model" : "Her own model";
+    select.disabled = !endpoint;
   }
 }

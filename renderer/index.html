@@ -264,7 +264,7 @@
               Up to three friends with souls of their own drop by when you press Start a visit. They and Glitch take
               turns in a group chat on a starter (a debate, a game, a story, a random article) for 50 messages, then
               she writes about it in her journal and brings it up next time you talk. Give each friend a different LLM
-              engine for a voice of their own. Read visits in Chat Logs -> Visits.
+              model for a voice of their own. Read visits in Chat Logs -> Visits.
             </p>
             <select id="friend-select" class="settings-select"></select>
             <div class="settings-button-row">
@@ -538,8 +538,14 @@
         <input id="friend-name" type="text" placeholder="e.g. Rex" autocomplete="off" />
         <label for="friend-soul">Who they are</label>
         <textarea id="friend-soul" rows="8" placeholder="Their personality, what they love and can't stand, how they talk, and how they know Glitch..."></textarea>
-        <label for="friend-engine">Speaks through</label>
-        <select id="friend-engine" class="settings-select"></select>
+        <label for="friend-endpoint">Server</label>
+        <input id="friend-endpoint" type="text" placeholder="Empty: her own LLM. Or e.g. http://10.10.100.2:1234/v1" autocomplete="off" />
+        <label for="friend-model">Model</label>
+        <select id="friend-model" class="settings-select"></select>
+        <p class="settings-hint">
+          The models loaded on that server. A different model on the PC that runs hers loads next to it and can run
+          out of GPU memory -- another machine is best.
+        </p>
         <div class="modal-actions">
           <button id="friend-cancel-button" class="modal-button secondary">Cancel</button>
           <button id="friend-save-button" class="modal-button primary">Save</button>

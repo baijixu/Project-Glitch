@@ -1,5 +1,5 @@
-"""Friend mode: up to MAX_FRIENDS friends, each with a soul of their own and their own LLM
-engine, drop by when the user presses Start a visit (Settings -> Friends). They and
+"""Friend mode: up to MAX_FRIENDS friends, each with a soul of their own and their own model
+(any OpenAI-compatible server and one of its models, or hers), drop by when the user presses Start a visit (Settings -> Friends). They and
 Glitch take turns in a group chat that opens on a starter -- a debate, a game, a story
 to build, a random Wikipedia article -- until MAX_MESSAGES, and then she writes her
 journal entry about it. The visit is logged by day in self/visits/ (Chat Logs -> Visits);
@@ -19,11 +19,10 @@ import websockets
 import conversation
 import hub
 import journal
-import llm_engines
 import profiles
 import protocol
 from hub import Brain
-from llm import LocalLLM, OllamaLLM, _extract_mood
+from llm import LocalLLM, _extract_mood
 from store import NamedStore, Toggle
 
 ACTIVE = Toggle(Path(__file__).parent / "friends_active.txt", default=False)
@@ -97,23 +96,19 @@ STATUS = {"running": False, "count": 0, "total": MAX_MESSAGES, "note": ""}  # wh
 def names() -> list[str]:
     if not STORE.dir.exists():  # first run: the three to start with
         for name, soul in DEFAULT_FRIENDS.items():
-            STORE.write(name, {"soul": soul, "engine": ""})
+            STORE.write(name, {"soul": soul, "endpoint": "", "model": ""})
     return STORE.names()[:MAX_FRIENDS]
 
 
 def read_friend(name: str) -> dict:
-    """{"soul", "engine"} -- engine "" is her own LLM engine."""
+    """{"soul", "endpoint", "model"} -- endpoint "" is her own LLM."""
     friend = STORE.read(name)
-    return {"soul": str(friend.get("soul") or ""), "engine": str(friend.get("engine") or "")}
+    return {key: str(friend.get(key) or "") for key in ("soul", "endpoint", "model")}
 
 
-def _speaker(engine: str, brain: Brain):
-    """The LLM a friend speaks through: one of the saved engines, or hers."""
-    if not engine or engine == llm_engines.NONE_NAME:
-        return brain.llm
-    config = llm_engines.read_engine(engine)
-    connection = {"endpoint": config["endpoint"], "model": config.get("model") or None, "api_key": config.get("api_key") or None}
-    return OllamaLLM(**connection) if config.get("provider") == "ollama" else LocalLLM(**connection)
+def _speaker(friend: dict, brain: Brain):
+    """The LLM a friend speaks through: their server and model, or hers."""
+    return LocalLLM(friend["endpoint"], friend["model"] or None) if friend["endpoint"] else brain.llm
 
 
 def _starter() -> str:
@@ -154,7 +149,7 @@ async def _set(**changes) -> None:
 async def visit(brain: Brain) -> None:
     """One visit: the friends and Glitch take turns until MAX_MESSAGES, then her journal."""
     friends = {name: read_friend(name) for name in names()}
-    speakers = {name: _speaker(friend["engine"], brain) for name, friend in friends.items()}
+    speakers = {name: _speaker(friend, brain) for name, friend in friends.items()}
     souls = {name: friend["soul"] for name, friend in friends.items()}
     speakers["Glitch"], souls["Glitch"] = brain.llm, None  # her own soul
     order = [*friends, "Glitch"]
@@ -252,12 +247,12 @@ async def _friend(websocket: websockets.ServerConnection, data: dict, brain: Bra
         if data["type"] == protocol.GET_FRIEND:
             return await hub.send(websocket, protocol.friend_content(name, **read_friend(name)))
         if data["type"] == protocol.SAVE_FRIEND:
-            soul, engine = str(data.get("soul") or ""), str(data.get("engine") or "")
-            if not name.strip() or not soul.strip() or hub.fields_too_long(name, soul, engine):
+            soul, endpoint, model = (str(data.get(key) or "").strip() for key in ("soul", "endpoint", "model"))
+            if not name.strip() or not soul or hub.fields_too_long(name, soul, endpoint, model):
                 return
             if STORE.path(name).stem not in names() and len(names()) >= MAX_FRIENDS:
                 return await hub.send(websocket, friends_message(f"She has room for {MAX_FRIENDS} friends -- delete one first."))
-            STORE.write(name, {"soul": soul, "engine": engine})
+            STORE.write(name, {"soul": soul, "endpoint": endpoint, "model": model})
         else:
             STORE.delete(name)
     except (ValueError, OSError) as exc:

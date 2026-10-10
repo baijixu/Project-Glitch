@@ -115,12 +115,7 @@ export class BrainClient {
     this.backgrounds = new BackgroundsUI(this);
     this.speechEngines = new SpeechEnginesUI(this);
     this.friends = new FriendsUI(this);
-    this.llmEngines = new LlmEnginesUI(this, {
-      onEnginesChanged: (names) => {
-        this.characters.setEngineNames(names);
-        this.friends.setEngineNames(names);
-      },
-    });
+    this.llmEngines = new LlmEnginesUI(this, { onEnginesChanged: (names) => this.characters.setEngineNames(names) });
     this.lessons = new LessonsUI({ send });
     this.training = new TrainingUI({ send, onNewProposals: (fact) => this._showToast(fact, "🧠 Memory proposed (review in Settings): ") });
     this.sampling = new SamplingUI({ send });
@@ -186,6 +181,12 @@ export class BrainClient {
       ...this.llmEngines.handlers,
       ...this.harness.handlers,
       ...this.debug.handlers,
+    };
+    // A model list is for whichever editor asked (each checks the endpoint): the LLM engine's, or a friend's.
+    const engineModels = this._handlers.llm_models;
+    this._handlers.llm_models = (data) => {
+      engineModels(data);
+      this.friends.handleModels(data);
     };
 
     $("send-button")?.addEventListener("click", () => this._sendInput());

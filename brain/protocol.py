@@ -260,9 +260,9 @@ def friends(names: list[str], most: int, error: str = "") -> dict:
     return {"type": "friends", "names": names, "most": most, "error": error}
 
 
-def friend_content(name: str, soul: str, engine: str) -> dict:
-    """One friend for the editor: their soul, and the saved LLM engine they speak through ("" = hers)."""
-    return {"type": "friend_content", "name": name, "soul": soul, "engine": engine}
+def friend_content(name: str, soul: str, endpoint: str, model: str) -> dict:
+    """One friend for the editor: their soul, and the server and model they speak through (endpoint "" = hers)."""
+    return {"type": "friend_content", "name": name, "soul": soul, "endpoint": endpoint, "model": model}
 
 
 def visit_state(running: bool, count: int, total: int, note: str) -> dict:

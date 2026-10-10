@@ -402,7 +402,8 @@ and is paused in role-play and while a harness is in control. Her thoughts don't
 ### Friends
 
 *Settings → Friend mode*: up to three friends with souls of their own, edited like her role-play souls, each speaking
-through whichever saved LLM engine you pick. It ships with three to start from: Rex (a blunt metalhead comic), Mira (an
+through their own model: give a friend a server (any OpenAI-compatible one, such as LM Studio on another PC) and pick
+from the models it has loaded, or leave it empty for her own. It ships with three to start from: Rex (a blunt metalhead comic), Mira (an
 astrophysicist who bakes) and Juno (a chaotic art student). **Start a visit** and they and Glitch take turns in a group
 chat on a starter (a debate, a would-you-rather, a story to build, or a random Wikipedia article) for 50 messages. Then
 she writes her journal entry about it right away: what stuck with her, where she pushed back or changed her mind, and what
