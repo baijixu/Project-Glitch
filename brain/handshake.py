@@ -43,6 +43,7 @@ async def handle_ready(websocket: websockets.ServerConnection, data: dict, brain
         protocol.web_search_state(web_search.read_active()),
         protocol.curiosity_state(curiosity.read_active()),
         protocol.heartbeat_state(heartbeat.ACTIVE.read()),
+        heartbeat.timer_message(brain),
         reach_out.curiosity_timer_message(),
         engines.sampling_state_message(),
         *([reply.LAST_CONTEXT_USAGE] if reply.LAST_CONTEXT_USAGE else []),

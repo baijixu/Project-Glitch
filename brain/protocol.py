@@ -239,6 +239,12 @@ def heartbeat_state(active: bool) -> dict:
     return {"type": "heartbeat_state", "active": active}
 
 
+def heartbeat_timer(state: str, due_at: float | None) -> dict:
+    """Settings -> Heartbeat's countdown: `state` "counting" (`due_at`: epoch seconds her next thought
+    is due), "off", "roleplay" or "harness"."""
+    return {"type": "heartbeat_timer", "state": state, "due_at": due_at}
+
+
 def heartbeat_note(text: str) -> dict:
     """What came of Think now (heartbeat.py): her thought, or why she couldn't."""
     return {"type": "heartbeat_note", "text": text}

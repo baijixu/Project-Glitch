@@ -4,6 +4,14 @@
 // meter.
 
 import { $, Modal, downloadText, writePref } from "./ui.js";
+import { _clock } from "./curiosity_timer_ui.js";
+
+// Heartbeat's countdown when it isn't counting.
+const HEARTBEAT_PAUSED = {
+  off: "Heartbeat is off.",
+  roleplay: "Paused during role-play.",
+  harness: "Paused while a harness is in control.",
+};
 
 // Brain-side switches: message it sends -> the state message Brain answers with.
 const SWITCHES = [
@@ -23,6 +31,9 @@ export class SettingsUI {
     this._waitingFor = new Set();
 
     for (const { id, set } of SWITCHES) $(id)?.addEventListener("change", (e) => app.send({ type: set, active: e.target.checked }));
+    // Heartbeat's countdown (heartbeat_timer): Brain sends when her next thought is due, the ticking is here.
+    this._heartbeatTimer = null;
+    setInterval(() => this._renderHeartbeatTimer(), 1000);
     // Heartbeat's Think now: one wander right away; what she thought comes back as heartbeat_note.
     $("think-now-button")?.addEventListener("click", () => {
       $("think-now-button").disabled = true;
@@ -69,6 +80,10 @@ export class SettingsUI {
         if ($("notes-textarea")) $("notes-textarea").value = data.content || "";
         this.notesModal.open();
       },
+      heartbeat_timer: (data) => {
+        this._heartbeatTimer = data;
+        this._renderHeartbeatTimer();
+      },
       heartbeat_note: (data) => {
         if ($("think-now-button")) $("think-now-button").disabled = false;
         this._showThinkNote(data.text || "");
@@ -91,6 +106,19 @@ export class SettingsUI {
   // The context meter goes back to empty with the conversation.
   resetContextMeter() {
     for (const id of ["context-meter", "context-meter-conversation"]) this._setBar(id, 0, "after her next reply", "low");
+  }
+
+  _renderHeartbeatTimer() {
+    const el = $("heartbeat-timer");
+    const timer = this._heartbeatTimer;
+    if (!el || !timer) return;
+    if (timer.state !== "counting" || typeof timer.due_at !== "number") {
+      el.textContent = HEARTBEAT_PAUSED[timer.state] || "";
+      return;
+    }
+    const left = Math.round(timer.due_at - Date.now() / 1000);
+    // Brain checks once a minute (and waits if she's busy replying).
+    el.textContent = left > 0 ? `Her next thought in ${_clock(left)}.` : "Her next thought within a minute.";
   }
 
   _showThinkNote(text) {

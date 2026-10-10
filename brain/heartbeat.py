@@ -1,7 +1,7 @@
 """Heartbeat: her mind wandering while nobody's talking to her (Settings toggle, off
 by default).
 
-Once he's been quiet for IDLE_SEC, every TICK_SEC a few random fragments of what she
+Once he's been quiet for IDLE_SEC, every TICK_SEC (due_at) a few random fragments of what she
 has drift past -- lines from her soul, her diary, what he said lately, her memories, a
 topic already on her mind -- and she says what, if anything, pulls at her and how
 strongly (llm.daydream). Each pull adds weight to its topic (self/interests.json);
@@ -47,6 +47,9 @@ KEEP_THOUGHTS = 5  # per topic, the newest
 # How often a topic already on her mind drifts past again. Every time, and she thought about
 # nothing else (8 of 8 in a test); a landed one doesn't -- she's had her think about it.
 RUMINATE_CHANCE = 1 / 3
+CHECK_SEC = 60  # how often the loop looks at the clock
+_last_beat = time.time()  # her last thought (or Brain's start: the first comes TICK_SEC in)
+_last_timer: dict | None = None  # the heartbeat_timer last sent to everyone
 
 # Her soul's sections about who she is -- not the ones about how the app works, her
 # looks, or how to talk.
@@ -194,20 +197,46 @@ async def fragments(now: datetime, interests: dict) -> list[str]:
 # -- The beat ------------------------------------------------------------------
 
 
+def due_at() -> float:
+    """When her next thought is due: TICK_SEC after her last one, and IDLE_SEC after his last message."""
+    return max(_last_beat + TICK_SEC, (curiosity.last_user_at() or 0) + IDLE_SEC)
+
+
 def _free(brain: Brain, now: float) -> bool:
-    last = curiosity.last_user_at()
     return (
         ACTIVE.read()
         and brain.llm.owns_conversation
         and not profiles.read_roleplay_active()
         and not brain.reply_lock.locked()
-        and (last is None or now - last >= IDLE_SEC)
+        and now >= due_at()
     )
+
+
+def timer_message(brain: Brain) -> dict:
+    """Settings -> Heartbeat's countdown."""
+    if not ACTIVE.read():
+        return protocol.heartbeat_timer("off", None)
+    if profiles.read_roleplay_active():
+        return protocol.heartbeat_timer("roleplay", None)
+    if not brain.llm.owns_conversation:
+        return protocol.heartbeat_timer("harness", None)
+    return protocol.heartbeat_timer("counting", due_at())
+
+
+async def broadcast_timer(brain: Brain, only_if_changed: bool = False) -> None:
+    global _last_timer
+    message = timer_message(brain)
+    if only_if_changed and message == _last_timer:
+        return
+    _last_timer = message
+    await hub.broadcast(message)
 
 
 async def beat(brain: Brain) -> str:
     """One wander: fragments in, maybe a thought out -- and a page, if a topic lands.
     Returns what happened, in a line (for Think now)."""
+    global _last_beat
+    _last_beat = time.time()
     now = datetime.now()
     interests = read_interests()
     drifted = await fragments(now, interests)
@@ -238,10 +267,11 @@ async def beat(brain: Brain) -> str:
 
 async def heartbeat_loop(brain: Brain) -> None:
     while True:
-        await asyncio.sleep(TICK_SEC)
+        await asyncio.sleep(CHECK_SEC)
         try:
             if _free(brain, time.time()):
                 await beat(brain)
+            await broadcast_timer(brain, only_if_changed=True)  # also catches his messages, role-play, a harness
         except Exception as exc:  # never let one bad beat stop the loop
             print(f"[heartbeat] couldn't wander: {exc!r}")
 
@@ -262,9 +292,11 @@ async def _think_now(websocket: websockets.ServerConnection, data: dict, brain: 
         except Exception as exc:
             note = f"Couldn't think: {exc}"
     await hub.send(websocket, protocol.heartbeat_note(note))
+    await broadcast_timer(brain)
 
 
 @hub.handles(protocol.SET_HEARTBEAT_ACTIVE)
 async def _set_heartbeat_active(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     ACTIVE.write(bool(data.get("active")))
     await hub.broadcast(protocol.heartbeat_state(ACTIVE.read()))
+    await broadcast_timer(brain)

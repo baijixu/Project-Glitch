@@ -57,7 +57,7 @@ export class CuriosityTimerUI {
 }
 
 // 3725 -> "1:02:05", 125 -> "2:05".
-function _clock(seconds) {
+export function _clock(seconds) {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const s = seconds % 60;
