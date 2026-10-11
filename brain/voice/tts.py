@@ -57,8 +57,10 @@ _EMOJI_PATTERN = re.compile(
 
 # Her mood tag (llm.py's VALID_MOODS) as a speaking-style hint, sent as OpenAI's
 # `instructions` -- Qwen3-TTS (tools/qwen_tts_server.py) follows it, Kokoro
-# ignores it. Neutral sends none: the voice's own default delivery.
+# ignores it. Neutral is calm too: Serena's own default delivery isn't the calm
+# voice Josh knows her by.
 MOOD_STYLES = {
+    "neutral": "Calm, easy and unhurried.",
     "happy": "Warm and cheerful, with a smile in the voice.",
     "sad": "Soft, gentle and a little sad.",
     "angry": "Firm and frustrated, with an edge.",
