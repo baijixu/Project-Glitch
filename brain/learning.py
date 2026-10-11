@@ -372,6 +372,23 @@ async def resolve_memory_proposal(websocket: websockets.ServerConnection, data: 
     await hub.broadcast(training_state_message(error))
 
 
+@hub.handles(protocol.ADD_MEMORY)
+async def add_memory(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    """A memory he writes himself -- his own words, so no proposal to approve."""
+    fact = str(data.get("fact") or "").strip()
+    importance = str(data.get("importance") or training.DEFAULT_IMPORTANCE)
+    error = ""
+    if not fact or len(fact) > training.MAX_FACT_CHARS:
+        error = f"a memory needs 1-{training.MAX_FACT_CHARS} characters"
+    else:
+        try:
+            await memory.retain_fact(fact, importance)
+        except Exception as exc:
+            print(f"[brain] adding a memory failed: {exc!r}")
+            error = "couldn't save it to her memory server"
+    await hub.broadcast(training_state_message(error))
+
+
 async def maybe_retain_memory(
     websocket: websockets.ServerConnection, user_text: str, reply_text: str, brain: Brain, asked: str = ""
 ) -> None:

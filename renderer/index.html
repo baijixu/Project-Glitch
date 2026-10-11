@@ -296,6 +296,18 @@
               </span>
             </label>
             <p id="training-error" class="settings-hint" hidden></p>
+            <div class="lesson-row">
+              <textarea id="training-add" class="settings-text-input training-fact" rows="2" maxlength="300"
+                placeholder="Add a memory yourself"></textarea>
+              <div class="lesson-meta">
+                <select id="training-add-importance" class="settings-select training-importance">
+                  <option value="core">Core</option>
+                  <option value="normal" selected>Normal</option>
+                  <option value="minor">Minor</option>
+                </select>
+                <button id="training-add-button" class="icon-button lesson-button" title="Save this to her memory">+ Add</button>
+              </div>
+            </div>
             <div id="training-list"></div>
           </section>
           <section id="lessons-section" class="settings-section">

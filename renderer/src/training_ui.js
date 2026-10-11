@@ -26,6 +26,14 @@ export class TrainingUI {
     this._pendingState = null;
 
     this.toggleEl?.addEventListener("change", () => this._send({ type: "set_training_active", active: this.toggleEl.checked }));
+
+    this.addEl = $("training-add");
+    $("training-add-button")?.addEventListener("click", () => {
+      const fact = this.addEl.value.trim();
+      if (!fact) return;
+      this._adding = true;
+      this._send({ type: "add_memory", fact, importance: $("training-add-importance").value });
+    });
   }
 
   handleState(data) {
@@ -39,6 +47,9 @@ export class TrainingUI {
       this.errorEl.hidden = !data.error;
       this.errorEl.textContent = data.error || "";
     }
+    // Cleared only once Brain says it saved, so a failed save keeps his words.
+    if (this._adding && this.addEl && !data.error) this.addEl.value = "";
+    this._adding = false;
     const pending = available ? data.pending || [] : [];
     if (this.countEl) this.countEl.textContent = pending.length ? ` (${pending.length})` : "";
 
