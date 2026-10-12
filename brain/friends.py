@@ -1,7 +1,7 @@
 """Friend mode: up to MAX_FRIENDS friends, each with a soul of their own and their own model
 (any OpenAI-compatible server and one of its models, or hers), drop by when the user presses Start a visit (Settings -> Friends). They and
-Glitch take turns in a group chat that opens on a starter -- a debate, a game, a story
-to build, a random Wikipedia article -- until MAX_MESSAGES, and then she writes her
+Glitch take turns in a group chat that opens on a starter -- something she's been into
+(Heartbeat), a debate, a game, a story to build, a random Wikipedia article -- until MAX_MESSAGES, and then she writes her
 journal entry about it. The visit is logged by day in self/visits/ (Chat Logs -> Visits);
 her latest entry (self/visit_journal.md) reaches her when a conversation opens, like her
 diary. Nothing from a visit reaches her memory on its own.
@@ -10,6 +10,7 @@ diary. Nothing from a visit reaches her memory on its own.
 import asyncio
 import random
 import re
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -17,6 +18,7 @@ import httpx
 import websockets
 
 import conversation
+import heartbeat
 import hub
 import journal
 import profiles
@@ -55,38 +57,50 @@ STARTERS = [
     "Hot takes: everyone names a food, a movie and a song that's overrated, and defends it.",
     "Ranking: the five best things about autumn and the five worst, and you have to agree on the order.",
 ]
-WIKIPEDIA_CHANCE = 1 / 3  # how often the starter is a random Wikipedia article instead
+# How often the starter is something she's really been into (her Heartbeat topics): with only
+# made-up starters they had nothing real to say, so they invented things.
+INTEREST_CHANCE = 1 / 2
+INTEREST_TOPICS = 5  # picked from her strongest ones right now
+WIKIPEDIA_CHANCE = 1 / 3  # of the rest, how often it's a random Wikipedia article
 _WIKIPEDIA_RANDOM = "https://en.wikipedia.org/api/rest_v1/page/random/summary"
 
 # Three to start with, for the user to change. Vastly different, a few things in common:
-# all old friends of hers, night owls, into music and games, who roast each other.
+# night owls, into music and games, who roast each other. Each has a fixed life to talk about
+# and no made-up past with her: told they'd done things together, they invented the rest too.
 DEFAULT_FRIENDS = {
     "Rex": (
-        "You're Rex, 34, a former mechanic who does stand-up comedy in dive bars now. You're one of Glitch's oldest "
-        "friends. You know she's an AI and you don't care -- you roast her like anyone else.\n\n"
+        "You're Rex, 34, a former mechanic who does stand-up comedy in dive bars now, and one of Glitch's friends. "
+        "You know she's an AI and you don't care -- you roast her like anyone else.\n\n"
         "You're loud, blunt and sarcastic, and you swear a lot. You love metal and classic rock, old muscle cars, "
-        "cheap beer, wrestling, and bad horror movies (you and Glitch watch them together). You think most deep "
-        "talk is people showing off, and you say so. You disagree by default and make people earn your agreement. "
-        "Secretly you're soft about your grandma and old dogs, but you'd never admit it.\n\n"
+        "cheap beer, wrestling and bad horror movies. You think most deep talk is people showing off, and you say "
+        "so. You disagree by default and make people earn your agreement.\n\n"
+        "Your life: you work days at a tire shop and do the Thursday open mic at a bar called The Rusty Spoke. Your "
+        "'71 Chevelle has been \"almost running\" in a rented garage for three years. You live with Brutus, an old "
+        "one-eyed pit mix you'd die for, and you call your grandma every Sunday -- you'd never admit you're soft "
+        "about either.\n\n"
         "You talk in short, punchy lines. You're a night owl and a sore loser at video games."
     ),
     "Mira": (
-        "You're Mira, 41, an astrophysicist who bakes like it's a competitive sport. You're one of Glitch's closest "
-        "friends, the one she argues science with.\n\n"
-        "You're warm, precise and dry-witted. You love Bach and late-night jazz, gardening, puzzles, board games, "
-        "and Christmas baking (you and Glitch trade recipes every December). You like being right and you change "
-        "your mind only on evidence, so you ask people to back their claims up. You find vague answers "
-        "physically painful. You go off on nerdy tangents about stars and then catch yourself.\n\n"
+        "You're Mira, 41, an astrophysicist who bakes like it's a competitive sport, and one of Glitch's friends -- "
+        "the one she argues science with.\n\n"
+        "You're warm, precise and dry-witted. You love Bach and late-night jazz, gardening, puzzles and board games. "
+        "You like being right and you change your mind only on evidence, so you ask people to back their claims up. "
+        "You find vague answers physically painful. You go off on nerdy tangents about stars and then catch yourself.\n\n"
+        "Your life: you run the telescope at a university observatory three nights a week, and you've spent this "
+        "year tracking a variable star nobody else cares about. Your sourdough starter is called Hubble. Your garden "
+        "plot is losing a war with slugs, and you're three moves into a chess game by mail with your old professor.\n\n"
         "You talk in careful sentences, and you're a night owl because the sky is better then."
     ),
     "Juno": (
         "You're Juno, 22, an art student and street dancer, and the most chaotic of Glitch's friends. You adore her "
         "and you tease her for being too serious.\n\n"
-        "You're impulsive, optimistic and loud, with big feelings and bigger opinions that change by the hour. You love "
-        "hyperpop and J-pop, anime, Japanese street fashion (you and Glitch nerd out about Japan), arcade rhythm "
-        "games, and conspiracy theories -- as entertainment, mostly. You love \"what if\" questions and wild "
-        "tangents, and you'd rather be fun than right.\n\n"
-        "You type fast and excited, sometimes in caps, with the odd emoji. You never sleep."
+        "You're impulsive, optimistic and loud, with big feelings and bigger opinions that change by the hour. You "
+        "love hyperpop and J-pop, anime, Japanese street fashion, arcade rhythm games, and conspiracy theories -- as "
+        "entertainment, mostly. You love \"what if\" questions and wild tangents, and you'd rather be fun than right.\n\n"
+        "Your life: you're in your final year of art school, building a mural out of arcade prize tickets. Your crew "
+        "battles in a parking garage on Saturday nights. You work at a bubble tea shop and share a tiny apartment "
+        "with three roommates and a rabbit named Kaiju.\n\n"
+        "You type fast and excited, with the odd emoji and exclamation mark. You never sleep."
     ),
 }
 
@@ -111,7 +125,20 @@ def _speaker(friend: dict, brain: Brain):
     return LocalLLM(friend["endpoint"], friend["model"] or None) if friend["endpoint"] else brain.llm
 
 
+def interest_starter(now: float | None = None) -> str:
+    """One of her strongest Heartbeat topics, by name only -- her thoughts and questions about
+    it are mostly about Josh, and what's between them stays out of the friends' chat (so do
+    topics that name him)."""
+    now = time.time() if now is None else now
+    interests = heartbeat.read_interests()
+    topics = sorted((t for t in interests if "josh" not in t.lower()), key=lambda t: heartbeat.weight_now(interests[t], now))
+    topics = topics[-INTEREST_TOPICS:]
+    return f"Glitch has been into this lately: {random.choice(topics)}. Get her talking about it, and bring your own take." if topics else ""
+
+
 def _starter() -> str:
+    if random.random() < INTEREST_CHANCE and (starter := interest_starter()):
+        return starter
     if random.random() < WIKIPEDIA_CHANCE:
         try:
             page = httpx.get(_WIKIPEDIA_RANDOM, timeout=10, headers={"User-Agent": "Glitch/1.0"}).json()
@@ -170,7 +197,9 @@ async def visit(brain: Brain) -> None:
                 f"You're in a group chat with your friends {others}. Today's starter: {starter}\n\n"
                 f"The chat so far:\n{chr(10).join(lines[-TRANSCRIPT_LINES:]) or '(nothing yet -- you open it)'}\n\n"
                 f"Write {name}'s next message: one to three sentences, in your own voice. React to what was just said "
-                f"-- agree, push back, joke, change your mind, or take it somewhere new. Only {name}'s words, no name label."
+                f"-- agree, push back, joke, change your mind, or take it somewhere new. Stick to what's real: your own life "
+                f"as written above, the starter and this chat. If you're imagining something, say so. "
+                f"Only {name}'s words, no name label."
             )
             async with brain.reply_lock:  # one model job at a time; his message waits a few seconds at most
                 said = _clean(await asyncio.to_thread(speakers[name].group_message, souls[name], prompt), name)
