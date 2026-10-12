@@ -50,6 +50,31 @@ async def _broadcast_lessons_state() -> None:
     await hub.broadcast(await _lessons_state_message())
 
 
+# Her diary's self-critique, up to the next heading (journal.py's entry; llm._DIARY_SYSTEM_PROMPT).
+_SAY_DIFFERENTLY = re.compile(r"What I.d say differently[^\n]*\n(.*?)(?=\n[#*\s]*What I.m wondering|\Z)", re.DOTALL | re.IGNORECASE)
+
+
+async def lesson_from_diary(entry: str, brain: Brain) -> None:
+    """What she'd do differently, from her diary, as at most one lesson change -- applied or
+    waiting for approval by the same autonomy setting as one learned from a rating."""
+    critique = _SAY_DIFFERENTLY.search(entry)
+    if not critique or not critique[1].strip() or not lessons.read_active():
+        return
+    try:
+        active = await lessons.active_lessons()
+        raw = await asyncio.to_thread(brain.llm.lesson_from_diary, critique[1].strip(), [l["content"] for l in active])
+        action = lessons.parse_distillation(raw, active, [])
+        if action is None or action["action"] not in ("create", "strengthen"):
+            return
+        kind, text = await lessons.handle_action(action)
+    except Exception as exc:
+        print(f"[brain] learning from her diary failed: {exc!r}")
+        return
+    print(f"[brain] lesson from her diary {kind}: {text}")
+    await hub.broadcast(protocol.lesson_event(kind, f"From her diary: {text}"))
+    await _broadcast_lessons_state()
+
+
 @hub.handles(
     protocol.SET_LESSONS_ACTIVE,
     protocol.SET_LESSONS_AUTONOMY,

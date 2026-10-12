@@ -89,6 +89,7 @@ async def journal_loop(brain: Brain) -> None:
                 JOURNAL_DIR.mkdir(exist_ok=True)
                 path.write_text(f"# {path.stem} -- {day:%A %d %B}\n\n{text.strip()}\n", encoding="utf-8")
                 print(f"[journal] wrote {path.name}")
+                await learning.lesson_from_diary(text, brain)  # after the lock, like her memory proposals
                 if memory.read_memory_active() and memory.server_backed() and training.read_active():  # after the lock: his replies first
                     await learning.propose_from_log(log, day, name, brain)
                     if upkeep.due(datetime.now()):

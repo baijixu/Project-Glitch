@@ -466,6 +466,21 @@ _LEFT_OFF_SYSTEM_PROMPT = (
     "Only what actually happened in the conversation; never invent."
 )
 
+# Her own diary's "What I'd say differently" (journal.py -> learning.lesson_from_diary), as a
+# rating's note would be: what she'd change, in her words, for the user to approve.
+_DIARY_LESSON_SYSTEM_PROMPT = (
+    "You help an AI companion learn how to behave. Below is what she wrote in her own diary about what she'd do "
+    "differently, and the lessons she has so far.\n\n"
+    "A lesson is a short, general RULE about her BEHAVIOR -- tone, length, style, habits, what to do or avoid in a "
+    "kind of situation (e.g. \"Keep answers to 1-3 lines for quick practical questions\"). Never a fact about the "
+    "user, and never about one conversation.\n\n"
+    "Reply with ONLY one JSON object, no other text:\n"
+    "- {\"action\": \"create\", \"name\": \"2-5 word label\", \"content\": \"the rule\", \"reason\": \"one short sentence\"} "
+    "if her self-critique points to a rule she doesn't have yet;\n"
+    "- {\"action\": \"strengthen\", \"target\": its number, \"reason\": \"...\"} if it's what one of her lessons already says;\n"
+    "- {\"action\": \"none\"} otherwise. Prefer none over a weak or one-off lesson."
+)
+
 _LESSON_SYSTEM_PROMPT = (
     "You help an AI companion learn how its user wants it to behave. You are shown one exchange "
     "the user just rated with a thumbs up or thumbs down (sometimes with a note saying why), the "
@@ -1167,6 +1182,15 @@ class LocalLLM(ChatBackend):
             },
         ]
         return self._complete(messages, MAX_QUESTION_TOKENS, no_thinking=True)
+
+    def lesson_from_diary(self, critique: str, lessons: list[str]) -> str:
+        """What her diary's self-critique teaches, if anything -- raw JSON for lessons.parse_distillation."""
+        lesson_block = "\n".join(f"[{i}] {text}" for i, text in enumerate(lessons, 1)) or "(none yet)"
+        messages = [
+            {"role": "system", "content": _DIARY_LESSON_SYSTEM_PROMPT},
+            {"role": "user", "content": f"Her lessons:\n{lesson_block}\n\nWhat she'd do differently, from her diary:\n{critique}"},
+        ]
+        return self._complete(messages, MAX_LESSON_TOKENS, no_thinking=True)
 
     def propose_lesson(
         self,
