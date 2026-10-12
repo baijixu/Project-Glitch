@@ -16,7 +16,7 @@
 //   capture.js ........ camera/screen/file, push-to-talk and Always-On mic
 //   settings_ui.js .... on/off switches, memory, Notes and soul/user editors, context meter
 //   debug_ui.js ....... the debug log and Restart Brain
-//   (lessons, training, sampling, chat logs, memory profiles, friends, curiosity countdown: *_ui.js)
+//   (lessons, training, sampling, chat logs, memory profiles, friends, library, curiosity countdown: *_ui.js)
 
 import { AvatarsUI } from "./avatars_ui.js";
 import { BackgroundsUI } from "./backgrounds_ui.js";

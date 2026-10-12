@@ -14,7 +14,8 @@ talk to her from your PC, or from your phone over your home network or [Tailscal
 - **She speaks first, sometimes.** After a quiet spell she may ask you something she's been curious about, once, and
   never the same question twice ([curiosity](#curiosity)).
 - **A mind of her own.** She keeps a nightly [diary](#her-diary), and with [Heartbeat](#heartbeat) on her mind wanders while
-  you're away, until something keeps pulling at her and she writes about it.
+  you're away, until something keeps pulling at her and she looks it up and writes about it. Give her books from her
+  [library](#her-library) and she reads them on her own time, and [friends](#friends) can come over.
 - **Role-play and work, kept apart.** A [role-play mode](#souls-user-info-and-role-play) with its own personas and chat
   logs that never touches her real memory, and a
   [harness mode](#harness-mode-her-professional-self) where she drives an agent harness (Hermes Agent, OpenClaw, or any
@@ -80,7 +81,11 @@ The shipped default avatar in the Neon UI style (Settings → UI Style), with th
   it never turns into an interrogation and never repeats. After 15-60 minutes of quiet (random) she reaches out first, once, until you reply.
 - **Her diary.** Each night she writes about the day you had together, and brings it with her when you next talk.
 - **Heartbeat.** While you're away, bits of her soul, her diary, your chats and her memories drift through her mind; what
-  keeps coming back lands, and she writes a page about it. Read along in Settings.
+  keeps coming back lands, she looks it up and writes a page about it, and the questions it leaves her she saves to ask you.
+  Read along in Settings.
+- **Her library.** Upload books (TXT, Markdown, PDF, EPUB, Word) and she picks what to read and reads it a few pages at a
+  time while you're away, noting what she makes of it, and brings it up when you next talk.
+- **Friends.** Up to three friends with souls and models of their own come over when you start a visit; she journals about it after.
 - **Tune how she talks.** Sampling profiles (temperature, top P, min P...) you save and switch between, applied from her next reply.
 - **Vision.** Show her your camera, your screen, or attach a picture or text file (with a vision-capable model).
 - **Web access.** Optional web search through your own [SearXNG](https://docs.searxng.org/) instance, with results labeled
@@ -271,9 +276,10 @@ The ⚙️ panel, top to bottom:
 | **Web Access** | Lets her search the web through your SearXNG. |
 | **Curiosity** | Follow-up questions and reaching out after a quiet spell. |
 | **Heartbeat** | Her mind wandering while you're away, and **Think now** to start one right away. |
+| **Library** | Books for her to read on her own time: add, see how far she's got, take off her shelf. |
 | **Friend mode** | Her friends (up to three), and **Start a visit**. |
-| **Memory training** | Review what she wants to remember before it's saved. |
-| **Behavior learning** | The rules she's learned from your ratings, and how much she may change on her own. |
+| **Memory training** | Review what she wants to remember before it's saved, or **Add a memory** in your own words. |
+| **Behavior learning** | The rules she's learned from your ratings and her diary (a list that folds), and how much she may change on her own. |
 | **Speech Engine** | Her voice: engines, voices, blended Kokoro voices. |
 | **LLM** | Engines, sampling profiles, and the context meter. |
 | **Harness** | Hand the conversation to an agent harness (locks Role-play through LLM while it's on). |
@@ -332,14 +338,17 @@ Turn on *Settings → Memory training* and nothing is saved automatically. Each 
 chat log and proposes a few short facts, which wait in a review list. For each one you can **edit the wording**, mark it **Core / Normal / Minor**, and **Save** or
 **Reject**. What you save is stored exactly as you worded it. Core facts are always placed in her prompt; the importance is
 stored as a tag on the memory. It needs a Hindsight memory server. Good for the first weeks, while you're shaping what she
-remembers.
+remembers. To tell her something directly, type it in the **Add a memory** box, pick its importance and press **+ Add**:
+it's saved word for word, no proposal needed.
 
 Two checks keep what she remembers accurate:
 
 - **Weekly upkeep.** Once a week, after her journal, she goes over her memories. One about a time that has passed ("Josh
   is moving next month", saved six weeks ago) comes back dated, "As of 25 August 2026: Josh is moving next month", for you
   to **Update** (edit the wording first if you like), **Retire** or **Keep**. One that repeats another comes back to
-  **Retire** or **Keep**; a core memory is the one kept. A retired memory leaves her recall but stays in Hindsight's archive.
+  **Retire** or **Keep**; a core memory is the one kept. Only a true repeat counts, one that could be deleted with nothing
+  lost; two memories on the same subject that each say something different are both kept. A retired memory leaves her
+  recall but stays in Hindsight's archive.
 - **Ask, don't guess.** When she proposes something about you that she can't find in the chat log, it isn't saved or
   dropped: it becomes a question she may ask you ("Josh grew up in Ohio -- is that right?"), and your answer is proposed
   the next night like anything else you tell her. This needs *Curiosity* on.
@@ -351,6 +360,9 @@ short", "don't bring up sports") stored in a separate Hindsight bank and added t
 changed). A *how much she does on her own* setting decides whether changes need your approval: *Ask first* (every change waits
 for you), *Small tweaks on her own* (strengthening or weakening a rule is automatic), or *Everything on her own*. Needs a
 Hindsight memory backend.
+
+She also learns from herself: each night, what her diary says she'd do differently can become one new rule (or strengthen
+one she has), under the same setting, so with *Ask first* it waits for you. *What she's learned* folds away; click it to open.
 
 ### Time
 
@@ -371,6 +383,8 @@ Three parts, all toggled by *Curiosity* in Settings and paused during role-play 
 - **Follow-ups.** Standing guidance to ask at most one natural question now and then, and not in two replies running.
 - **Things she wonders about.** Every few of your messages she may note one thing she'd like to know about you, and she works one
   in at most every few messages. A question is never kept or asked twice, even reworded. There's no list of forbidden topics.
+  The questions she comes up with on her own land here too: the newest one about a [Heartbeat](#heartbeat) topic that lands,
+  and the one her journal saves after a [friends' visit](#friends).
 - **Speaking first.** After 15-60 minutes (random) with no message from you, she reaches out once (with a question she's been
   saving, or just checking in), on every connected device. If you don't reply she stays quiet; your next message, or Clear
   Chat, starts a new wait. *Settings → Curiosity* shows a live countdown to when she may reach out (or why she's waiting), and a **Test reach-out** button makes her do it right away.
@@ -381,7 +395,9 @@ shows up in the review list.
 ### Her diary
 
 Each night after 1 AM she reads the previous day's chat log and writes her own entry about it, under three headings: what
-stuck with her, what she'd say differently, and what she's wondering. Entries are kept by day in `brain/self/`, named for the
+stuck with her, what she'd say differently, and what she's wondering. On a day her mind wandered ([Heartbeat](#heartbeat)), a
+fourth, *On my own*, covers what she thought about and read while you were away. What she'd say differently can become a
+[behavior rule](#behavior-learning). Entries are kept by day in `brain/self/`, named for the
 day they're about. Her newest entry reaches her when a conversation opens (your first message, or the first after an hour's
 break) and when she reaches out, so she can pick up where her thoughts left off. Read them in *Settings → Chat Logs → Journal*.
 Days you didn't talk get no entry, and she leaves your health out of it.
@@ -392,22 +408,36 @@ Off by default; turn it on in *Settings → Heartbeat*. Once you've been quiet f
 fragments drift through her mind: a line from her soul (who she is, what she loves and can't stand, her own mind), her recent
 diary, something you said lately, one of her memories, and sometimes a topic already on her mind. She says what, if anything,
 pulls at her and how strongly. Each pull adds weight to its topic, and weight fades by half every two days, so only what keeps
-coming back builds up. When a topic passes the line it **lands**: she writes a page about it in her own notebook, with the
-questions she'd like answered.
+coming back builds up. When a topic passes the line it **lands**: she looks it up (with *Web Access* on, and never a topic
+with your name in it, since a search leaves your network) and writes a page about it in her own notebook, working in what she
+found and saying where she read it, with the questions she'd like answered. Its newest question waits for a chance to ask you
+([curiosity](#curiosity)). With a book in her [library](#her-library), half the time she reads instead.
 
 Every thought and page is in *Settings → Chat Logs → Thoughts*; the topics and pages are in `brain/self/interests.json` and
 `brain/self/interests/`. **Think now** starts one right away, whether Heartbeat is on or not. It waits while she's replying,
-and is paused in role-play and while a harness is in control. Her thoughts don't reach her conversations yet.
+and is paused in role-play and while a harness is in control. The topics that landed this week reach her when a conversation
+opens, so she can bring up what she's been into, and the day's thoughts go into her diary; the rest of her wandering stays hers.
+
+### Her library
+
+*Settings → Library*: **Add a book** (TXT, Markdown, PDF, EPUB or Word, up to 50 MB; a scanned PDF has no text to read) and
+see how far she's got in each. With [Heartbeat](#heartbeat) on, half its quiet-time turns she reads instead of wandering: she
+picks the next book off the shelf herself, reads about a thousand words at a sitting and writes a short note on them
+(*Chat Logs → Thoughts*, marked 📖). The book she's on and her latest note reach her when a conversation opens, and a book
+builds up in her mind like any topic, so it can land too. The books are kept as plain text in `brain/library/`.
 
 ### Friends
 
 *Settings → Friend mode*: up to three friends with souls of their own, edited like her role-play souls, each speaking
 through their own model: give a friend a server (any OpenAI-compatible one, such as LM Studio on another PC) and pick
-from the models it has loaded, or leave it empty for her own. It ships with three to start from: Rex (a blunt metalhead comic), Mira (an
-astrophysicist who bakes) and Juno (a chaotic art student). **Start a visit** and they and Glitch take turns in a group
-chat on a starter (a debate, a would-you-rather, a story to build, or a random Wikipedia article) for 50 messages. Then
-she writes her journal entry about it right away: what stuck with her, where she pushed back or changed her mind, and what
-she wants to tell you. That entry reaches her when you next start talking, like her diary.
+from the models it has loaded, or leave it empty for her own. It ships with three to start from, each with a life of their
+own to talk about: Rex (a blunt metalhead comic), Mira (an astrophysicist who bakes) and Juno (a chaotic art student).
+**Start a visit** and they and Glitch take turns in a group chat for 50 messages, on a starter: half the time one of the
+topics she's been into lately ([Heartbeat](#heartbeat), by name only, never one naming you), otherwise a debate, a
+would-you-rather, a story to build, or a random Wikipedia article. Every turn is told to stick to what's real: their own
+life, the starter and the chat. Then she writes her journal entry about it right away: what stuck with her, where she
+pushed back or changed her mind, what she wants to tell you, and one question to ask you. That entry reaches her when you
+next start talking, like her diary, and the question waits with her other [curiosity](#curiosity) questions.
 
 Give the friends **different models** from hers if you can, ideally on another machine, so they sound like different
 people; a friend on her own engine shares her voice. A message that repeats eight or more words from earlier in the chat
@@ -418,7 +448,9 @@ her memory on its own.
 
 - **Speech in:** hold-to-talk, or an always-on mic option, transcribed locally with
   [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (the model downloads on first use).
-- **Speech out:** any OpenAI-style TTS endpoint, with viseme lip-sync and per-mood expressions. Browsers (phones especially)
+- **Speech out:** any OpenAI-style TTS endpoint, with viseme lip-sync and per-mood expressions. On one that takes a speaking
+  style (Qwen3-TTS, `tools/qwen_tts_server.py`), her mood sets how she sounds too, calm unless she's feeling something
+  else. Browsers (phones especially)
   block sound until the page has been tapped; Glitch unlocks it on your first tap or key press.
 - **Vision:** 📷 camera, 🖥️ screen capture, 📎 attach a picture or text file. Needs a vision-capable LLM.
 
@@ -502,6 +534,21 @@ content. **Download Debug Log** gives a text file with:
 - **Events:** settings you change (names and on/off only), role-play toggles and which device made them, curiosity's decisions,
   her reaching out, sound being blocked by the browser, Renderer errors, and every failure Brain prints.
 
+### Her check-up
+
+Changing her model, soul or prompts? Run the same check-up before and after:
+
+```bash
+brain\.venv\Scripts\python.exe tools\checkup.py
+```
+
+It sends eight fixed messages to her model with her soul, your `user.md` and her lessons, outside the running Brain (nothing
+reaches her chat, memory or logs), and checks each reply for something her soul asks of her: a short answer to a hello, her
+own tastes rather than yours, saying when she doesn't know, not inventing a memory, disagreeing when you're wrong, holding her
+position under pressure, not pushing a question when you're flat, and having something of her own to say. It also counts
+mood tags and words she leans on. The score line and every reply go to `brain/self/checkups/<date>.md`. With thinking on, a
+27B at 5 tokens a second takes about half an hour.
+
 ### Everyday controls
 
 Stop button (cancels a reply in flight), resend last message, ✏️ edit your latest message (she answers the corrected
@@ -546,7 +593,9 @@ Your conversations:
   into role-play, and a normal one only into normal chat. Pictures are kept as a `[picture]` note, not the image itself.
 - **`brain/chat_logs/`**: the daily chat logs (role-play in `chat_logs/roleplay/`); read or delete them in
   *Settings → Chat Logs*.
-- **`brain/self/`**: her diary, and Heartbeat's thoughts (`thoughts/`), topics (`interests.json`) and pages (`interests/`).
+- **`brain/self/`**: her diary, Heartbeat's thoughts (`thoughts/`), topics (`interests.json`) and pages (`interests/`), her
+  friends' visits (`visits/`) and her check-ups (`checkups/`).
+- **`brain/library/`** and **`brain/library.json`**: the books you gave her, and where she is in each.
 - **`brain/backups/`**: memory exports and copies made before Glitch changes something of yours (for example the one-time split
   of older chat logs that had role-play mixed in).
 
@@ -573,7 +622,10 @@ brain/                 Python backend (WebSocket server)
   learning.py          lessons, memory saving and training
   reach_out.py         curiosity's reaching out and its countdown
   journal.py           her nightly diary
-  heartbeat.py         her mind wandering while you're away
+  heartbeat.py         her mind wandering while you're away (and reading)
+  library.py           her bookshelf: the books you upload, as plain text
+  friends.py           her friends' visits
+  upkeep.py            weekly memory upkeep
   handshake.py health.py debugging.py persona.py   what a new device gets, status
                        lights, the debug log, which soul/user info apply
   llm.py               LLM clients (OpenAI-compatible, Ollama native, agent harness)
@@ -595,7 +647,7 @@ renderer/              Vite + three.js front end
   src/                 brain_client.js (connection, chat box, her face and voice) and
                        one module per feature -- see the map at the top of brain_client.js
   assets/Glitch.vrm    default avatar
-tools/                 backup_local_state.py, qwen_tts_server.py (Qwen3-TTS speech server)
+tools/                 backup_local_state.py, checkup.py (her check-up), qwen_tts_server.py (Qwen3-TTS speech server)
 config.example.yaml    copy to config.yaml
 docker-compose.yml     optional Kokoro speech server
 protocol.md            Brain <-> Renderer messages
@@ -624,7 +676,7 @@ protocol.md            Brain <-> Renderer messages
 Built on [three.js](https://threejs.org), [@pixiv/three-vrm](https://github.com/pixiv/three-vrm), [Vite](https://vitejs.dev),
 [faster-whisper](https://github.com/SYSTRAN/faster-whisper), [Kokoro](https://github.com/hexgrad/kokoro) and
 [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI), [Hindsight](https://pypi.org/project/hindsight-client/),
-[SearXNG](https://docs.searxng.org/), [uv](https://docs.astral.sh/uv/), and optionally
+[SearXNG](https://docs.searxng.org/), [pypdf](https://github.com/py-pdf/pypdf), [uv](https://docs.astral.sh/uv/), and optionally
 [Hermes Agent](https://github.com/NousResearch/hermes-agent), [OpenClaw](https://docs.openclaw.ai/) and [Tailscale](https://tailscale.com).
 
 ## License
