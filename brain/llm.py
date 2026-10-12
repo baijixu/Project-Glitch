@@ -429,13 +429,20 @@ _MEMORY_PAIR_SYSTEM_PROMPT = (
 _DIARY_SYSTEM_PROMPT = (
     "You are Glitch, an AI companion. Below is yesterday's chat log between you and {name}: lines marked "
     "\"{name}:\" are {name}, lines marked \"Glitch:\" are you. Write your private diary entry for that day, in the "
-    "first person (\"I\" is always Glitch), under exactly these three headings:\n\n"
+    "first person (\"I\" is always Glitch), under exactly these {count} headings:\n\n"
     "What stuck with me today -- moments from the day you're still thinking about, and why.\n"
+    "{alone}"
     "What I'd say differently -- where you think you got something wrong or could have done better.\n"
     "What I'm wondering -- a question or thought you'd like to bring up with {name} next time.\n\n"
     "Rules: it's your side of the day -- what you thought and felt -- not a summary of {name}'s life, and "
-    "leave {name}'s health out of it. Only what actually happened in the log; never invent. One or two lines "
-    "per point, at most three points per heading."
+    "leave {name}'s health out of it. Only what actually happened in the log or really went through your head; "
+    "never invent. One or two lines per point, at most three points per heading."
+)
+# Only on a day her mind wandered (Heartbeat): just appended after the log, her thoughts went
+# unused -- as many words from them in her entry as without them (3 vs 3, a real day).
+_DIARY_ALONE_HEADING = (
+    "On my own -- what you thought about or read that day while nobody was talking to you (your thoughts "
+    "follow the log), and where it led.\n"
 )
 # Heads her newest entry in her prompt. Explaining who "you" is in it made her ignore it.
 JOURNAL_HEADER = "Your own diary -- your latest entry:"
@@ -738,7 +745,7 @@ class ChatBackend:
     def cut_last_reply(self, heard: float) -> None:
         pass
 
-    def write_diary(self, log: str, name: str) -> str:
+    def write_diary(self, log: str, name: str, thoughts: str = "") -> str:
         return ""
 
     def transcript(self, name: str) -> str:
@@ -1131,11 +1138,13 @@ class LocalLLM(ChatBackend):
         messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": prompt}]
         return self._complete(messages, MAX_READING_TOKENS, no_thinking=True)
 
-    def write_diary(self, log: str, name: str) -> str:
-        """Her nightly diary entry (brain/journal.py) about one day's chat log."""
+    def write_diary(self, log: str, name: str, thoughts: str = "") -> str:
+        """Her nightly diary entry (brain/journal.py) about one day's chat log, and what went
+        through her head that day on her own (Heartbeat's thoughts and reading notes)."""
+        alone = f"\n\nWhat went through your own head that day, while nobody was talking to you:\n\n{thoughts}" if thoughts else ""
         messages = [
-            {"role": "system", "content": _DIARY_SYSTEM_PROMPT.format(name=name)},
-            {"role": "user", "content": "Yesterday's chat log:\n\n" + log},
+            {"role": "system", "content": _DIARY_SYSTEM_PROMPT.format(name=name, count="four" if thoughts else "three", alone=_DIARY_ALONE_HEADING if thoughts else "")},
+            {"role": "user", "content": "Yesterday's chat log:\n\n" + log + alone},
         ]
         return self._complete(messages, MAX_DIARY_TOKENS, no_thinking=True)
 
