@@ -34,7 +34,7 @@ import { MemoryProfilesUI } from "./memory_profiles_ui.js";
 import { SamplingUI } from "./sampling_ui.js";
 import { SettingsUI } from "./settings_ui.js";
 import { TrainingUI } from "./training_ui.js";
-import { $, base64ToArrayBuffer } from "./ui.js";
+import { $ } from "./ui.js";
 
 const RECONNECT_DELAY_MS = 3000;
 // The subtitle fades out this long after it finishes streaming in.
@@ -566,7 +566,7 @@ export class BrainClient {
           : `can't play her voice: audio is ${this.audioContext.state} (the browser wants a tap on the page first)`,
       );
     }
-    const audioBuffer = await this.audioContext.decodeAudioData(base64ToArrayBuffer(audioB64));
+    const audioBuffer = await this.audioContext.decodeAudioData(Uint8Array.fromBase64(audioB64).buffer);
     if (!this._acceptingVoice) return; // talked over while it was being decoded
     const source = this.audioContext.createBufferSource();
     source.buffer = audioBuffer;

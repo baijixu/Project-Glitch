@@ -2,7 +2,7 @@
 // time. Add one (TXT, Markdown, PDF, EPUB, Word), see how far she's got, take one off the
 // shelf. Rebuilt from each `library` message, so every device shows the same shelf.
 
-import { $, arrayBufferToBase64 } from "./ui.js";
+import { $ } from "./ui.js";
 
 export class LibraryUI {
   constructor(app) {
@@ -22,7 +22,7 @@ export class LibraryUI {
     this.inputEl.value = ""; // otherwise re-picking the same file wouldn't fire "change" again
     for (const file of files) {
       this._note(`Adding ${file.name}...`); // a big PDF takes Brain a moment to read
-      this._app.send({ type: "add_book", name: file.name, data_b64: arrayBufferToBase64(await file.arrayBuffer()) });
+      this._app.send({ type: "add_book", name: file.name, data_b64: (await file.bytes()).toBase64() });
     }
   }
 

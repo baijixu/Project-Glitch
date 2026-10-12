@@ -79,24 +79,3 @@ export function downloadText(filename, text) {
   a.click();
   URL.revokeObjectURL(url); // click() is synchronous, so the URL is no longer needed
 }
-
-export function arrayBufferToBase64(buffer) {
-  // Chunked rather than one String.fromCharCode call per byte -- a
-  // multi-megabyte VRM import (avatars can be 15MB+) made the naive per-byte
-  // version a noticeable UI freeze. 0x8000 stays well under
-  // String.fromCharCode.apply's argument-count limit.
-  const bytes = new Uint8Array(buffer);
-  const CHUNK_SIZE = 0x8000;
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK_SIZE));
-  }
-  return btoa(binary);
-}
-
-export function base64ToArrayBuffer(base64) {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes.buffer;
-}

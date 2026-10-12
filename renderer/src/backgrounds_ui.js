@@ -2,7 +2,7 @@
 // picture behind her. Brain keeps them and sends whichever is picked to every device, so
 // nothing is shown here until it arrives -- the same picture everywhere.
 
-import { $, arrayBufferToBase64, base64ToArrayBuffer, renderDropdown } from "./ui.js";
+import { $, renderDropdown } from "./ui.js";
 
 const NONE = "None";
 const KINDS = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
@@ -37,7 +37,7 @@ export class BackgroundsUI {
         if (!data.active) this._show(null);
       },
       background_data: (data) => {
-        this._show(new Blob([base64ToArrayBuffer(data.data_b64)], { type: MIME[data.kind] }));
+        this._show(new Blob([Uint8Array.fromBase64(data.data_b64)], { type: MIME[data.kind] }));
         this._app.log("background", `showing background '${data.name}'`);
       },
     };
@@ -56,7 +56,7 @@ export class BackgroundsUI {
     const kind = KINDS[file.type];
     if (!kind) return this._app.flashStatus("Pick a PNG, JPG or WebP image", 4000);
     const name = file.name.replace(/\.[^.]+$/, "");
-    this._app.send({ type: "save_background", name, data_b64: arrayBufferToBase64(await file.arrayBuffer()), kind });
+    this._app.send({ type: "save_background", name, data_b64: (await file.bytes()).toBase64(), kind });
   }
 
   _delete() {

@@ -3,7 +3,7 @@
 // volume-based listening. Also which of those buttons are shown (Settings ->
 // Devices), a per-browser preference.
 
-import { $, arrayBufferToBase64, readPref, writePref } from "./ui.js";
+import { $, readPref, writePref } from "./ui.js";
 
 // Longest edge a snapshot is scaled down to -- vision models don't benefit
 // from more, and it keeps the request small. Aspect ratio is kept.
@@ -464,7 +464,7 @@ export class Capture {
     if (this._chunks.length === 0) return;
     const mimeType = this.mediaRecorder.mimeType || "audio/webm";
     const blob = new Blob(this._chunks, { type: mimeType });
-    const audioB64 = arrayBufferToBase64(await blob.arrayBuffer());
+    const audioB64 = (await blob.bytes()).toBase64();
     this._app.sendForReply({ type: "user_audio", audio_b64: audioB64, mime_type: mimeType }, `sent user_audio (${blob.size} bytes, ${mimeType})`);
     this._pendingVoice = this._app.history.add("user", "🎤 (voice message)");
   }

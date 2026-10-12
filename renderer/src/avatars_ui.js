@@ -3,7 +3,7 @@
 // any other one's bytes come from Brain (avatar_data). main.js does the actual
 // swap, through onAvatarSwap.
 
-import { $, Modal, arrayBufferToBase64, base64ToArrayBuffer, renderDropdown } from "./ui.js";
+import { $, Modal, renderDropdown } from "./ui.js";
 
 const BUILT_IN = "Glitch";
 
@@ -61,7 +61,7 @@ export class AvatarsUI {
       // The answer to our own load_avatar, or unprompted after `ready` to restore
       // the one that was active -- the same either way. `kind` is Brain's record.
       avatar_data: (data) => {
-        this._onAvatarSwap?.(base64ToArrayBuffer(data.data_b64), data.kind);
+        this._onAvatarSwap?.(Uint8Array.fromBase64(data.data_b64).buffer, data.kind);
         this._app.log("avatar", `switched to avatar '${data.name}' (${data.kind})`);
         this.active = data.name;
         this._render(this._saved);
@@ -112,7 +112,7 @@ export class AvatarsUI {
     const name = file.name.replace(new RegExp(`\\.${kind}$`, "i"), "");
     this.active = name;
     this._render(this._saved);
-    this._app.send({ type: "save_avatar", name, data_b64: arrayBufferToBase64(buffer), kind });
+    this._app.send({ type: "save_avatar", name, data_b64: new Uint8Array(buffer).toBase64(), kind });
   }
 
   _openRename() {
