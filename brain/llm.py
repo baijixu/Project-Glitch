@@ -82,7 +82,8 @@ TURN_NOTES_HEADER = (
 )
 
 # Also bare on its own line ("mood: relaxed", no brackets): the 9B writes it that way now and then.
-_MOOD_TAG = re.compile(r"(?:\[|^[ \t]*)mood:[ \t]*(\w+)(?:\]|[ \t]*$)", re.IGNORECASE | re.MULTILINE)
+# Spaces inside the brackets too ("[ Mood: relaxed ]"): the 27B's way, and her voice read those aloud.
+_MOOD_TAG = re.compile(r"(?:\[[ \t]*|^[ \t]*)mood:[ \t]*(\w+)(?:[ \t]*\]|[ \t]*$)", re.IGNORECASE | re.MULTILINE)
 
 # Talk of suicide in his newest message adds CRISIS_NOTE to that reply's notes. Her soul's
 # "If someone's in danger" section alone held 2 of 3 times on the 9B -- once she agreed to
@@ -574,7 +575,7 @@ def _extract_mood(text: str) -> tuple[str, str]:
 # Her reply as it streams, cut into sentences to speak (reply.py). Her mood tag opens the
 # reply (MOOD_TAG_INSTRUCTION), so nothing is said until it's there: what comes before it
 # is thinking the model leaked into its answer, or a tool call it wrote out as text.
-_LEADING_MOOD_TAG = re.compile(r"\s*\[?mood:[ \t]*(\w+)(?:\]|[ \t]*\n)", re.IGNORECASE)  # a bare one once its line ends
+_LEADING_MOOD_TAG = re.compile(r"\s*(?:\[[ \t]*)?mood:[ \t]*(\w+)(?:[ \t]*\]|[ \t]*\n)", re.IGNORECASE)  # a bare one once its line ends
 _NOT_HER_REPLY = re.compile(r".*(?:</think>|</function>|</tool_call>)", re.DOTALL)
 _SENTENCE_END = re.compile(r"(?<=[.!?…])\s+|\n+")  # ponytail: "Dr. Smith" splits too -- harmless when spoken
 
