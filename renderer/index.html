@@ -34,6 +34,7 @@
     <div id="bubble-overlay"></div>
     <div id="memory-toast"></div>
     <button id="history-button" class="corner-button" title="Chat history">🌸</button>
+    <button id="inbox-button" class="corner-button" title="Her questions for you">📥</button>
     <!-- Shown while she's working on a reply (see brain_client.js _setAwaitingReply). -->
     <div id="processing-indicator" role="status" hidden>
       processing<span class="processing-dot">.</span><span class="processing-dot">.</span><span class="processing-dot">.</span>
@@ -828,6 +829,19 @@
         <div class="modal-actions">
           <button id="rate-modal-cancel-button" class="modal-button secondary">Cancel</button>
           <button id="rate-modal-send-button" class="modal-button primary">Send</button>
+        </div>
+      </div>
+    </div>
+    <div id="inbox-modal-backdrop" class="modal-backdrop" hidden>
+      <div id="inbox-modal" class="modal" role="dialog" aria-labelledby="inbox-modal-title">
+        <h2 id="inbox-modal-title">Her questions</h2>
+        <p class="settings-hint">
+          What she's wondered about you, from her own thinking, her friends' visits and your chats. Answer when you
+          like: with Memory training on, an answer comes back as a memory to review. She may also ask one in chat.
+        </p>
+        <div id="inbox-list"></div>
+        <div class="modal-actions">
+          <button id="inbox-close-button" class="modal-button secondary">Close</button>
         </div>
       </div>
     </div>

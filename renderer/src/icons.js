@@ -18,6 +18,7 @@ const ICONS = {
   "🎤": "mic",
   "📎": "clip",
   "📦": "archive",
+  "📥": "inbox",
 };
 // In text, only the app's own markers -- not, say, a 🌸 she puts in a reply.
 const TEXT_ICONS = {
