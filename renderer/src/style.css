@@ -1213,6 +1213,10 @@ body.overlay-chat-active #overlay-edit-button {
   color: #cbd0dc;
 }
 
+summary.lessons-subhead {
+  cursor: pointer;
+}
+
 .lesson-row {
   padding: 8px 10px;
   margin-bottom: 8px;

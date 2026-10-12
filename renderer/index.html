@@ -337,8 +337,10 @@
               <h4 class="lessons-subhead">Waiting for your approval</h4>
               <div id="lessons-pending-list"></div>
             </div>
-            <h4 class="lessons-subhead lessons-when-available" hidden>What she's learned</h4>
-            <div id="lessons-list" class="lessons-when-available" hidden></div>
+            <details class="lessons-when-available" hidden>
+              <summary class="lessons-subhead">What she's learned<span id="lessons-count"></span></summary>
+              <div id="lessons-list"></div>
+            </details>
             <button id="lessons-add-button" class="settings-action-button lessons-when-available" hidden>Add a lesson</button>
           </section>
           <section class="settings-section">

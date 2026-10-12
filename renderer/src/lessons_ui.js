@@ -21,6 +21,7 @@ export class LessonsUI {
     this.pendingWrapEl = $("lessons-pending-wrap");
     this.pendingListEl = $("lessons-pending-list");
     this.listEl = $("lessons-list");
+    this.countEl = $("lessons-count");
     this.addButtonEl = $("lessons-add-button");
     this.modalBackdropEl = $("lesson-modal-backdrop");
     this.modalTitleEl = $("lesson-modal-title");
@@ -57,6 +58,7 @@ export class LessonsUI {
 
   _renderLessons(lessons) {
     if (!this.listEl) return;
+    if (this.countEl) this.countEl.textContent = lessons.length ? ` (${lessons.length})` : "";
     this.listEl.replaceChildren();
     if (!lessons.length) {
       const empty = document.createElement("p");
