@@ -66,6 +66,9 @@ async def reach_out_loop(brain: Brain) -> None:
         try:
             await broadcast_curiosity_timer(only_if_changed=True)  # catches role-play / harness switches
             await broadcast_inbox(only_if_changed=True)  # Heartbeat, a visit or her diary may have added one
+            if (day := learning.sitting_over(time.time())) and not brain.reply_lock.locked():
+                async with brain.reply_lock:
+                    await learning.propose_sitting(brain, day)
             if (
                 brain.llm.owns_conversation
                 and curiosity.read_active()

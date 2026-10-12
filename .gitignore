@@ -126,3 +126,5 @@ brain/friends/
 # Her library (brain/library.py) -- the books he gave her and where she is in each.
 brain/library/
 brain/library.json
+# How far into a day her memory proposals have read (brain/learning.py).
+brain/proposed_through.json

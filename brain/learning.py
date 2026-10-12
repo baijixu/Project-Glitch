@@ -5,8 +5,10 @@ server profiles.
 
 import asyncio
 import re
+import json
 import time
-from datetime import date
+from datetime import date, datetime
+from pathlib import Path
 
 import websockets
 
@@ -276,6 +278,63 @@ def training_state_message(error: str = "") -> dict:
 async def _set_training_active(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     training.set_active(bool(data.get("active")))
     await hub.broadcast(training_state_message())
+
+
+# How far into a day her memory proposals have read: {"day": "YYYY-MM-DD", "through": "HH:MM:SS"}.
+# Each sitting is proposed from when it ends, and the nightly run only reads what's left.
+PROPOSED_PATH = Path(__file__).parent / "proposed_through.json"
+SITTING_QUIET_SEC = 60 * 60  # this long after his last message, a sitting is over
+_ENTRY = re.compile(r"(?=^\*\*\d\d:\d\d:\d\d\*\* )", re.MULTILINE)
+_STAMP = re.compile(r"\*\*(\d\d:\d\d:\d\d)\*\*")
+
+
+def _proposed_through() -> dict:
+    try:
+        return json.loads(PROPOSED_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def unproposed(day: date, log: str) -> str:
+    """The entries of a day's log her memory proposals haven't read yet."""
+    mark = _proposed_through()
+    through = mark.get("through", "") if mark.get("day") == day.isoformat() else ""
+    return "".join(e for e in _ENTRY.split(log) if (stamp := _STAMP.match(e)) and stamp[1] > through)
+
+
+def mark_proposed(day: date, log: str) -> None:
+    stamps = _STAMP.findall(log)
+    if stamps:
+        PROPOSED_PATH.write_text(json.dumps({"day": day.isoformat(), "through": stamps[-1]}), encoding="utf-8")
+
+
+def sitting_over(now: float) -> date | None:
+    """The day of a sitting that's over (an hour since his last message) and not yet proposed from."""
+    last = curiosity.last_user_at()
+    if not last or now - last < SITTING_QUIET_SEC:
+        return None
+    said = datetime.fromtimestamp(last)
+    mark = _proposed_through()
+    if mark.get("day") == said.date().isoformat() and mark.get("through", "") >= f"{said:%H:%M:%S}":
+        return None
+    return said.date()
+
+
+async def propose_sitting(brain: Brain, day: date) -> None:
+    """Memory proposals from the conversation since the last ones -- at the end of a sitting
+    (Clear Chat, or an hour of quiet), so they're in his review list the same day instead of
+    after the night. Needs memory training on, like the nightly ones."""
+    import journal  # journal imports this module
+
+    if not (brain.llm.owns_conversation and memory.read_memory_active() and memory.server_backed() and training.read_active()):
+        return
+    if profiles.read_roleplay_active():
+        return
+    name = persona.user_name() or "User"
+    log = unproposed(day, journal.day_log(day, name))
+    if f" {name}: " in log:
+        await propose_from_log(log, day, name, brain, source=f"{day:%A %d %B}'s chat (a sitting)")
+    mark_proposed(day, log)
 
 
 async def propose_from_log(log: str, day: date, name: str, brain: Brain, source: str = "") -> None:

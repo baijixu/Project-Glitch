@@ -107,6 +107,13 @@ async def clear_conversation(websocket: websockets.ServerConnection, data: dict,
     await hub.broadcast(protocol.conversation_cleared())
     if any(line.startswith(f"{name}: ") for line in transcript.splitlines()):  # the user said something worth a note
         hub.spawn(_write_left_off(brain, transcript, name))
+        if day := learning.sitting_over(float("inf")):  # Clear Chat ends the sitting now
+            hub.spawn(_propose_sitting(brain, day))
+
+
+async def _propose_sitting(brain: Brain, day) -> None:
+    async with brain.reply_lock:  # after her left-off note: one model job at a time
+        await learning.propose_sitting(brain, day)
 
 
 async def _write_left_off(brain: Brain, transcript: str, name: str) -> None:

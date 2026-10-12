@@ -91,7 +91,9 @@ async def journal_loop(brain: Brain) -> None:
                 print(f"[journal] wrote {path.name}")
                 await learning.lesson_from_diary(text, brain)  # after the lock, like her memory proposals
                 if memory.read_memory_active() and memory.server_backed() and training.read_active():  # after the lock: his replies first
-                    await learning.propose_from_log(log, day, name, brain)
+                    if learning.unproposed(day, log):  # what her sittings' proposals didn't already read
+                        await learning.propose_from_log(learning.unproposed(day, log), day, name, brain)
+                    learning.mark_proposed(day, log)
                     if upkeep.due(datetime.now()):
                         await upkeep.run(brain)
                         await learning.broadcast_training_state()
