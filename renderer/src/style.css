@@ -476,6 +476,33 @@ body.overlay-chat-active #overlay-edit-button {
   right: 16px;
 }
 
+/* Her questions for him, under the flower; the count of waiting ones on its corner. */
+#inbox-button {
+  left: 16px;
+  top: 70px;
+}
+
+#inbox-button[data-count]:not([data-count=""])::after {
+  content: attr(data-count);
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  border-radius: 9px;
+  background: #e0457b;
+  color: #fff;
+  font: 600 11px/18px system-ui, sans-serif;
+  text-align: center;
+}
+
+.inbox-question {
+  margin-bottom: 6px;
+  color: #e6e8f0;
+}
+
 /* "processing..." beside the chat-history flower while she works on a reply.
    Same height and backing as the corner buttons, so it reads over any avatar. */
 #processing-indicator {
@@ -502,7 +529,7 @@ body.overlay-chat-active #overlay-edit-button {
    drops under the flower instead. */
 @media (max-width: 480px) {
   #processing-indicator {
-    top: 70px;
+    top: 124px; /* under the flower and the inbox */
     left: 16px;
   }
 }
