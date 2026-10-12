@@ -337,6 +337,26 @@ async def propose_sitting(brain: Brain, day: date) -> None:
     mark_proposed(day, log)
 
 
+async def propose_own(text: str, source: str, brain: Brain) -> None:
+    """What she's come to think from her own thinking -- a landed page, a finished book -- as one
+    memory: proposed for his review with memory training on, otherwise kept like any other.
+    Without this, what she works out alone never reaches what she remembers."""
+    if not (brain.llm.owns_conversation and memory.read_memory_active() and memory.server_backed()):
+        return
+    try:
+        async with brain.reply_lock:
+            fact = (await asyncio.to_thread(brain.llm.conclusion, text)).strip().strip('"')
+        if not fact or fact.lower().rstrip(".") == "nothing" or len(fact) > training.MAX_FACT_CHARS:
+            return
+        if training.read_active():
+            if training.add_pending(fact, source):
+                await hub.broadcast(training_state_message())
+        else:
+            await memory.retain_fact(fact, training.DEFAULT_IMPORTANCE)
+    except Exception as exc:
+        print(f"[training] couldn't keep what she came to think: {exc!r}")
+
+
 async def propose_from_log(log: str, day: date, name: str, brain: Brain, source: str = "") -> None:
     """Training mode's proposals, once a night (journal.py): a few memories from the whole
     day's chat log, each checked against what she remembers, queued for the user to

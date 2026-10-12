@@ -379,6 +379,14 @@ _FOCUS_FOUND = (
     "\n\nYou also looked it up. What the search turned up:\n\n{found}\n\n"
     "Work in what's actually interesting, say where you read it, and don't take it as gospel."
 )
+# What she's come to think, from her own notebook page or a book she finished (heartbeat.py ->
+# learning.propose_own): her solo thinking, as one memory proposal.
+_CONCLUSION_PROMPT = (
+    "Below is something you wrote on your own:\n\n{text}\n\n"
+    "In one sentence, in the first person: what have you come to think? The view you'd want to remember and stand "
+    "by -- not a summary of what you wrote. Under 40 words, no preamble. If it didn't lead you anywhere you'd stand "
+    "by, reply with just: nothing"
+)
 # Her library (brain/library.py), read in Heartbeat's quiet time, under her own soul too.
 MAX_READING_TOKENS = 400
 _PICK_BOOK_PROMPT = (
@@ -1146,6 +1154,11 @@ class LocalLLM(ChatBackend):
             prompt += _FOCUS_FOUND.format(found=found)
         messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": prompt}]
         return self._complete(messages, MAX_FOCUS_TOKENS, no_thinking=True)
+
+    def conclusion(self, text: str) -> str:
+        """What she's come to think from something she wrote (_CONCLUSION_PROMPT), or "nothing"."""
+        messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": _CONCLUSION_PROMPT.format(text=text)}]
+        return self._complete(messages, MAX_READING_TOKENS, no_thinking=True)
 
     def pick_book(self, titles: list[str]) -> str:
         """Library: which of `titles` she reads next -- the model's raw answer, a number."""

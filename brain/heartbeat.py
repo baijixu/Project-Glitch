@@ -29,6 +29,7 @@ import websockets
 import conversation
 import curiosity
 import hub
+import learning
 import library
 import memory
 import persona
@@ -300,6 +301,7 @@ async def _land(brain: Brain, interests: dict, topic: str, now: datetime) -> boo
     # so a passing thought doesn't fill the short list.
     if interests[topic]["questions"] and curiosity.read_active():
         curiosity.add_question(interests[topic]["questions"][-1])
+    await learning.propose_own(page, f"Heartbeat: {topic} landed", brain)  # what she came to think stays with her
     return True
 
 
@@ -333,6 +335,8 @@ async def read_pages(brain: Brain, shelf: dict) -> str:
     _save_interests(interests)
     if landed:
         await _land(brain, interests, topic, now)
+    if book["finished"]:
+        await learning.propose_own(f"You just finished {book['title']}. Your note on its last pages: {note}", f"Finished reading {book['title']}", brain)
     return f"She read some of {book['title']} ({library.percent(book)}%): {note}"
 
 
