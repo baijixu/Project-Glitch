@@ -10,7 +10,9 @@ A topic that passes LAND_AT lands: she turns it over properly (llm.focus) and wr
 page about it (self/interests/<topic>.md). Every thought, and each page, also goes in
 the day's thoughts log (self/thoughts/, Settings -> Chat Logs -> Thoughts).
 
-Step one: nothing here reaches her prompt, and there's no web yet -- it's watched first.
+With a book in her library (library.py) unfinished, half the ticks she reads instead (read_pages):
+the next pages, and a note on them that reaches her as a conversation opens. Her wandering itself
+doesn't reach her prompt, and there's no web yet -- it's watched first.
 """
 
 import asyncio
@@ -26,6 +28,7 @@ import websockets
 import conversation
 import curiosity
 import hub
+import library
 import memory
 import persona
 import profiles
@@ -48,6 +51,8 @@ KEEP_THOUGHTS = 5  # per topic, the newest
 # nothing else (8 of 8 in a test); a landed one doesn't -- she's had her think about it.
 RUMINATE_CHANCE = 1 / 3
 CHECK_SEC = 60  # how often the loop looks at the clock
+READ_CHANCE = 1 / 2  # with a book on her shelf unfinished, how often a tick is reading instead of wandering
+READ_PULL = 5  # a sitting with a book weighs on her like a middling thought: four in two days and it lands
 _last_beat = time.time()  # her last thought (or Brain's start: the first comes TICK_SEC in)
 _last_timer: dict | None = None  # the heartbeat_timer last sent to everyone
 
@@ -238,6 +243,9 @@ async def beat(brain: Brain) -> str:
     global _last_beat
     _last_beat = time.time()
     now = datetime.now()
+    shelf = library.read_state()
+    if library.unread(shelf) and random.random() < READ_CHANCE:
+        return await read_pages(brain, shelf)
     interests = read_interests()
     drifted = await fragments(now, interests)
     if not drifted:
@@ -251,22 +259,61 @@ async def beat(brain: Brain) -> str:
     _save_interests(interests)
     conversation.log_thought(f"{found['thought']}  \n*{topic} · pull {found['pull']}*", now=now)
     print(f"[heartbeat] a thought about {topic!r} (pull {found['pull']})")
-    if landed:
-        thoughts = "\n".join(f"- {t}" for t in interests[topic]["thoughts"] + interests[topic]["questions"])
-        async with brain.reply_lock:
-            page = (await asyncio.to_thread(brain.llm.focus, topic, thoughts, persona.user_name() or "him")).strip()
-        if page:
-            folder = conversation.JOURNAL_LOG_DIR / "interests"
-            folder.mkdir(parents=True, exist_ok=True)
-            (folder / f"{sanitize_name(topic, kind='topic')}.md").write_text(f"# {topic}\n\n*Landed {now:%A %d %B %Y}*\n\n{page}\n", encoding="utf-8")
-            conversation.log_thought(f"💡 **{topic}** landed -- it kept pulling at her, so she wrote about it:\n\n{page}", now=datetime.now())
-            print(f"[heartbeat] {topic!r} landed")
-            # Her newest question about it waits to be asked (Josh's "question inbox"): only on landing,
-            # so a passing thought doesn't fill the short list.
-            if interests[topic]["questions"] and curiosity.read_active():
-                curiosity.add_question(interests[topic]["questions"][-1])
-            return f"{found['thought']} -- and {topic} landed: she wrote a page about it (Chat Logs -> Thoughts)."
+    if landed and await _land(brain, interests, topic, now):
+        return f"{found['thought']} -- and {topic} landed: she wrote a page about it (Chat Logs -> Thoughts)."
     return f"{found['thought']} ({topic}, pull {found['pull']})"
+
+
+async def _land(brain: Brain, interests: dict, topic: str, now: datetime) -> bool:
+    """A topic that's landed: her notebook page on it. False if she wrote nothing."""
+    thoughts = "\n".join(f"- {t}" for t in interests[topic]["thoughts"] + interests[topic]["questions"])
+    async with brain.reply_lock:
+        page = (await asyncio.to_thread(brain.llm.focus, topic, thoughts, persona.user_name() or "him")).strip()
+    if not page:
+        return False
+    folder = conversation.JOURNAL_LOG_DIR / "interests"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / f"{sanitize_name(topic, kind='topic')}.md").write_text(f"# {topic}\n\n*Landed {now:%A %d %B %Y}*\n\n{page}\n", encoding="utf-8")
+    conversation.log_thought(f"💡 **{topic}** landed -- it kept pulling at her, so she wrote about it:\n\n{page}", now=datetime.now())
+    print(f"[heartbeat] {topic!r} landed")
+    # Her newest question about it waits to be asked (Josh's "question inbox"): only on landing,
+    # so a passing thought doesn't fill the short list.
+    if interests[topic]["questions"] and curiosity.read_active():
+        curiosity.add_question(interests[topic]["questions"][-1])
+    return True
+
+
+async def read_pages(brain: Brain, shelf: dict) -> str:
+    """A sitting with a book from her library: she picks one if she's between books, reads the
+    next pages and notes what she makes of them. The book then weighs on her mind like any
+    topic, so it can land too."""
+    names = library.unread(shelf)
+    name = shelf["reading"] if shelf["reading"] in names else names[0]
+    if shelf["reading"] not in names and len(names) > 1:
+        async with brain.reply_lock:
+            raw = await asyncio.to_thread(brain.llm.pick_book, [shelf["books"][n]["title"] for n in names])
+        if (pick := re.search(r"\d+", raw)) and 1 <= int(pick[0]) <= len(names):
+            name = names[int(pick[0]) - 1]
+    book = shelf["books"][name]
+    pages, end = library.next_pages(library.STORE.read_text(name), book["pos"])
+    async with brain.reply_lock:
+        note = (await asyncio.to_thread(brain.llm.read_pages, book["title"], library.percent(book), pages, book["note"])).strip()
+    if not note:
+        return f"She couldn't get into {book['title']} this time."
+    book.update(pos=end, note=note, finished=end >= book["chars"])
+    shelf["reading"] = None if book["finished"] else name
+    shelf["last"] = name
+    library.save_state(shelf)
+    await hub.broadcast(library.library_message())  # Settings shows how far she's got
+    now = datetime.now()
+    conversation.log_thought(f"📖 {note}  \n*{book['title']} · {library.percent(book)}%*", now=now)
+    print(f"[heartbeat] she read some of {book['title']!r} ({library.percent(book)}%)")
+    interests = read_interests()
+    topic, landed = add_pull(interests, book["title"], READ_PULL, note, "", time.time())
+    _save_interests(interests)
+    if landed:
+        await _land(brain, interests, topic, now)
+    return f"She read some of {book['title']} ({library.percent(book)}%): {note}"
 
 
 async def heartbeat_loop(brain: Brain) -> None:

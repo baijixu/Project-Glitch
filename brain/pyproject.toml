@@ -12,4 +12,6 @@ dependencies = [
     # Glitch's own native memory (brain/memory.py) -- the same semantic
     # memory service Hermes itself uses, via its official client.
     "hindsight-client>=0.6.1",
+    # The text out of PDFs on her bookshelf (library.py); EPUB and Word are read with the stdlib.
+    "pypdf>=6.20.1",
 ]

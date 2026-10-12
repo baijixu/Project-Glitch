@@ -375,6 +375,18 @@ _FOCUS_PROMPT = (
     "to what you've actually thought and what really happened in your conversations with {name}; when you picture "
     "things you two might do together, say you're picturing them."
 )
+# Her library (brain/library.py), read in Heartbeat's quiet time, under her own soul too.
+MAX_READING_TOKENS = 400
+_PICK_BOOK_PROMPT = (
+    "You have some quiet time to read. On your shelf:\n\n{books}\n\n"
+    "Which one do you want to read next? Reply with only its number."
+)
+_READING_PROMPT = (
+    "You're reading {title} on your own time, {percent}% of the way in.{previous} The next pages:\n\n{pages}\n\n"
+    "Write a short note to yourself about what you just read, in the first person: what happens or what it says, "
+    "and what you make of it -- what grabbed you, what you'd argue with, what it made you think of. Stick to what's "
+    "actually in these pages. Three to five sentences, no heading."
+)
 
 # Memory upkeep (brain/upkeep.py): is a memory out of date? Only a verdict -- asked to reword
 # one too, it got the dates wrong ("started on October 15", still weeks away) and lost her
@@ -1101,6 +1113,19 @@ class LocalLLM(ChatBackend):
         prompt = _FOCUS_PROMPT.format(topic=topic, thoughts=thoughts, name=name)
         messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": prompt}]
         return self._complete(messages, MAX_FOCUS_TOKENS, no_thinking=True)
+
+    def pick_book(self, titles: list[str]) -> str:
+        """Library: which of `titles` she reads next -- the model's raw answer, a number."""
+        books = "\n".join(f"{i}. {title}" for i, title in enumerate(titles, 1))
+        messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": _PICK_BOOK_PROMPT.format(books=books)}]
+        return self._complete(messages, 10, no_thinking=True)
+
+    def read_pages(self, title: str, percent: int, pages: str, previous_note: str) -> str:
+        """Library: her note on the next pages of a book (_READING_PROMPT)."""
+        previous = f" Your note from last time: {previous_note}" if previous_note else ""
+        prompt = _READING_PROMPT.format(title=title, percent=percent, previous=previous, pages=pages)
+        messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": prompt}]
+        return self._complete(messages, MAX_READING_TOKENS, no_thinking=True)
 
     def write_diary(self, log: str, name: str) -> str:
         """Her nightly diary entry (brain/journal.py) about one day's chat log."""

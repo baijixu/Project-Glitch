@@ -14,6 +14,7 @@ import heartbeat
 import journal
 import hub
 import learning
+import library
 import llm_engines
 import memory
 import profiles
@@ -47,6 +48,7 @@ async def handle_ready(websocket: websockets.ServerConnection, data: dict, brain
         heartbeat.timer_message(brain),
         protocol.friends_state(friends.ACTIVE.read()),
         friends.friends_message(),
+        library.library_message(),
         protocol.visit_state(**friends.STATUS),
         reach_out.curiosity_timer_message(),
         engines.sampling_state_message(),

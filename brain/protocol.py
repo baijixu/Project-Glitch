@@ -63,6 +63,8 @@ START_VISIT = "start_visit"
 GET_FRIEND = "get_friend"
 SAVE_FRIEND = "save_friend"
 DELETE_FRIEND = "delete_friend"
+ADD_BOOK = "add_book"
+DELETE_BOOK = "delete_book"
 TEST_REACH_OUT = "test_reach_out"
 SET_SAMPLING_PROFILE = "set_sampling_profile"
 SAVE_SAMPLING_PROFILE = "save_sampling_profile"
@@ -249,6 +251,11 @@ def heartbeat_timer(state: str, due_at: float | None) -> dict:
     """Settings -> Heartbeat's countdown: `state` "counting" (`due_at`: epoch seconds her next thought
     is due), "off", "roleplay" or "harness"."""
     return {"type": "heartbeat_timer", "state": state, "due_at": due_at}
+
+
+def library(books: list[dict], error: str = "") -> dict:
+    """Her bookshelf: [{name, title, percent, reading}]. With `error`, only to the device whose change was refused."""
+    return {"type": "library", "books": books, "error": error}
 
 
 def friends_state(active: bool) -> dict:

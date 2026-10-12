@@ -55,6 +55,7 @@ import health
 import heartbeat
 import hub
 import journal
+import library  # noqa: F401 -- registers its message handlers
 import learning
 import llm_engines
 import reach_out
