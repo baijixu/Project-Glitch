@@ -38,6 +38,16 @@ TRANSCRIPT_LINES = 8
 MAX_SENTENCES = 3
 REPEAT_WORDS = 8  # a message with this many words in a row from earlier in the chat is a repeat
 MAX_MESSAGE_CHARS = 600
+# Each friend keeps a note on every visit (in their own voice, from their own model) and sees
+# their newest ones next time: without them every visit started from nothing, so nobody's
+# friendship with her could deepen.
+FRIEND_MEMORIES = 5
+MAX_FRIEND_MEMORY_CHARS = 400
+_REMEMBER_PROMPT = (
+    "You just spent a while in a group chat with {others}. The chat:\n\n{transcript}\n\n"
+    "In one or two sentences, in the first person, what will you remember about it -- about them, or about "
+    "yourself? Only what actually happened in the chat -- add nothing from outside it."
+)
 # Her journal's "What I want to ask Josh" section (llm._VISIT_JOURNAL_PROMPT), up to the next heading.
 _ASK_SECTION = re.compile(r"What I want to ask[^\n]*(.*?)(?=\n\s*#|\Z)", re.DOTALL | re.IGNORECASE)
 
@@ -123,6 +133,14 @@ def read_friend(name: str) -> dict:
     return {key: str(friend.get(key) or "") for key in ("soul", "endpoint", "model")}
 
 
+def friend_memories(name: str) -> list[str]:
+    return [str(m) for m in STORE.read(name).get("memories") or []]
+
+
+def _with_memories(soul: str, memories: list[str]) -> str:
+    return soul + "\n\nWhat you remember from your past visits:\n" + "\n".join(f"- {m}" for m in memories) if memories else soul
+
+
 def _speaker(friend: dict, brain: Brain):
     """The LLM a friend speaks through: their server and model, or hers."""
     return LocalLLM(friend["endpoint"], friend["model"] or None) if friend["endpoint"] else brain.llm
@@ -180,7 +198,7 @@ async def visit(brain: Brain) -> None:
     """One visit: the friends and Glitch take turns until MAX_MESSAGES, then her journal."""
     friends = {name: read_friend(name) for name in names()}
     speakers = {name: _speaker(friend, brain) for name, friend in friends.items()}
-    souls = {name: friend["soul"] for name, friend in friends.items()}
+    souls = {name: _with_memories(friend["soul"], friend_memories(name)) for name, friend in friends.items()}
     speakers["Glitch"], souls["Glitch"] = brain.llm, None  # her own soul
     order = [*friends, "Glitch"]
     starter = await asyncio.to_thread(_starter)
@@ -225,6 +243,8 @@ async def visit(brain: Brain) -> None:
                 if (question := visit_question(entry)) and curiosity.read_active():
                     curiosity.add_question(question)  # waits to be asked, like her Heartbeat ones
                 conversation.log_visit(f"*{datetime.now():%H:%M:%S} -- Her journal*\n\n**{datetime.now():%H:%M:%S}** Glitch (journal): {entry}\n\n")
+        if len(lines) >= 4:
+            await _remember(friends, speakers, souls, lines, started, brain)
         print(f"[friends] a visit: {len(lines)} messages")
         await _set(running=False, note=f"Done: {len(lines)} messages. Read it in Chat Logs -> Visits.")
     except Exception as exc:
@@ -239,6 +259,22 @@ def visit_question(entry: str) -> str:
     section = _ASK_SECTION.search(entry)
     question = re.search(r"[^\n.!?]*\?", section[1]) if section else None
     return question[0].strip(" -*#\"") if question else ""
+
+
+async def _remember(friends: dict, speakers: dict, souls: dict, lines: list[str], started: datetime, brain: Brain) -> None:
+    """Each friend's note on the visit, kept with them (the newest FRIEND_MEMORIES)."""
+    for name in friends:
+        others = ", ".join(n for n in [*friends, "Glitch"] if n != name)
+        prompt = _REMEMBER_PROMPT.format(others=others, transcript="\n".join(lines))
+        try:
+            async with brain.reply_lock:
+                note = _extract_mood(await asyncio.to_thread(speakers[name].group_message, souls[name], prompt))[1].strip()
+        except Exception as exc:
+            print(f"[friends] {name} couldn't note the visit: {exc!r}")
+            continue
+        if note:
+            note = f"{started:%d %B}: {' '.join(note.split())[:MAX_FRIEND_MEMORY_CHARS]}"
+            STORE.update(name, memories=[*friend_memories(name), note][-FRIEND_MEMORIES:])
 
 
 def _visit_journal_path() -> Path:
@@ -293,7 +329,8 @@ async def _friend(websocket: websockets.ServerConnection, data: dict, brain: Bra
                 return
             if STORE.path(name).stem not in names() and len(names()) >= MAX_FRIENDS:
                 return await hub.send(websocket, friends_message(f"She has room for {MAX_FRIENDS} friends -- delete one first."))
-            STORE.write(name, {"soul": soul, "endpoint": endpoint, "model": model})
+            kept = friend_memories(name) if STORE.path(name).exists() else []  # an edit keeps what they remember
+            STORE.write(name, {"soul": soul, "endpoint": endpoint, "model": model, "memories": kept})
         else:
             STORE.delete(name)
     except (ValueError, OSError) as exc:
