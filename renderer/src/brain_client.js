@@ -26,6 +26,7 @@ import { ChatLogsUI } from "./chat_logs_ui.js";
 import { CuriosityTimerUI } from "./curiosity_timer_ui.js";
 import { DebugUI, describeSettingChange, deviceSummary } from "./debug_ui.js";
 import { FriendsUI } from "./friends_ui.js";
+import { LibraryUI } from "./library_ui.js";
 import { HarnessUI, LlmEnginesUI, SpeechEnginesUI } from "./engines_ui.js";
 import { HistoryUI } from "./history_ui.js";
 import { LessonsUI } from "./lessons_ui.js";
@@ -115,6 +116,7 @@ export class BrainClient {
     this.backgrounds = new BackgroundsUI(this);
     this.speechEngines = new SpeechEnginesUI(this);
     this.friends = new FriendsUI(this);
+    this.library = new LibraryUI(this);
     this.llmEngines = new LlmEnginesUI(this, { onEnginesChanged: (names) => this.characters.setEngineNames(names) });
     this.lessons = new LessonsUI({ send });
     this.training = new TrainingUI({ send, onNewProposals: (fact) => this._showToast(fact, "🧠 Memory proposed (review in Settings): ") });
@@ -174,6 +176,7 @@ export class BrainClient {
       curiosity_timer: (data) => this.curiosityTimer.handleTimer(data),
       ...this.characters.handlers,
       ...this.friends.handlers,
+      ...this.library.handlers,
       ...this.settings.handlers,
       ...this.avatars.handlers,
       ...this.backgrounds.handlers,
