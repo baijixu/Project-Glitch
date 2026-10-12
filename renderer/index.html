@@ -246,11 +246,24 @@
             <p class="settings-hint">
               Lets her mind wander while you're away: after 20 minutes of quiet, every 20 minutes, bits of her soul,
               her diary, what you've said lately and her memories drift past, and whatever keeps pulling at her builds
-              up until it lands and she writes about it. Read along in Chat Logs -> Thoughts. Paused in role-play.
+              up until it lands and she writes about it. With a book in her library, half the time she reads instead.
+              Read along in Chat Logs -> Thoughts. Paused in role-play.
             </p>
             <p id="heartbeat-timer" class="settings-hint curiosity-timer"></p>
             <button id="think-now-button" class="settings-action-button">Think now</button>
             <p id="think-now-note" class="settings-hint" hidden></p>
+          </section>
+          <section id="library-section" class="settings-section">
+            <h3>Library</h3>
+            <p class="settings-hint">
+              Books for her to read on her own time: a TXT, Markdown, PDF, EPUB or Word file. With Heartbeat on, she
+              picks one off the shelf herself and reads a few pages at a time while you're away, writing a note on
+              each sitting (Chat Logs -> Thoughts). What she's reading comes up when you next talk.
+            </p>
+            <div id="library-list"></div>
+            <p id="library-note" class="settings-hint" hidden></p>
+            <button id="add-book-button" class="settings-action-button">Add a book</button>
+            <input id="library-file-input" type="file" accept=".txt,.md,.pdf,.epub,.docx" multiple hidden />
           </section>
           <section id="friends-section" class="settings-section">
             <label class="settings-toggle-row">
