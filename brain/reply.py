@@ -15,6 +15,7 @@ import websockets
 import conversation
 import curiosity
 import friends
+import heartbeat
 import hub
 import learning
 import lessons
@@ -219,8 +220,8 @@ async def reply_to(
 
     brain.llm.set_user_info(persona.effective_user_info())
     brain.llm.set_left_off("" if profiles.read_roleplay_active() else conversation.read_left_off())
-    # Her diary, her last visit's journal, and the book she's reading.
-    journals = (conversation.read_latest_journal(), friends.read_visit_journal(), library.reading_line())
+    # Her diary, her last visit's journal, the book she's reading and what she's been into.
+    journals = (conversation.read_latest_journal(), friends.read_visit_journal(), library.reading_line(), heartbeat.into_lately())
     brain.llm.set_journal("" if profiles.read_roleplay_active() else "\n\n".join(j for j in journals if j))
     # Her sampling profile, read every turn (kept in role-play: it's how she writes, not who he is).
     brain.llm.set_sampling(sampling.active_values())

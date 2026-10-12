@@ -357,7 +357,7 @@ MAX_DIARY_TOKENS = 1500
 # topics already on her mind aren't listed: that made her pick one of them 8 times of 8.
 MAX_GROUP_TOKENS = 400  # one message in a friends' visit (brain/friends.py)
 MAX_DAYDREAM_TOKENS = 400
-MAX_FOCUS_TOKENS = 1000
+MAX_FOCUS_TOKENS = 1600  # with what she looked up, a 27B page ran past 1000 and stopped mid-question
 _DAYDREAM_PROMPT = (
     "Nobody is talking to you right now. You're alone with your thoughts, the way a mind wanders lying in bed, "
     "and these drifted past:\n\n{fragments}\n\n"
@@ -374,6 +374,10 @@ _FOCUS_PROMPT = (
     "believe about it, and what you want to find out -- end with a short list of questions. In your own voice. Stick "
     "to what you've actually thought and what really happened in your conversations with {name}; when you picture "
     "things you two might do together, say you're picturing them."
+)
+_FOCUS_FOUND = (
+    "\n\nYou also looked it up. What the search turned up:\n\n{found}\n\n"
+    "Work in what's actually interesting, say where you read it, and don't take it as gospel."
 )
 # Her library (brain/library.py), read in Heartbeat's quiet time, under her own soul too.
 MAX_READING_TOKENS = 400
@@ -1134,9 +1138,12 @@ class LocalLLM(ChatBackend):
         messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": prompt}]
         return self._complete(messages, MAX_DAYDREAM_TOKENS, no_thinking=True)
 
-    def focus(self, topic: str, thoughts: str, name: str) -> str:
-        """Heartbeat: her notebook page on a topic that has landed (_FOCUS_PROMPT)."""
+    def focus(self, topic: str, thoughts: str, name: str, found: str = "") -> str:
+        """Heartbeat: her notebook page on a topic that has landed (_FOCUS_PROMPT), with what a
+        web search turned up about it, if she looked."""
         prompt = _FOCUS_PROMPT.format(topic=topic, thoughts=thoughts, name=name)
+        if found:
+            prompt += _FOCUS_FOUND.format(found=found)
         messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": prompt}]
         return self._complete(messages, MAX_FOCUS_TOKENS, no_thinking=True)
 

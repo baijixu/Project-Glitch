@@ -11,8 +11,9 @@ page about it (self/interests/<topic>.md). Every thought, and each page, also go
 the day's thoughts log (self/thoughts/, Settings -> Chat Logs -> Thoughts).
 
 With a book in her library (library.py) unfinished, half the ticks she reads instead (read_pages):
-the next pages, and a note on them that reaches her as a conversation opens. Her wandering itself
-doesn't reach her prompt, and there's no web yet -- it's watched first.
+the next pages, and a note on them that reaches her as a conversation opens. A landing topic is
+looked up on the web first (with web search on), and the topics that landed this week reach
+her as a conversation opens too (into_lately); the rest of her wandering doesn't.
 """
 
 import asyncio
@@ -34,6 +35,7 @@ import persona
 import profiles
 import protocol
 import souls
+import web_search
 from hub import Brain
 from names import sanitize_name
 from store import Toggle
@@ -52,6 +54,7 @@ KEEP_THOUGHTS = 5  # per topic, the newest
 RUMINATE_CHANCE = 1 / 3
 CHECK_SEC = 60  # how often the loop looks at the clock
 READ_CHANCE = 1 / 2  # with a book on her shelf unfinished, how often a tick is reading instead of wandering
+LATELY_DAYS = 7  # how long a landed topic counts as what she's been into
 READ_PULL = 5  # a sitting with a book weighs on her like a middling thought: four in two days and it lands
 _last_beat = time.time()  # her last thought (or Brain's start: the first comes TICK_SEC in)
 _last_timer: dict | None = None  # the heartbeat_timer last sent to everyone
@@ -264,11 +267,28 @@ async def beat(brain: Brain) -> str:
     return f"{found['thought']} ({topic}, pull {found['pull']})"
 
 
+def look_up(topic: str) -> str:
+    """What a web search says about a topic that's landed, as lines for her page -- "" with web
+    search off, and for a topic naming him: a query leaves the house, what's between them doesn't."""
+    name = (persona.user_name() or "").lower()
+    if not web_search.read_active() or (name and name in topic.lower()):
+        return ""
+    return "\n".join(f"- {r['title']} ({r['domain']}): {r['snippet']}" for r in web_search.search(topic))
+
+
+def into_lately(now: float | None = None) -> str:
+    """The topics that landed for her in the last LATELY_DAYS, for her prompt as a conversation opens."""
+    now = time.time() if now is None else now
+    landed = [t for t, item in read_interests().items() if item.get("landed") and now - item["landed"] < LATELY_DAYS * 86400]
+    return f"What you've been into on your own lately (you wrote pages on them): {', '.join(landed)}." if landed else ""
+
+
 async def _land(brain: Brain, interests: dict, topic: str, now: datetime) -> bool:
     """A topic that's landed: her notebook page on it. False if she wrote nothing."""
     thoughts = "\n".join(f"- {t}" for t in interests[topic]["thoughts"] + interests[topic]["questions"])
+    found = await asyncio.to_thread(look_up, topic)
     async with brain.reply_lock:
-        page = (await asyncio.to_thread(brain.llm.focus, topic, thoughts, persona.user_name() or "him")).strip()
+        page = (await asyncio.to_thread(brain.llm.focus, topic, thoughts, persona.user_name() or "him", found)).strip()
     if not page:
         return False
     folder = conversation.JOURNAL_LOG_DIR / "interests"
