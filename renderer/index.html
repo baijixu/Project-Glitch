@@ -377,8 +377,8 @@
               <button id="new-llm-engine-button" class="icon-button" title="New LLM engine">➕</button>
               <button id="delete-llm-engine-button" class="icon-button danger" title="Delete LLM engine">🗑️</button>
             </div>
-            <div id="sampling-panel" class="sampling-panel">
-              <h4 class="lessons-subhead">Sampling</h4>
+            <details id="sampling-panel" class="sampling-panel">
+              <summary class="lessons-subhead">Sampling</summary>
               <p class="settings-hint">
                 How she picks her words, sent with each of her replies (from the next one on). A blank box uses
                 the LLM server's own setting. Tune the boxes, then save them as a profile. Hover a setting for what it does.
@@ -417,7 +417,7 @@
                 <button id="sampling-delete-button" class="icon-button danger" title="Delete profile">🗑️</button>
               </div>
               <p id="sampling-error" class="settings-hint sampling-error" hidden></p>
-            </div>
+            </details>
             <div id="context-meter" class="context-meter">
               <div class="context-meter-label">
                 <span>Conversation</span>
