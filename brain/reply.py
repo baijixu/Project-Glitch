@@ -26,11 +26,10 @@ import profiles
 import protocol
 import reach_out
 import sampling
-import voice_settings
 import web_search
 from hub import Brain
 from llm import Reply, Sentences
-from voice import FasterWhisperSTT, NoneTTS
+from voice import VOICE_ACTIVE, FasterWhisperSTT, NoneTTS
 
 # Browsers' MediaRecorder doesn't produce WAV -- map its common mime types
 # to a file extension so faster-whisper's decoder gets a useful hint.
@@ -49,8 +48,8 @@ _FIRST_CLAUSE = re.compile(r"(.{15,}?,)\s+(.{15,})", re.DOTALL)
 
 @hub.handles(protocol.SET_VOICE_ACTIVE)
 async def _set_voice_active(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-    voice_settings.set_voice_active(bool(data.get("active")))
-    await hub.broadcast(protocol.voice_state(voice_settings.read_voice_active()))
+    VOICE_ACTIVE.write(bool(data.get("active")))
+    await hub.broadcast(protocol.voice_state(VOICE_ACTIVE.read()))
 
 
 @hub.handles(protocol.SET_WEB_SEARCH_ACTIVE)
@@ -374,7 +373,7 @@ async def _voice(websocket: websockets.ServerConnection, brain: Brain, said: asy
     over (brain.speech_stopped) the rest goes unsaid."""
     while (item := await said.get()) is not None:
         sentence, mood = item
-        if brain.speech_stopped or not voice_settings.read_voice_active() or isinstance(brain.tts, NoneTTS):
+        if brain.speech_stopped or not VOICE_ACTIVE.read() or isinstance(brain.tts, NoneTTS):
             continue
         if not any(c.isalnum() for c in sentence):  # an emoji or "..." on its own -- nothing to say
             continue

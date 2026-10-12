@@ -200,7 +200,7 @@ def roleplay_engine(name: str) -> dict:
 
 
 def voice_state(active: bool) -> dict:
-    """Whether her voice (TTS) is on (voice_settings.py)."""
+    """Whether her voice (TTS) is on (voice.VOICE_ACTIVE)."""
     return {"type": "voice_state", "active": active}
 
 

@@ -23,10 +23,10 @@ import protocol
 import sampling
 import training
 import tts_engines
-import voice_settings
 import web_search
 from hub import Brain
 from llm import HarnessLLM, LocalLLM, OllamaLLM
+from voice import VOICE_ACTIVE
 
 # Where a restarted Brain's own output goes (it has no console to print to once it's
 # been relaunched detached). Truncated on each restart, so it only ever holds the
@@ -146,7 +146,7 @@ async def _debug_snapshot(brain: Brain, current: websockets.ServerConnection | N
         lines.append(f"Sampling profile: {sampling.read_active_name()!r} {sampling.active_values() or '(server settings)'}")
     else:
         lines.append("LLM: none configured")
-    lines.append(f"Speech engine: {tts_engines.read_active_engine_name()!r}, voice {on(voice_settings.read_voice_active())}")
+    lines.append(f"Speech engine: {tts_engines.read_active_engine_name()!r}, voice {on(VOICE_ACTIVE.read())}")
     provider = memory.read_provider()
     lines.append(
         f"Memory: {on(memory.read_memory_active())} ({memory.active_description()}), training {on(training.read_active())}, "

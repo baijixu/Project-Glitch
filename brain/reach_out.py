@@ -17,9 +17,8 @@ import persona
 import profiles
 import protocol
 import sampling
-import voice_settings
 from hub import Brain
-from voice import NoneTTS
+from voice import VOICE_ACTIVE, NoneTTS
 
 async def maybe_propose_question(
     websocket: websockets.ServerConnection, user_text: str, reply_text: str, brain: Brain
@@ -160,7 +159,7 @@ async def _reach_out(brain: Brain, *, test: bool = False) -> None:
     await hub.broadcast(protocol.set_expression(mood, 1.0))
     await hub.broadcast(protocol.speak_text(text, reach_out=True))
     conversation.log_reach_out(text)
-    if not voice_settings.read_voice_active() or isinstance(brain.tts, NoneTTS):
+    if not VOICE_ACTIVE.read() or isinstance(brain.tts, NoneTTS):
         return
     try:
         wav_bytes, frames = await asyncio.to_thread(brain.tts.synthesize, text, mood)

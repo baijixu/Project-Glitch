@@ -4,6 +4,7 @@ role-play toggle.
 """
 
 import base64
+from pathlib import Path
 
 import websockets
 
@@ -13,12 +14,14 @@ import conversation
 import engines
 import hub
 import llm_engines
-import notes
 import persona
 import profiles
 import protocol
 import souls
 from hub import Brain
+
+# His own scratchpad (Settings -> Notes) -- never read by her or put in any prompt.
+NOTES_PATH = Path(__file__).parent / "notes.md"
 
 
 def profiles_message() -> dict:
@@ -143,14 +146,14 @@ async def _get_soul(websocket: websockets.ServerConnection, data: dict, brain: B
 
 @hub.handles(protocol.GET_NOTES)
 async def _get_notes(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-    await hub.send(websocket, protocol.notes_content(notes.read_notes()))
+    await hub.send(websocket, protocol.notes_content(NOTES_PATH.read_text(encoding="utf-8") if NOTES_PATH.exists() else ""))
 
 
 @hub.handles(protocol.SAVE_NOTES)
 async def _save_notes(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     content = data.get("content", "")
     if not hub.fields_too_long(content):
-        notes.write_notes(content)
+        NOTES_PATH.write_text(content, encoding="utf-8")
 
 
 @hub.handles(protocol.GET_SOUL_AND_USER)

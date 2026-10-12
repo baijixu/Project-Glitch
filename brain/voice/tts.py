@@ -20,11 +20,18 @@ import re
 import time
 import wave
 
+from pathlib import Path
+
 import httpx
 import numpy as np
 from openai import OpenAI
 
 import protocol
+from store import Toggle
+
+# Whether her voice is on. Off, every reply still gets its mood and text (reply.py's reply_to)
+# but nothing is synthesized: no TTS compute spent on audio nobody wants played.
+VOICE_ACTIVE = Toggle(Path(__file__).parent.parent / "voice_active.txt", default=True)
 
 ENVELOPE_WINDOW_MS = 30
 TTS_TIMEOUT_SEC = 120  # ponytail: a guess with room for a long reply on a CPU engine; raise if real replies hit it

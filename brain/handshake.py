@@ -22,9 +22,9 @@ import protocol
 import reach_out
 import reply
 import tts_engines
-import voice_settings
 import web_search
 from hub import Brain
+from voice import VOICE_ACTIVE
 
 
 @hub.handles(protocol.READY)
@@ -41,7 +41,7 @@ async def handle_ready(websocket: websockets.ServerConnection, data: dict, brain
         *characters.background_messages(),
         protocol.roleplay_state(profiles.read_roleplay_active()),
         protocol.roleplay_engine(llm_engines.read_roleplay_engine()),
-        protocol.voice_state(voice_settings.read_voice_active()),
+        protocol.voice_state(VOICE_ACTIVE.read()),
         protocol.web_search_state(web_search.read_active()),
         protocol.curiosity_state(curiosity.read_active()),
         protocol.heartbeat_state(heartbeat.ACTIVE.read()),
