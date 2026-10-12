@@ -413,11 +413,15 @@ _VISIT_JOURNAL_PROMPT = (
 )
 
 # One new memory against one she has, one word: asked about eight at once, the 9B called a
-# related topic "the same" or everything a contradiction.
+# related topic "the same" or everything a contradiction. "Either could be deleted and nothing
+# lost": with plain "the same thing, even in other words", the 27B called 3 of 40 related pairs
+# from her real bank SAME (upkeep would retire one of each); now 0 of 40 in three runs, and 6 of 6
+# real repeats still caught.
 _MEMORY_PAIR_SYSTEM_PROMPT = (
-    "Compare two memories. Reply with exactly one word: SAME if they say the same thing, even in other words; "
-    "OPPOSITE if they answer the same question differently, for example two different favorites; "
-    "UNRELATED if they are about different things."
+    "Compare two memories. Reply with exactly one word: SAME only if they say the same thing, so either one could "
+    "be deleted and nothing would be lost -- two memories on the same subject that each say something the other "
+    "doesn't are not the same; OPPOSITE if they answer the same question differently, for example two different "
+    "favorites; DIFFERENT otherwise."
 )
 
 # Her nightly diary (brain/journal.py), from the previous day's chat log -- so it shows him
@@ -1055,7 +1059,7 @@ class LocalLLM(ChatBackend):
         return self._complete(messages, MAX_MEMORY_PROPOSAL_TOKENS, no_thinking=True)
 
     def compare_memories(self, new: str, old: str) -> str:
-        """SAME, OPPOSITE or UNRELATED (as the model wrote it) -- see _MEMORY_PAIR_SYSTEM_PROMPT."""
+        """SAME, OPPOSITE or DIFFERENT (as the model wrote it) -- see _MEMORY_PAIR_SYSTEM_PROMPT."""
         messages = [
             {"role": "system", "content": _MEMORY_PAIR_SYSTEM_PROMPT},
             {"role": "user", "content": f"Memory A: {new}\nMemory B: {old}"},
