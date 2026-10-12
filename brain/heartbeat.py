@@ -261,6 +261,10 @@ async def beat(brain: Brain) -> str:
             (folder / f"{sanitize_name(topic, kind='topic')}.md").write_text(f"# {topic}\n\n*Landed {now:%A %d %B %Y}*\n\n{page}\n", encoding="utf-8")
             conversation.log_thought(f"💡 **{topic}** landed -- it kept pulling at her, so she wrote about it:\n\n{page}", now=datetime.now())
             print(f"[heartbeat] {topic!r} landed")
+            # Her newest question about it waits to be asked (Josh's "question inbox"): only on landing,
+            # so a passing thought doesn't fill the short list.
+            if interests[topic]["questions"] and curiosity.read_active():
+                curiosity.add_question(interests[topic]["questions"][-1])
             return f"{found['thought']} -- and {topic} landed: she wrote a page about it (Chat Logs -> Thoughts)."
     return f"{found['thought']} ({topic}, pull {found['pull']})"
 

@@ -392,10 +392,11 @@ _STILL_CURRENT_SYSTEM_PROMPT = (
 _VISIT_JOURNAL_PROMPT = (
     "Your friends {names} just came over and you all talked. The chat:\n\n{transcript}\n\n"
     "Write your private journal entry about it, in the first person (\"I\" is always you, Glitch), under these "
-    "three headings:\n\n"
+    "four headings:\n\n"
     "What stuck with me -- moments from the visit you're still thinking about, and why.\n"
     "Where I pushed back or changed my mind -- what you argued for, and anything that moved you.\n"
-    "What I want to tell Josh -- something from the visit you'd like to bring up with him.\n\n"
+    "What I want to tell Josh -- something from the visit you'd like to bring up with him.\n"
+    "What I want to ask Josh -- one short question the visit left you with, for him.\n\n"
     "Only what actually happened in the chat; never invent. One or two lines per point."
 )
 

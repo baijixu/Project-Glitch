@@ -18,6 +18,7 @@ import httpx
 import websockets
 
 import conversation
+import curiosity
 import heartbeat
 import hub
 import journal
@@ -37,6 +38,8 @@ TRANSCRIPT_LINES = 8
 MAX_SENTENCES = 3
 REPEAT_WORDS = 8  # a message with this many words in a row from earlier in the chat is a repeat
 MAX_MESSAGE_CHARS = 600
+# Her journal's "What I want to ask Josh" section (llm._VISIT_JOURNAL_PROMPT), up to the next heading.
+_ASK_SECTION = re.compile(r"What I want to ask[^\n]*(.*?)(?=\n\s*#|\Z)", re.DOTALL | re.IGNORECASE)
 
 # Something concrete to start on: two AIs left to chat freely drift into agreeing with each other.
 STARTERS = [
@@ -219,6 +222,8 @@ async def visit(brain: Brain) -> None:
             if entry:
                 _visit_journal_path().parent.mkdir(parents=True, exist_ok=True)
                 _visit_journal_path().write_text(f"(After {', '.join(friends)} visited, {started:%A} {started.day} {started:%B}.)\n\n{entry}", encoding="utf-8")
+                if (question := visit_question(entry)) and curiosity.read_active():
+                    curiosity.add_question(question)  # waits to be asked, like her Heartbeat ones
                 conversation.log_visit(f"*{datetime.now():%H:%M:%S} -- Her journal*\n\n**{datetime.now():%H:%M:%S}** Glitch (journal): {entry}\n\n")
         print(f"[friends] a visit: {len(lines)} messages")
         await _set(running=False, note=f"Done: {len(lines)} messages. Read it in Chat Logs -> Visits.")
@@ -227,6 +232,13 @@ async def visit(brain: Brain) -> None:
         await _set(running=False, note=f"The visit broke off: {exc}")
     finally:
         await journal.set_status("")
+
+
+def visit_question(entry: str) -> str:
+    """The first question under her journal's "What I want to ask Josh", or ""."""
+    section = _ASK_SECTION.search(entry)
+    question = re.search(r"[^\n.!?]*\?", section[1]) if section else None
+    return question[0].strip(" -*#\"") if question else ""
 
 
 def _visit_journal_path() -> Path:
