@@ -64,6 +64,8 @@ GET_FRIEND = "get_friend"
 SAVE_FRIEND = "save_friend"
 DELETE_FRIEND = "delete_friend"
 ADD_BOOK = "add_book"
+ANSWER_QUESTION = "answer_question"
+SKIP_QUESTION = "skip_question"
 DELETE_BOOK = "delete_book"
 TEST_REACH_OUT = "test_reach_out"
 SET_SAMPLING_PROFILE = "set_sampling_profile"
@@ -251,6 +253,11 @@ def heartbeat_timer(state: str, due_at: float | None) -> dict:
     """Settings -> Heartbeat's countdown: `state` "counting" (`due_at`: epoch seconds her next thought
     is due), "off", "roleplay" or "harness"."""
     return {"type": "heartbeat_timer", "state": state, "due_at": due_at}
+
+
+def inbox(questions: list[dict]) -> dict:
+    """Her questions waiting for him (curiosity.py's open list): [{id, text}], for the 📥 inbox."""
+    return {"type": "inbox", "questions": questions}
 
 
 def library(books: list[dict], error: str = "") -> dict:

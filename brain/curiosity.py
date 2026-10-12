@@ -171,6 +171,14 @@ def open_questions() -> list[dict]:
     return [q for q in _read() if q["status"] == OPEN]
 
 
+def close_question(question_id: str) -> str:
+    """Closes one open question (his inbox's Answer or Skip): its text, or "" if it isn't open."""
+    question = next((q for q in open_questions() if q["id"] == question_id), None)
+    if question:
+        _mark(question_id, status=CLOSED)
+    return question["text"] if question else ""
+
+
 def all_question_texts() -> list[str]:
     """Everything ever kept, open or closed -- what a new proposal must not repeat."""
     return [q["text"] for q in _read()]

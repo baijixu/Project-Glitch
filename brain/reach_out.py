@@ -1,11 +1,13 @@
 """Curiosity's speaking-first half: after a quiet spell (15-60 minutes, random) she reaches out
 once (_reach_out_loop), the Settings countdown to it, its Test button, and
-proposing questions she might ask after a reply.
+proposing questions she might ask after a reply -- and his 📥 inbox of her open questions, to
+answer in his own time: an answer goes through memory like one given in chat.
 """
 
 import asyncio
 import base64
 import time
+from datetime import datetime
 
 import websockets
 
@@ -13,10 +15,13 @@ import conversation
 import curiosity
 import harness
 import hub
+import learning
+import memory
 import persona
 import profiles
 import protocol
 import sampling
+import training
 from hub import Brain
 from voice import VOICE_ACTIVE, NoneTTS
 
@@ -60,6 +65,7 @@ async def reach_out_loop(brain: Brain) -> None:
         await asyncio.sleep(REACH_OUT_CHECK_SEC)
         try:
             await broadcast_curiosity_timer(only_if_changed=True)  # catches role-play / harness switches
+            await broadcast_inbox(only_if_changed=True)  # Heartbeat, a visit or her diary may have added one
             if (
                 brain.llm.owns_conversation
                 and curiosity.read_active()
@@ -96,6 +102,40 @@ async def broadcast_curiosity_timer(only_if_changed: bool = False) -> None:
         return
     _LAST_CURIOSITY_TIMER = message
     await hub.broadcast(message)
+
+
+_LAST_INBOX: dict | None = None
+
+
+def inbox_message() -> dict:
+    return protocol.inbox([{"id": q["id"], "text": q["text"]} for q in curiosity.open_questions()])
+
+
+async def broadcast_inbox(only_if_changed: bool = False) -> None:
+    global _LAST_INBOX
+    message = inbox_message()
+    if only_if_changed and message == _LAST_INBOX:
+        return
+    _LAST_INBOX = message
+    await hub.broadcast(message)
+
+
+@hub.handles(protocol.ANSWER_QUESTION, protocol.SKIP_QUESTION)
+async def _inbox(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    """Answer or Skip in his inbox. An answer is remembered like one given in chat: with memory
+    training on, the question and answer go through her proposal check right away (it's
+    in the review list, not waiting for the night); otherwise it's retained like a chat turn."""
+    question = curiosity.close_question(str(data.get("id") or ""))
+    answer = str(data.get("answer") or "").strip()
+    await broadcast_inbox()
+    if not question or data["type"] == protocol.SKIP_QUESTION or not answer or not brain.llm.owns_conversation:
+        return
+    if memory.server_backed() and training.read_active():
+        name, now = persona.user_name() or "User", datetime.now()
+        log = f"**{now:%H:%M:%S}** Glitch: {question}\n\n**{now:%H:%M:%S}** {name}: {answer}\n"
+        hub.spawn(learning.propose_from_log(log, now.date(), name, brain, source=f"Inbox: {question}"))
+    else:
+        hub.spawn(learning.maybe_retain_memory(websocket, answer, "", brain, asked=question))
 
 
 @hub.handles(protocol.SET_CURIOSITY_ACTIVE)

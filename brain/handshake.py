@@ -51,6 +51,7 @@ async def handle_ready(websocket: websockets.ServerConnection, data: dict, brain
         library.library_message(),
         protocol.visit_state(**friends.STATUS),
         reach_out.curiosity_timer_message(),
+        reach_out.inbox_message(),
         engines.sampling_state_message(),
         *([reply.LAST_CONTEXT_USAGE] if reply.LAST_CONTEXT_USAGE else []),
         *([protocol.brain_status(journal.STATUS)] if journal.STATUS else []),

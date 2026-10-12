@@ -385,6 +385,9 @@ Three parts, all toggled by *Curiosity* in Settings and paused during role-play 
   in at most every few messages. A question is never kept or asked twice, even reworded. There's no list of forbidden topics.
   The questions she comes up with on her own land here too: the newest one about a [Heartbeat](#heartbeat) topic that lands,
   and the one her journal saves after a [friends' visit](#friends).
+- **Your inbox.** 📥, under the chat flower, shows every question she's waiting to ask you, with a count. Answer or
+  skip each in your own time; an answer is remembered like one given in chat (with memory training on, it comes back
+  right away as a memory to review).
 - **Speaking first.** After 15-60 minutes (random) with no message from you, she reaches out once (with a question she's been
   saving, or just checking in), on every connected device. If you don't reply she stays quiet; your next message, or Clear
   Chat, starts a new wait. *Settings → Curiosity* shows a live countdown to when she may reach out (or why she's waiting), and a **Test reach-out** button makes her do it right away.

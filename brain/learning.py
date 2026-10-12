@@ -278,7 +278,7 @@ async def _set_training_active(websocket: websockets.ServerConnection, data: dic
     await hub.broadcast(training_state_message())
 
 
-async def propose_from_log(log: str, day: date, name: str, brain: Brain) -> None:
+async def propose_from_log(log: str, day: date, name: str, brain: Brain, source: str = "") -> None:
     """Training mode's proposals, once a night (journal.py): a few memories from the whole
     day's chat log, each checked against what she remembers, queued for the user to
     approve, edit or reject (brain/training.py). Nothing is sent to Hindsight from here.
@@ -308,7 +308,7 @@ async def propose_from_log(log: str, day: date, name: str, brain: Brain) -> None
                 fact = (await asyncio.to_thread(brain.llm.in_her_voice, fact)).strip() or fact
             if await _compare_with_memories(fact, brain):
                 continue
-            if training.add_pending(fact, f"{day:%A %d %B}'s chat"):
+            if training.add_pending(fact, source or f"{day:%A %d %B}'s chat"):
                 added += 1
     except Exception as exc:
         print(f"[training] couldn't propose memories from {day}: {exc!r}")
