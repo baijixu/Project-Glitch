@@ -24,6 +24,7 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import httpx
 import websockets
 
 import conversation
@@ -55,6 +56,8 @@ KEEP_THOUGHTS = 5  # per topic, the newest
 RUMINATE_CHANCE = 1 / 3
 CHECK_SEC = 60  # how often the loop looks at the clock
 READ_CHANCE = 1 / 2  # with a book on her shelf unfinished, how often a tick is reading instead of wandering
+READ_RESULTS = 2  # of a landing topic's search results, how many pages she actually reads
+PAGE_EXCERPT_CHARS = 2500
 LATELY_DAYS = 7  # how long a landed topic counts as what she's been into
 READ_PULL = 5  # a sitting with a book weighs on her like a middling thought: four in two days and it lands
 _last_beat = time.time()  # her last thought (or Brain's start: the first comes TICK_SEC in)
@@ -274,7 +277,30 @@ def look_up(topic: str) -> str:
     name = (persona.user_name() or "").lower()
     if not web_search.read_active() or (name and name in topic.lower()):
         return ""
-    return "\n".join(f"- {r['title']} ({r['domain']}): {r['snippet']}" for r in web_search.search(topic))
+    results = web_search.search(topic)
+    found = "\n".join(f"- {r['title']} ({r['domain']}): {r['snippet']}" for r in results)
+    read = 0
+    for r in results:  # past a site that refuses or has no prose, to the next
+        if read < READ_RESULTS and (text := _page_text(r["url"])):
+            found += f"\n\nFrom {r['title']} ({r['domain']}):\n{text}"
+            read += 1
+    return found
+
+
+def _page_text(url: str) -> str:
+    """The body of a web page: its real paragraphs (menus and footers are short), cut to
+    PAGE_EXCERPT_CHARS. "" for anything that isn't a readable HTML page."""
+    try:
+        page = httpx.get(url, timeout=10, follow_redirects=True, headers={"User-Agent": "Glitch/1.0"})
+        if page.status_code != 200 or "html" not in page.headers.get("content-type", ""):
+            return ""
+        parser = library.HtmlText()
+        parser.feed(page.text)
+    except Exception:
+        return ""
+    paragraphs = [" ".join(p.split()) for p in "".join(parser.parts).split("\n\n")]
+    # Menus and footers are short; a reference list's long entries are full of links.
+    return "\n\n".join(p for p in paragraphs if len(p) >= 200 and "http" not in p and "www." not in p)[:PAGE_EXCERPT_CHARS]
 
 
 def into_lately(now: float | None = None) -> str:

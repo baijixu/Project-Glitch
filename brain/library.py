@@ -54,18 +54,26 @@ def extract(filename: str, data: bytes) -> str:
     return text
 
 
-class _Text(html.parser.HTMLParser):
-    """The words of an XHTML chapter, a blank line after each paragraph or heading."""
+class HtmlText(html.parser.HTMLParser):
+    """The words of an HTML page or XHTML chapter, a blank line after each paragraph or heading;
+    no script or style (heartbeat.py reads web pages with it too)."""
 
     def __init__(self) -> None:
         super().__init__()
         self.parts: list[str] = []
+        self._skipping = 0
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        self._skipping += tag in ("script", "style", "noscript")
 
     def handle_data(self, data: str) -> None:
-        self.parts.append(data)
+        if not self._skipping:
+            self.parts.append(data)
 
     def handle_endtag(self, tag: str) -> None:
-        if tag in ("p", "div", "br", "li", "h1", "h2", "h3", "h4", "h5", "h6"):
+        if tag in ("script", "style", "noscript"):
+            self._skipping = max(0, self._skipping - 1)
+        elif tag in ("p", "div", "br", "li", "h1", "h2", "h3", "h4", "h5", "h6"):
             self.parts.append("\n\n")
 
 
@@ -79,7 +87,7 @@ def _epub_text(data: bytes) -> str:
         manifest = {e.get("id"): e.get("href") for e in opf.iter() if e.tag.endswith("}item")}
         chapters = []
         for ref in (e for e in opf.iter() if e.tag.endswith("}itemref")):
-            parser = _Text()
+            parser = HtmlText()
             parser.feed(epub.read(posixpath.join(posixpath.dirname(opf_path), manifest[ref.get("idref")])).decode("utf-8", errors="replace"))
             chapters.append("".join(parser.parts))
     return "\n\n".join(chapters)
