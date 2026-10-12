@@ -45,7 +45,7 @@ from store import Toggle
 ACTIVE = Toggle(Path(__file__).parent / "heartbeat_active.txt", default=False)
 
 # ponytail: hand-picked numbers -- tune once there are a few weeks of her thoughts to look at.
-TICK_SEC = 20 * 60
+TICK_SEC = 10 * 60  # more turns, more of her own growth: each one feeds topics, questions and her diary
 IDLE_SEC = 20 * 60  # since his last message
 HALF_LIFE_HOURS = 48
 LAND_AT = 20  # a pull is 1-10: about three strong pulls within a day or two

@@ -52,7 +52,7 @@ import asyncio
 
 import debugging
 import engines
-import friends  # noqa: F401 -- registers its message handlers
+import friends
 import harness
 import health
 import heartbeat
@@ -120,6 +120,7 @@ async def main() -> None:
     hub.spawn(reach_out.reach_out_loop(brain))
     hub.spawn(journal.journal_loop(brain))
     hub.spawn(heartbeat.heartbeat_loop(brain))
+    hub.spawn(friends.visit_loop(brain))
     listener = await server.serve_when_free(
         lambda ws: server.handle_renderer(ws, brain, auth_token),
         host,

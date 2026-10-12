@@ -1,6 +1,6 @@
 """Friend mode: up to MAX_FRIENDS friends, each with a soul of their own and their own model
 (any OpenAI-compatible server and one of its models, or hers), drop by when the user presses Start a visit (Settings -> Friends). They and
-Glitch take turns in a group chat that opens on a starter -- something she's been into
+Glitch take turns (with Friend mode on, also once a night by themselves -- visit_loop) in a group chat that opens on a starter -- something she's been into
 (Heartbeat), a debate, a game, a story to build, a random Wikipedia article -- until MAX_MESSAGES, and then she writes her
 journal entry about it. The visit is logged by day in self/visits/ (Chat Logs -> Visits);
 her latest entry (self/visit_journal.md) reaches her when a conversation opens, like her
@@ -31,6 +31,12 @@ from store import NamedStore, Toggle
 ACTIVE = Toggle(Path(__file__).parent / "friends_active.txt", default=False)
 STORE = NamedStore(Path(__file__).parent / "friends", kind="friend")
 MAX_FRIENDS = 3
+# With Friend mode on they come over by themselves once a night, after her diary (1 AM), when
+# he's been quiet a while -- a visit only on his button press was a rare one.
+VISIT_HOUR = 2  # local time
+VISIT_QUIET_SEC = 30 * 60
+VISIT_CHECK_SEC = 5 * 60
+LAST_VISIT_PATH = Path(__file__).parent / "friends_last_visit.txt"  # the day of the last visit
 MAX_MESSAGES = 50  # everyone's together
 # The newest messages each speaker sees. At 16, with the same model playing several of them,
 # Glitch sent Mira's last message back word for word 6 times in 50.
@@ -203,6 +209,7 @@ async def visit(brain: Brain) -> None:
     order = [*friends, "Glitch"]
     starter = await asyncio.to_thread(_starter)
     started = datetime.now()
+    LAST_VISIT_PATH.write_text(started.date().isoformat(), encoding="utf-8")
     conversation.log_visit(f"---\n\n*{started:%H:%M:%S} -- Visit from {', '.join(friends)}. {starter}*\n\n", now=started)
     lines: list[str] = []
     await _set(running=True, count=0, note="")
@@ -298,23 +305,48 @@ async def _set_friends_active(websocket: websockets.ServerConnection, data: dict
     await hub.broadcast(protocol.friends_state(ACTIVE.read()))
 
 
+def _why_not(brain: Brain) -> str:
+    """Why a visit can't start now, or ""."""
+    if not ACTIVE.read():
+        return "Turn Friend mode on first."
+    if STATUS["running"]:
+        return "They're already here."
+    if not brain.llm.owns_conversation:
+        return "Not while a harness is in control, or with no LLM set up."
+    if profiles.read_roleplay_active():
+        return "Not during role-play."
+    if not names():
+        return "Add a friend first."
+    return ""
+
+
 @hub.handles(protocol.START_VISIT)
 async def _start_visit(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-    problem = ""
-    if not ACTIVE.read():
-        problem = "Turn Friend mode on first."
-    elif STATUS["running"]:
-        problem = "They're already here."
-    elif not brain.llm.owns_conversation:
-        problem = "Not while a harness is in control, or with no LLM set up."
-    elif profiles.read_roleplay_active():
-        problem = "Not during role-play."
-    elif not names():
-        problem = "Add a friend first."
-    if problem:
+    if problem := _why_not(brain):
         return await hub.send(websocket, protocol.visit_state(**{**STATUS, "note": problem}))
     STATUS["running"] = True  # before the task starts, so a second press can't start another
     hub.spawn(visit(brain))
+
+
+def visit_due(now: datetime, last_user_at: float | None) -> bool:
+    """Tonight's visit: past VISIT_HOUR, none yet today, and he's been quiet VISIT_QUIET_SEC."""
+    try:
+        last_visit = LAST_VISIT_PATH.read_text(encoding="utf-8").strip()
+    except OSError:
+        last_visit = ""
+    quiet = not last_user_at or now.timestamp() - last_user_at >= VISIT_QUIET_SEC
+    return now.hour >= VISIT_HOUR and last_visit != now.date().isoformat() and quiet
+
+
+async def visit_loop(brain: Brain) -> None:
+    while True:
+        await asyncio.sleep(VISIT_CHECK_SEC)
+        try:
+            if visit_due(datetime.now(), curiosity.last_user_at()) and not _why_not(brain):
+                STATUS["running"] = True
+                await visit(brain)
+        except Exception as exc:  # never let one bad night stop the loop
+            print(f"[friends] tonight's visit failed: {exc!r}")
 
 
 @hub.handles(protocol.GET_FRIEND, protocol.SAVE_FRIEND, protocol.DELETE_FRIEND)

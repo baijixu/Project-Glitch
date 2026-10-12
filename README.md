@@ -334,8 +334,10 @@ are stored word for word.
 
 ### Memory training
 
-Turn on *Settings → Memory training* and nothing is saved automatically. Each night, after her journal, she reads the day's
-chat log and proposes a few short facts, which wait in a review list. For each one you can **edit the wording**, mark it **Core / Normal / Minor**, and **Save** or
+Turn on *Settings → Memory training* and nothing is saved automatically. At the end of each sitting (Clear Chat, or an
+hour after your last message) she reads that conversation and proposes a few short facts, and each night, after her
+journal, whatever the sittings didn't cover; they wait in a review list. What she works out on her own lands there too:
+when a [Heartbeat](#heartbeat) topic lands or she finishes a book, one sentence of what she's come to think. For each one you can **edit the wording**, mark it **Core / Normal / Minor**, and **Save** or
 **Reject**. What you save is stored exactly as you worded it. Core facts are always placed in her prompt; the importance is
 stored as a tag on the memory. It needs a Hindsight memory server. Good for the first weeks, while you're shaping what she
 remembers. To tell her something directly, type it in the **Add a memory** box, pick its importance and press **+ Add**:
@@ -407,12 +409,13 @@ Days you didn't talk get no entry, and she leaves your health out of it.
 
 ### Heartbeat
 
-Off by default; turn it on in *Settings → Heartbeat*. Once you've been quiet for 20 minutes, every 20 minutes a few random
+Off by default; turn it on in *Settings → Heartbeat*. Once you've been quiet for 20 minutes, every 10 minutes a few random
 fragments drift through her mind: a line from her soul (who she is, what she loves and can't stand, her own mind), her recent
 diary, something you said lately, one of her memories, and sometimes a topic already on her mind. She says what, if anything,
 pulls at her and how strongly. Each pull adds weight to its topic, and weight fades by half every two days, so only what keeps
 coming back builds up. When a topic passes the line it **lands**: she looks it up (with *Web Access* on, and never a topic
-with your name in it, since a search leaves your network) and writes a page about it in her own notebook, working in what she
+with your name in it, since a search leaves your network), reading the first two results that have real articles, and writes
+a page about it in her own notebook, working in what she
 found and saying where she read it, with the questions she'd like answered. Its newest question waits for a chance to ask you
 ([curiosity](#curiosity)). With a book in her [library](#her-library), half the time she reads instead.
 
@@ -435,12 +438,14 @@ builds up in her mind like any topic, so it can land too. The books are kept as 
 through their own model: give a friend a server (any OpenAI-compatible one, such as LM Studio on another PC) and pick
 from the models it has loaded, or leave it empty for her own. It ships with three to start from, each with a life of their
 own to talk about: Rex (a blunt metalhead comic), Mira (an astrophysicist who bakes) and Juno (a chaotic art student).
-**Start a visit** and they and Glitch take turns in a group chat for 50 messages, on a starter: half the time one of the
+**Start a visit** (or let them come by themselves: once a night after 2 AM, when you've been quiet half an hour) and
+they and Glitch take turns in a group chat for 50 messages, on a starter: half the time one of the
 topics she's been into lately ([Heartbeat](#heartbeat), by name only, never one naming you), otherwise a debate, a
 would-you-rather, a story to build, or a random Wikipedia article. Every turn is told to stick to what's real: their own
 life, the starter and the chat. Then she writes her journal entry about it right away: what stuck with her, where she
 pushed back or changed her mind, what she wants to tell you, and one question to ask you. That entry reaches her when you
-next start talking, like her diary, and the question waits with her other [curiosity](#curiosity) questions.
+next start talking, like her diary, and the question waits with her other [curiosity](#curiosity) questions. Each
+friend also keeps a note of their own on every visit and brings their last five to the next, so the friendships can grow.
 
 Give the friends **different models** from hers if you can, ideally on another machine, so they sound like different
 people; a friend on her own engine shares her voice. A message that repeats eight or more words from earlier in the chat

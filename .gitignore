@@ -123,6 +123,7 @@ brain/left_off.md
 brain/upkeep_last.txt
 brain/friends_active.txt
 brain/friends/
+brain/friends_last_visit.txt
 # Her library (brain/library.py) -- the books he gave her and where she is in each.
 brain/library/
 brain/library.json
