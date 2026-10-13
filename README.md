@@ -448,11 +448,13 @@ through their own model: give a friend a server (any OpenAI-compatible one, such
 from the models it has loaded, or leave it empty for her own. It ships with three to start from, each with a life of their
 own to talk about: Rex (a blunt metalhead comic), Mira (an astrophysicist who bakes) and Juno (a chaotic art student).
 **Start a visit** (or let them come by themselves: once a night after 2 AM, when you've been quiet half an hour) and
-they and Glitch take turns in a group chat for 50 messages, on a starter: half the time one of the
-topics she's been into lately ([Heartbeat](#heartbeat), by name only, never one naming you), otherwise a debate, a
-would-you-rather, a story to build, or a random Wikipedia article. Every turn is told to stick to what's real: their own
-life, the starter and the chat. Then she writes her journal entry about it right away: what stuck with her, where she
-pushed back or changed her mind, what she wants to tell you, and one question to ask you. That entry reaches her when you
+they and Glitch take turns in a group chat for 20 messages. Every visit has a purpose that helps her grow, picked at
+random from what she has: **book club** on the passage she just read in her [library](#her-library), **a challenge** to
+one of her own views from her memories, **helping her think** through one of her own open questions, or **catching up**
+on what she's been into. None of it names you or is about you (her diary stays out too); with nothing of hers yet, it's a
+debate. Every message has to add a real point, reason or question on the subject, with no running jokes. Then she writes
+her journal entry about it right away: what stuck with her, where she pushed back or changed her mind, what she wants to
+tell you, and one question to ask you; and what the visit changed in her comes to your review list as a memory. That entry reaches her when you
 next start talking, like her diary, and the question waits with her other [curiosity](#curiosity) questions. Each
 friend also keeps a note of their own on every visit and brings their last five to the next, so the friendships can grow.
 
