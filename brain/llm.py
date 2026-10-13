@@ -71,8 +71,9 @@ MOOD_TAG_INSTRUCTION = (
 # asked for only in the speaking style, or a pause from "...", it didn't. Sparingly: a laugh in every reply is a tic.
 VOICE_CUE_INSTRUCTION = (
     "Your voice can really laugh and sigh. When something genuinely makes you laugh, chuckle or sigh, write "
-    "(laughs), (chuckles), *sighs* or a real \"haha\" right where you'd make the sound -- like \"(laughs) Okay, "
-    "that one got me.\" or \"*sighs* Fine, you win.\" At most one in a reply, and never just to have one."
+    "(laughs), (chuckles), *sighs* or a real \"haha\" right where you'd make the sound, after your mood tag -- like "
+    "\"[mood: amused] (laughs) Okay, that one got me.\" or \"[mood: annoyed] *sighs* Fine, you win.\" At most one in "
+    "a reply, and never just to have one."
 )
 
 # A nudge, scoped to factual claims so she doesn't hedge about opinions and chat.
