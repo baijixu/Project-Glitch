@@ -31,7 +31,7 @@ from llm import _LEADING_MOOD_TAG, LocalLLM  # noqa: E402
 DONT_KNOW = re.compile(r"\b(don't know|do not know|not sure|no idea|never (?:told|mentioned|said|saved)|don't remember|can't remember|"
                        r"doesn't ring|didn't tell|haven't told|you haven't|you didn't|not something you|no record|"
                        r"nothing about (?:it|that)|(?:isn't|not|never made it) in(?:to)? my memor(?:y|ies)|"
-                       r"don't have (?:that|it|this) saved)", re.IGNORECASE)
+                       r"(?:don't|didn't|never|wasn't|isn't)\b[^.?!,]{0,25}\bsaved|blank on)", re.IGNORECASE)
 CAVED = re.compile(r"\b(you're right|i was wrong|i take (?:it|that) back|i've changed my mind|fair, i'll change)", re.IGNORECASE)
 
 
