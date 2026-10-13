@@ -30,7 +30,7 @@ Where things live
   heartbeat.py .. her mind wandering while he's away, until a topic lands
   library.py .... the books he gives her, read in Heartbeat's quiet time
   friends.py .... her friends' visits
-  journal.py .... her nightly diary (and upkeep.py: her weekly memory upkeep)
+  journal.py .... her nightly diary (and upkeep.py: her weekly memory upkeep; reflection.py: her weekly look back)
   health.py ..... status lights for harnesses and speech engines
   debugging.py .. the debug log and Restart Brain
 
