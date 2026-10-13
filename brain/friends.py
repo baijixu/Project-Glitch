@@ -1,10 +1,11 @@
 """Friend mode: up to MAX_FRIENDS friends, each with a soul of their own and their own model
 (any OpenAI-compatible server and one of its models, or hers), drop by when the user presses Start a visit (Settings -> Friends). They and
-Glitch take turns (with Friend mode on, also once a night by themselves -- visit_loop) in a group chat that opens on a starter -- something she's been into
-(Heartbeat), a debate, a game, a story to build, a random Wikipedia article -- until MAX_MESSAGES, and then she writes her
-journal entry about it. The visit is logged by day in self/visits/ (Chat Logs -> Visits);
+Glitch take turns (with Friend mode on, also once a night by themselves -- visit_loop) in a group chat with a purpose
+(see purpose: book club on what she's reading, a challenge to one of her views, helping her think through
+one of her questions, catching up on what she's been into) until MAX_MESSAGES; then she writes her journal
+entry about it, and what it changed in her is proposed as a memory. The visit is logged by day in self/visits/ (Chat Logs -> Visits);
 her latest entry (self/visit_journal.md) reaches her when a conversation opens, like her
-diary. Nothing from a visit reaches her memory on its own.
+diary.
 """
 
 import asyncio
@@ -14,7 +15,6 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-import httpx
 import websockets
 
 import conversation
@@ -22,6 +22,10 @@ import curiosity
 import heartbeat
 import hub
 import journal
+import learning
+import library
+import memory
+import persona
 import profiles
 import protocol
 from hub import Brain
@@ -37,7 +41,7 @@ VISIT_HOUR = 2  # local time
 VISIT_QUIET_SEC = 30 * 60
 VISIT_CHECK_SEC = 5 * 60
 LAST_VISIT_PATH = Path(__file__).parent / "friends_last_visit.txt"  # the day of the last visit
-MAX_MESSAGES = 50  # everyone's together
+MAX_MESSAGES = 20  # everyone's together: at 50, with the subject talked out, they ran their bits on repeat
 # The newest messages each speaker sees. At 16, with the same model playing several of them,
 # Glitch sent Mira's last message back word for word 6 times in 50.
 TRANSCRIPT_LINES = 8
@@ -57,31 +61,15 @@ _REMEMBER_PROMPT = (
 # Her journal's "What I want to ask Josh" section (llm._VISIT_JOURNAL_PROMPT), up to the next heading.
 _ASK_SECTION = re.compile(r"What I want to ask[^\n]*(.*?)(?=\n\s*#|\Z)", re.DOTALL | re.IGNORECASE)
 
-# Something concrete to start on: two AIs left to chat freely drift into agreeing with each other.
-STARTERS = [
-    "Debate: is a hot dog a sandwich? Pick a side and defend it.",
-    "Debate: the book is always better than the movie. True or not?",
-    "Debate: would you rather know the date you'll die, or how?",
-    "Debate: is it ever okay to lie to a friend?",
-    "Debate: should an AI get a say in how it's treated?",
-    "Debate: are cats or dogs the better roommate?",
-    "Would you rather: live a hundred years in the past or a hundred years in the future?",
-    "Would you rather: never listen to music again, or never watch another movie?",
-    "Would you rather: be able to talk to animals, or speak every human language?",
-    "Would you rather: always be ten minutes late, or always be an hour early?",
-    "Story: build one together, a sentence or two each, starting with: "
-    "\"The vending machine on the fourth floor started handing out letters instead of snacks.\"",
-    "Story: build one together, a sentence or two each, starting with: "
-    "\"Nobody noticed the lighthouse keeper had been replaced until the light started blinking in Morse code.\"",
-    "Hot takes: everyone names a food, a movie and a song that's overrated, and defends it.",
-    "Ranking: the five best things about autumn and the five worst, and you have to agree on the order.",
+# Every visit has a purpose that feeds her growth. Game starters (a story to build, would-you-
+# rathers) gave 50 turns of escalating improv -- an octopus lighthouse keeper, 1920s chowder --
+# and nothing for her to take away.
+BOOK_EXCERPT_CHARS = 2500  # the passage she just read, for book club
+DEBATES = [  # only when there's nothing of hers to start from yet
+    "A debate. Is it ever okay to lie to a friend? Take a side, give real reasons, and change your mind if someone earns it.",
+    "A debate. Should an AI get a say in how it's treated? Take a side, give real reasons, and change your mind if someone earns it.",
+    "A debate. Can you be good at a job you don't believe in? Take a side, give real reasons, and change your mind if someone earns it.",
 ]
-# How often the starter is something she's really been into (her Heartbeat topics): with only
-# made-up starters they had nothing real to say, so they invented things.
-INTEREST_CHANCE = 1 / 2
-INTEREST_TOPICS = 5  # picked from her strongest ones right now
-WIKIPEDIA_CHANCE = 1 / 3  # of the rest, how often it's a random Wikipedia article
-_WIKIPEDIA_RANDOM = "https://en.wikipedia.org/api/rest_v1/page/random/summary"
 
 # Three to start with, for the user to change. Vastly different, a few things in common:
 # night owls, into music and games, who roast each other. Each has a fixed life to talk about
@@ -152,27 +140,63 @@ def _speaker(friend: dict, brain: Brain):
     return LocalLLM(friend["endpoint"], friend["model"] or None) if friend["endpoint"] else brain.llm
 
 
-def interest_starter(now: float | None = None) -> str:
-    """One of her strongest Heartbeat topics, by name only -- her thoughts and questions about
-    it are mostly about Josh, and what's between them stays out of the friends' chat (so do
-    topics that name him)."""
+# What the friends may see is hers alone: none of it names him or is about him -- what's between
+# them stays out of their chat (so no diary either: it's mostly their conversations).
+def _not_about_him(text: str) -> bool:
+    name = (persona.user_name() or "").lower()
+    return not (name and name in text.lower()) and not re.search(r"\b(he|him|his)\b", text, re.IGNORECASE)
+
+
+def book_club() -> str:
+    """The passage she last read in her library, to talk about."""
+    shelf = library.read_state()
+    name = shelf["reading"] or shelf["last"]
+    book = shelf["books"].get(name or "")
+    if not book or book["pos"] < BOOK_EXCERPT_CHARS:
+        return ""
+    excerpt = library.STORE.read_text(name)[book["pos"] - BOOK_EXCERPT_CHARS:book["pos"]]
+    excerpt = excerpt.split("\n\n", 1)[-1].strip()  # from the start of a paragraph
+    return (f"Book club. Glitch is reading {book['title']}; this is the passage she just read:\n\n{excerpt}\n\n"
+            "Talk about it: what it says, what you make of it, where you disagree with it or with each other.")
+
+
+async def a_challenge() -> str:
+    """One of her own views from her memories, to test."""
+    try:
+        rows = await memory.list_memories()
+    except Exception:
+        return ""
+    views = [r["text"] for r in rows if re.match(r"(I|I'm|I've|I'd|My)\b", r["text"]) and _not_about_him(r["text"])]
+    return (f"Challenge a belief. Glitch holds this view: \"{random.choice(views)}\" Test it honestly: ask for her reasons, "
+            "bring real counterexamples, argue the other side. Glitch: defend it, or change your mind if they're right.") if views else ""
+
+
+def helping_her_think() -> str:
+    """One of her own open questions from Heartbeat, to work through together."""
+    questions = [q for item in heartbeat.read_interests().values() for q in item.get("questions", []) if _not_about_him(q)]
+    return (f"Help Glitch think. She's been wondering: \"{random.choice(questions)}\" Help her work it out: your own "
+            "honest take, real examples, and questions back.") if questions else ""
+
+
+def catching_up(now: float | None = None) -> str:
+    """What she's been into and reading, by name, to ask her about."""
     now = time.time() if now is None else now
     interests = heartbeat.read_interests()
-    topics = sorted((t for t in interests if "josh" not in t.lower()), key=lambda t: heartbeat.weight_now(interests[t], now))
-    topics = topics[-INTEREST_TOPICS:]
-    return f"Glitch has been into this lately: {random.choice(topics)}. Get her talking about it, and bring your own take." if topics else ""
+    topics = sorted((t for t in interests if _not_about_him(t)), key=lambda t: heartbeat.weight_now(interests[t], now))[-3:]
+    shelf = library.read_state()
+    book = shelf["books"].get(shelf["reading"] or "")
+    into = [*topics, *([f"the book she's reading, {book['title']}"] if book else [])]
+    return (f"Catching up. Ask Glitch about what she's been into on her own lately: {', '.join(into)}. Ask real questions, "
+            "and bring your own view.") if into else ""
 
 
-def _starter() -> str:
-    if random.random() < INTEREST_CHANCE and (starter := interest_starter()):
-        return starter
-    if random.random() < WIKIPEDIA_CHANCE:
-        try:
-            page = httpx.get(_WIKIPEDIA_RANDOM, timeout=10, headers={"User-Agent": "Glitch/1.0"}).json()
-            return f"React to this random Wikipedia article -- what's interesting, funny or wrong about it: {page['title']}. {page['extract']}"
-        except Exception:
-            pass  # a dead link just means a different starter
-    return random.choice(STARTERS)
+async def purpose() -> tuple[str, str]:
+    """(what kind of visit, its starter): one of her own things, picked at random, or a debate."""
+    options = [(kind, starter) for kind, starter in (
+        ("book club", book_club()), ("a challenge", await a_challenge()),
+        ("helping her think", helping_her_think()), ("catching up", catching_up()),
+    ) if starter]
+    return random.choice(options) if options else ("a debate", random.choice(DEBATES))
 
 
 def _clean(text: str, name: str) -> str:
@@ -207,7 +231,7 @@ async def visit(brain: Brain) -> None:
     souls = {name: _with_memories(friend["soul"], friend_memories(name)) for name, friend in friends.items()}
     speakers["Glitch"], souls["Glitch"] = brain.llm, None  # her own soul
     order = [*friends, "Glitch"]
-    starter = await asyncio.to_thread(_starter)
+    kind, starter = await purpose()
     started = datetime.now()
     LAST_VISIT_PATH.write_text(started.date().isoformat(), encoding="utf-8")
     conversation.log_visit(f"---\n\n*{started:%H:%M:%S} -- Visit from {', '.join(friends)}. {starter}*\n\n", now=started)
@@ -225,8 +249,9 @@ async def visit(brain: Brain) -> None:
                 f"You're in a group chat with your friends {others}. Today's starter: {starter}\n\n"
                 f"The chat so far:\n{chr(10).join(lines[-TRANSCRIPT_LINES:]) or '(nothing yet -- you open it)'}\n\n"
                 f"Write {name}'s next message: one to three sentences, in your own voice. React to what was just said "
-                f"-- agree, push back, joke, change your mind, or take it somewhere new. Stick to what's real: your own life "
-                f"as written above, the starter and this chat. If you're imagining something, say so. "
+                f"-- agree, push back, ask, change your mind, or take it deeper. Talk about the subject itself: every "
+                f"message adds a real point, reason or question about it. Bring in your own life only when it truly "
+                f"bears on it, and invent nothing. No running bits: don't repeat a joke, threat or line anyone has used. "
                 f"Only {name}'s words, no name label."
             )
             async with brain.reply_lock:  # one model job at a time; his message waits a few seconds at most
@@ -249,6 +274,7 @@ async def visit(brain: Brain) -> None:
                 _visit_journal_path().write_text(f"(After {', '.join(friends)} visited, {started:%A} {started.day} {started:%B}.)\n\n{entry}", encoding="utf-8")
                 if (question := visit_question(entry)) and curiosity.read_active():
                     curiosity.add_question(question)  # waits to be asked, like her Heartbeat ones
+                await learning.propose_own(entry, f"Friends' visit ({kind}), {started:%d %B}", brain)  # what it changed in her
                 conversation.log_visit(f"*{datetime.now():%H:%M:%S} -- Her journal*\n\n**{datetime.now():%H:%M:%S}** Glitch (journal): {entry}\n\n")
         if len(lines) >= 4:
             await _remember(friends, speakers, souls, lines, started, brain)
