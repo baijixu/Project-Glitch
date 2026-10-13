@@ -469,7 +469,8 @@ her memory on its own.
   [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (the model downloads on first use).
 - **Speech out:** any OpenAI-style TTS endpoint, with viseme lip-sync and per-mood expressions. On one that takes a speaking
   style (Qwen3-TTS, `tools/qwen_tts_server.py`), her mood sets how she sounds too, calm unless she's feeling something
-  else. Browsers (phones especially)
+  else. Her face has six expressions, her voice a style for each finer mood she writes (playful, curious, tired,
+  sympathetic, nostalgic...), so two replies that look the same can sound different. Browsers (phones especially)
   block sound until the page has been tapped; Glitch unlocks it on your first tap or key press.
 - **Vision:** 📷 camera, 🖥️ screen capture, 📎 attach a picture or text file. Needs a vision-capable LLM.
 
