@@ -8,6 +8,7 @@ export class LibraryUI {
   constructor(app) {
     this._app = app;
     this.listEl = $("library-list");
+    this.countEl = $("library-count");
     this.noteEl = $("library-note");
     this.inputEl = $("library-file-input");
     $("add-book-button")?.addEventListener("click", () => this.inputEl?.click());
@@ -37,6 +38,7 @@ export class LibraryUI {
     if (!this.listEl) return;
     this.listEl.replaceChildren();
     const books = data.books || [];
+    if (this.countEl) this.countEl.textContent = books.length ? ` (${books.length})` : "";
     if (!books.length) {
       this.listEl.appendChild(Object.assign(document.createElement("p"), { className: "settings-hint", textContent: "No books yet." }));
       return;
