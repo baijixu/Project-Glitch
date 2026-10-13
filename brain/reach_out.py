@@ -16,12 +16,10 @@ import curiosity
 import harness
 import hub
 import learning
-import memory
 import persona
 import profiles
 import protocol
 import sampling
-import training
 from hub import Brain
 from llm import face
 from voice import VOICE_ACTIVE, NoneTTS
@@ -67,9 +65,7 @@ async def reach_out_loop(brain: Brain) -> None:
         try:
             await broadcast_curiosity_timer(only_if_changed=True)  # catches role-play / harness switches
             await broadcast_inbox(only_if_changed=True)  # Heartbeat, a visit or her diary may have added one
-            if (day := learning.sitting_over(time.time())) and not brain.reply_lock.locked():
-                async with brain.reply_lock:
-                    await learning.propose_sitting(brain, day)
+            learning.end_sitting(brain)
             if (
                 brain.llm.owns_conversation
                 and curiosity.read_active()
@@ -134,7 +130,7 @@ async def _inbox(websocket: websockets.ServerConnection, data: dict, brain: Brai
     await broadcast_inbox()
     if not question or data["type"] == protocol.SKIP_QUESTION or not answer or not brain.llm.owns_conversation:
         return
-    if memory.server_backed() and training.read_active():
+    if learning.can_propose(brain):
         name, now = persona.user_name() or "User", datetime.now()
         log = f"**{now:%H:%M:%S}** Glitch: {question}\n\n**{now:%H:%M:%S}** {name}: {answer}\n"
         hub.spawn(learning.propose_from_log(log, now.date(), name, brain, source=f"Inbox: {question}"))

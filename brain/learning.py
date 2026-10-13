@@ -14,12 +14,14 @@ import websockets
 
 import curiosity
 import hub
+import journal
 import lessons
 import memory
 import memory_profiles
 import persona
 import profiles
 import protocol
+import reflection
 import training
 from hub import Brain
 
@@ -308,10 +310,16 @@ def mark_proposed(day: date, log: str) -> None:
         PROPOSED_PATH.write_text(json.dumps({"day": day.isoformat(), "through": stamps[-1]}), encoding="utf-8")
 
 
-def sitting_over(now: float) -> date | None:
-    """The day of a sitting that's over (an hour since his last message) and not yet proposed from."""
+def can_propose(brain: Brain) -> bool:
+    """Whether her memory proposals run: her own LLM (a harness keeps its own memory), memory on,
+    a memory server, and memory training on."""
+    return bool(brain.llm.owns_conversation and memory.read_memory_active() and memory.server_backed() and training.read_active())
+
+
+def sitting_over(now: float, quiet_sec: float = SITTING_QUIET_SEC) -> date | None:
+    """The day of a sitting that's over (quiet_sec since his last message) and not yet proposed from."""
     last = curiosity.last_user_at()
-    if not last or now - last < SITTING_QUIET_SEC:
+    if not last or now - last < quiet_sec:
         return None
     said = datetime.fromtimestamp(last)
     mark = _proposed_through()
@@ -320,21 +328,25 @@ def sitting_over(now: float) -> date | None:
     return said.date()
 
 
-async def propose_sitting(brain: Brain, day: date) -> None:
-    """Memory proposals from the conversation since the last ones -- at the end of a sitting
-    (Clear Chat, or an hour of quiet), so they're in his review list the same day instead of
-    after the night. Needs memory training on, like the nightly ones."""
-    import journal  # journal imports this module
+def end_sitting(brain: Brain, quiet_sec: float = SITTING_QUIET_SEC) -> None:
+    """A sitting that's over (an hour of quiet, or Clear Chat with quiet_sec=0) is proposed from
+    in the background, so it's in his review list the same day instead of after the night."""
+    if can_propose(brain) and (day := sitting_over(time.time(), quiet_sec)):
+        hub.spawn(propose_unread(day, brain))
 
-    if not (brain.llm.owns_conversation and memory.read_memory_active() and memory.server_backed() and training.read_active()):
-        return
-    if profiles.read_roleplay_active():
+
+async def propose_unread(day: date, brain: Brain) -> None:
+    """Memory proposals from the part of the day's chat no proposal has read yet -- a sitting
+    that just ended, or what's left at night. Without the reply lock: his replies go first.
+    The mark moves before the model runs, so a check a minute later can't start the same batch."""
+    if not can_propose(brain):
         return
     name = persona.user_name() or "User"
-    log = unproposed(day, journal.day_log(day, name))
-    if f" {name}: " in log:
-        await propose_from_log(log, day, name, brain, source=f"{day:%A %d %B}'s chat (a sitting)")
+    log = journal.day_log(day, name)
+    unread = unproposed(day, log)
     mark_proposed(day, log)
+    if f" {name}: " in unread:
+        await propose_from_log(unread, day, name, brain)
 
 
 async def propose_own(text: str, source: str, brain: Brain) -> None:
@@ -445,17 +457,13 @@ async def resolve_memory_proposal(websocket: websockets.ServerConnection, data: 
     if proposal is None:
         error = "that proposal is no longer in the list"
     elif data.get("approve") and proposal.get("kind") == "soul":
-        import reflection  # it imports heartbeat, which imports this module
-
-        line = " ".join(str(data.get("fact") or proposal["fact"]).split())
         try:
-            reflection.add_to_soul(proposal["old"], line)
+            reflection.add_to_soul(proposal["old"], " ".join(str(data.get("fact") or proposal["fact"]).split()), brain)
         except (ValueError, OSError) as exc:
             print(f"[brain] adding to her soul failed: {exc!r}")
             error = "couldn't add it to her soul -- it's still in the list"
         else:
             training.remove_pending(proposal_id)
-            brain.llm.update_soul(persona.effective_soul())  # an edit, not a new her: the conversation carries on
     elif data.get("approve") and proposal.get("kind") in ("update", "retire"):
         retire = proposal["kind"] == "retire" or bool(data.get("retire"))
         fact = str(data.get("fact") or proposal["fact"]).strip()
@@ -534,7 +542,7 @@ async def maybe_retain_memory(
     if not user_text.strip() and not reply_text.strip():
         return  # an image-only turn with nothing the user said -- nothing left worth keeping
     start = time.monotonic()
-    if memory.server_backed() and training.read_active():
+    if can_propose(brain):
         return  # she proposes from the whole day instead, once a night (propose_from_log)
     if memory.server_backed():
         try:

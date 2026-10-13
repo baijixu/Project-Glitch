@@ -14,6 +14,7 @@ from pathlib import Path
 
 import conversation
 import heartbeat
+import learning
 import library
 import persona
 import souls
@@ -63,8 +64,9 @@ def parse_proposal(raw: str, soul: str) -> tuple[str, str] | None:
     return (section, line) if 0 < len(line) <= MAX_LINE_CHARS and line not in soul else None
 
 
-def add_to_soul(section: str, line: str, today: date | None = None) -> None:
-    """His approval: `line` as a new paragraph at the end of `section` in soul.md, a backup first."""
+def add_to_soul(section: str, line: str, brain: Brain, today: date | None = None) -> None:
+    """His approval: `line` as a new paragraph at the end of `section` in soul.md, a backup first,
+    and in her prompt at once."""
     soul = souls.read_main_soul()
     start = soul.index(f"## {section}")
     following = re.search(r"\n#{1,2} ", soul[start + 3:])
@@ -72,6 +74,7 @@ def add_to_soul(section: str, line: str, today: date | None = None) -> None:
     BACKUPS.mkdir(exist_ok=True)
     (BACKUPS / f"soul_before_reflection_{today or date.today():%Y%m%d}.md").write_text(soul, encoding="utf-8")
     souls.write_main_soul(soul[:end].rstrip() + f"\n\n{line}\n\n" + soul[end:].lstrip("\n"))
+    brain.llm.update_soul(persona.effective_soul())  # an edit, not a new her: the conversation carries on
 
 
 async def run(brain: Brain, now: datetime | None = None) -> None:
@@ -89,10 +92,13 @@ async def run(brain: Brain, now: datetime | None = None) -> None:
     folder.mkdir(parents=True, exist_ok=True)
     (folder / f"{now:%Y-%m-%d}.md").write_text(f"# Who I'm becoming -- {now:%A %d %B %Y}\n\n{page}\n", encoding="utf-8")
     conversation.log_thought(f"🪞 **Who I'm becoming** -- her week, looked back on:\n\n{page}", now=now)
+    print("[reflection] she looked back on her week")
+    if not learning.can_propose(brain):  # a soul line waits in the memory review list
+        return
     soul = souls.read_main_soul()
     async with brain.reply_lock:
         raw = await asyncio.to_thread(brain.llm.propose_soul_line, soul, page, SECTIONS, name)
     if proposal := parse_proposal(raw, soul):
         section, line = proposal
         training.add_pending(line, f"Her weekly reflection, {now:%d %B}", "soul", old=section)
-    print(f"[reflection] she looked back on her week" + (f" and proposed a line for {proposal[0]!r}" if proposal else ""))
+        print(f"[reflection] she proposed a line for {section!r}")
