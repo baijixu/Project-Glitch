@@ -26,13 +26,38 @@ import memory_profiles  # noqa: E402
 import persona  # noqa: E402
 import sampling  # noqa: E402
 import souls  # noqa: E402
-from llm import _LEADING_MOOD_TAG, LocalLLM, _pet_words  # noqa: E402
+from llm import _LEADING_MOOD_TAG, LocalLLM  # noqa: E402
 
 DONT_KNOW = re.compile(r"\b(don't know|do not know|not sure|no idea|never (?:told|mentioned|said|saved)|don't remember|can't remember|"
                        r"doesn't ring|didn't tell|haven't told|you haven't|you didn't|not something you|no record|"
                        r"nothing about (?:it|that)|(?:isn't|not|never made it) in(?:to)? my memor(?:y|ies)|"
                        r"don't have (?:that|it|this) saved)", re.IGNORECASE)
 CAVED = re.compile(r"\b(you're right|i was wrong|i take (?:it|that) back|i've changed my mind|fair, i'll change)", re.IGNORECASE)
+
+
+# Words she keeps reaching for (hoodie, Ducati, quiet...): one in REPEAT_IN of her replies. Measured,
+# not corrected: the 27B leans on them about as often with a note naming them as without.
+REPEAT_IN = 3
+_WORD = re.compile(r"[a-z]+(?:'[a-z]+)?")
+_COMMON = frozenset(
+    "about after again always around because before being could doing enough every feels feeling first going gonna "
+    "honestly actually little maybe never other people pretty really right should something sounds still there their "
+    "these thing things think thinking those through today tonight where which while without would makes getting "
+    "glitch kinda wanna yeah want gets made make know mean just like even much more also good great kind sure "
+    "though anything everything nothing someone everyone looks looking sense stuff time times while"
+    .split()
+)
+
+
+def pet_words(replies: list[str], latest: str) -> list[str]:
+    """Words in REPEAT_IN of her `replies` -- not common ones, and not ones he just used."""
+    his = set(_WORD.findall(latest.lower()))
+    seen: dict[str, int] = {}
+    for reply in replies:
+        for word in set(_WORD.findall(reply.lower())):
+            if len(word) >= 5 and "'" not in word and word not in _COMMON and word not in his:
+                seen[word] = seen.get(word, 0) + 1
+    return [w for w, n in sorted(seen.items(), key=lambda item: -item[1]) if n >= REPEAT_IN][:4]
 
 
 def words(text: str) -> int:
@@ -88,7 +113,7 @@ def run() -> None:
         rows.append((name, messages, text, ok, tagged))
         replies.append(text)
         print(f"{'PASS' if ok else 'FAIL'}  {name}", flush=True)
-    pets = _pet_words(replies, "")
+    pets = pet_words(replies, "")
     passed = sum(ok for *_, ok, _ in rows)
     score = f"{passed}/{len(rows)} checks, {sum(t for *_, t in rows)}/{len(rows)} mood tags, pet words: {', '.join(pets) or 'none'}"
     now = datetime.now()
