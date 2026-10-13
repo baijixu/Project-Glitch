@@ -94,7 +94,13 @@ MOOD_STYLES = {
 }
 
 
+# Qwen3-TTS reads "(chuckles)" / "*laughs*" out as words (13 of 16 takes) but really laughs at "haha",
+# so a laugh cue (llm.VOICE_CUE_INSTRUCTION) is spoken as one. The subtitle keeps what she wrote.
+_LAUGH_CUE = re.compile(r"[(*]\s*(?:laugh|chuckl|giggl)\w*[^)*]{0,20}[)*]", re.IGNORECASE)
+
+
 def _strip_emoji(text: str) -> str:
+    text = _LAUGH_CUE.sub("haha", text)
     return re.sub(r"\s+", " ", _EMOJI_PATTERN.sub("", text)).strip()
 
 

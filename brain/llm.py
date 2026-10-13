@@ -67,8 +67,8 @@ MOOD_TAG_INSTRUCTION = (
 )
 
 # In each turn's notes (in her system prompt she never used them, 0 of 15 replies). Her voice (Qwen3-TTS)
-# performs these when they're in her words -- a laugh asked for only in the
-# speaking style, or a pause from "...", it didn't. Sparingly: a laugh in every reply is a tic.
+# performs these when they're in her words (a laugh cue is spoken as "haha", voice.tts._LAUGH_CUE) -- a laugh
+# asked for only in the speaking style, or a pause from "...", it didn't. Sparingly: a laugh in every reply is a tic.
 VOICE_CUE_INSTRUCTION = (
     "Your voice can really laugh and sigh. When something genuinely makes you laugh, chuckle or sigh, write "
     "(laughs), (chuckles), *sighs* or a real \"haha\" right where you'd make the sound -- like \"(laughs) Okay, "
