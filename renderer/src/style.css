@@ -482,6 +482,11 @@ body.overlay-chat-active #overlay-edit-button {
   top: 70px;
 }
 
+#inbox-button:not([data-count]),
+#inbox-button[data-count=""] {
+  display: none;
+}
+
 #inbox-button[data-count]:not([data-count=""])::after {
   content: attr(data-count);
   position: absolute;
