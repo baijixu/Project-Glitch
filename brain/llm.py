@@ -66,6 +66,15 @@ MOOD_TAG_INSTRUCTION = (
     "matches the emotional tone of what you're about to say; your voice follows it."
 )
 
+# In each turn's notes (in her system prompt she never used them, 0 of 15 replies). Her voice (Qwen3-TTS)
+# performs these when they're in her words -- a laugh asked for only in the
+# speaking style, or a pause from "...", it didn't. Sparingly: a laugh in every reply is a tic.
+VOICE_CUE_INSTRUCTION = (
+    "Your voice can really laugh and sigh. When something genuinely makes you laugh, chuckle or sigh, write "
+    "(laughs), (chuckles), *sighs* or a real \"haha\" right where you'd make the sound -- like \"(laughs) Okay, "
+    "that one got me.\" or \"*sighs* Fine, you win.\" At most one in a reply, and never just to have one."
+)
+
 # A nudge, scoped to factual claims so she doesn't hedge about opinions and chat.
 HONESTY_INSTRUCTION = (
     "If you're not actually confident about a specific fact, date, name, or detail -- "
@@ -1328,6 +1337,7 @@ class LocalLLM(ChatBackend):
         latest = latest if isinstance(latest, str) else " ".join(p.get("text", "") for p in latest)
         if not self._persona and self._history and self._history[-1].get("role") == "user":
             parts.append(_length_note(len(strip_gap_marker(latest).split())))
+            parts.append(VOICE_CUE_INSTRUCTION)
             replies = [m["content"] for m in self._history if m.get("role") == "assistant" and isinstance(m.get("content"), str)]
             if pets := _pet_words(replies[-REPEAT_REPLIES:], latest):
                 parts.append(f"You've leaned on {', '.join(pets)} a lot in your last few replies. This time leave those out and reach for something fresh.")
