@@ -43,9 +43,15 @@ MOOD_ALIASES = {
 
 
 def _mood(word: str) -> str:
-    """A mood tag's word as one of VALID_MOODS ("neutral" for one with no near preset)."""
+    """A mood tag's word as she wrote it, if her face or voice knows it ("neutral" if not): her
+    voice speaks each one its own way (voice/tts.py's MOOD_STYLES); face() picks her expression."""
     word = word.lower()
-    return word if word in VALID_MOODS else MOOD_ALIASES.get(word, "neutral")
+    return word if word in VALID_MOODS or word in MOOD_ALIASES else "neutral"
+
+
+def face(mood: str) -> str:
+    """Her expression for a mood: the preset itself, or the nearest one (MOOD_ALIASES)."""
+    return mood if mood in VALID_MOODS else MOOD_ALIASES.get(mood, "neutral")
 
 # Her personality when there's no soul. The instructions below stay under any soul.
 DEFAULT_PERSONALITY = "You are Glitch, a friendly and curious AI companion. Keep replies conversational and fairly short."
@@ -55,7 +61,9 @@ DEFAULT_PERSONALITY = "You are Glitch, a friendly and curious AI companion. Keep
 MOOD_TAG_INSTRUCTION = (
     "Start every reply with exactly one mood tag, on its own at the very beginning, chosen from: "
     "[mood: neutral] [mood: happy] [mood: sad] [mood: angry] [mood: surprised] [mood: relaxed] "
-    "-- pick whichever best matches the emotional tone of what you're about to say."
+    "-- or, when it fits better, a finer one: curious, playful, flirty, amused, excited, thoughtful, content, "
+    "tired, nostalgic, concerned, worried, sympathetic, annoyed, frustrated, shocked, amazed. Pick whichever best "
+    "matches the emotional tone of what you're about to say; your voice follows it."
 )
 
 # A nudge, scoped to factual claims so she doesn't hedge about opinions and chat.

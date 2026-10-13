@@ -28,7 +28,7 @@ import reach_out
 import sampling
 import web_search
 from hub import Brain
-from llm import Reply, Sentences
+from llm import Reply, Sentences, face
 from voice import VOICE_ACTIVE, FasterWhisperSTT, NoneTTS
 
 # Browsers' MediaRecorder doesn't produce WAV -- map its common mime types
@@ -263,7 +263,7 @@ async def reply_to(
         first = not started
         if first:  # her face changes as she starts talking, not a beat behind
             started = True
-            await hub.send(websocket, protocol.set_expression(mood, 1.0))
+            await hub.send(websocket, protocol.set_expression(face(mood), 1.0))
         await hub.send(websocket, protocol.speak_text(sentence, partial=True))
         if first:
             # Her voice takes ~1 s per 25 characters to make, and her first words wait on all

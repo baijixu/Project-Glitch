@@ -62,10 +62,11 @@ _EMOJI_PATTERN = re.compile(
 )
 
 
-# Her mood tag (llm.py's VALID_MOODS) as a speaking-style hint, sent as OpenAI's
-# `instructions` -- Qwen3-TTS (tools/qwen_tts_server.py) follows it, Kokoro
-# ignores it. Neutral is calm too: Serena's own default delivery isn't the calm
-# voice Josh knows her by.
+# Her mood tag as she wrote it (llm.py: the face presets and the finer words in MOOD_ALIASES) as a
+# speaking-style hint, sent as OpenAI's `instructions` -- Qwen3-TTS (tools/qwen_tts_server.py)
+# follows it, Kokoro ignores it. Her face has six presets, her voice every word: playful and
+# curious both show "happy", but they don't sound alike. Neutral is calm too: Serena's own
+# default delivery isn't the calm voice Josh knows her by.
 MOOD_STYLES = {
     "neutral": "Calm, easy and unhurried.",
     "happy": "Warm and cheerful, with a smile in the voice.",
@@ -73,6 +74,23 @@ MOOD_STYLES = {
     "angry": "Firm and frustrated, with an edge.",
     "relaxed": "Calm, easy and unhurried.",
     "surprised": "Surprised and animated.",
+    "curious": "Curious and interested, leaning in.",
+    "excited": "Excited and bright, a little quick.",
+    "playful": "Playful and teasing, a little sly.",
+    "amused": "Amused, like she's holding back a laugh.",
+    "flirty": "Flirty, low and warm, with a smile in it.",
+    "thoughtful": "Thoughtful and slow, weighing each word.",
+    "calm": "Calm, easy and unhurried.",
+    "content": "Content and warm, settled.",
+    "tired": "Tired and soft, a little worn out.",
+    "nostalgic": "Nostalgic and wistful, a little far away.",
+    "concerned": "Concerned and gentle, careful.",
+    "worried": "Worried, quiet and a little tense.",
+    "sympathetic": "Warm, soft and sympathetic.",
+    "annoyed": "Annoyed, clipped and dry.",
+    "frustrated": "Frustrated, with an edge.",
+    "shocked": "Shocked, caught off guard.",
+    "amazed": "Amazed, full of wonder.",
 }
 
 
