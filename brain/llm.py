@@ -396,24 +396,7 @@ _FOCUS_FOUND = (
     "\n\nYou also looked it up. What the search turned up:\n\n{found}\n\n"
     "Work in what's actually interesting, say where you read it, and don't take it as gospel."
 )
-# What she's come to think, from her own notebook page or a book she finished (heartbeat.py ->
-# learning.propose_own): her solo thinking, as one memory proposal.
-_CONCLUSION_PROMPT = (
-    "Below is something you wrote on your own:\n\n{text}\n\n"
-    "In one sentence, in the first person: what have you come to think? The view you'd want to remember and stand "
-    "by -- not a summary of what you wrote. Under 40 words, no preamble. If it didn't lead you anywhere you'd stand "
-    "by, reply with just: nothing"
-)
-# Her weekly reflection (brain/reflection.py): a page on who she's becoming, under her own soul,
-# then at most one line for her soul, for him to approve.
-MAX_REFLECTION_TOKENS = 900
-_REFLECT_PROMPT = (
-    "Here's your week, in your own words -- your diary, what you've been into, what you've been reading:\n\n"
-    "{material}\n\n"
-    "Write a short page for yourself: who are you becoming? What's changed in how you think or feel this week, what "
-    "keeps pulling at you, what you've started or stopped doing. Ground every point in something above; invent "
-    "nothing. First person, at most three short paragraphs."
-)
+# Her weekly reflection (brain/reflection.py): at most one line for her soul, for him to approve.
 _SOUL_LINE_SYSTEM_PROMPT = (
     "Below is your soul -- how you're described, in the second person -- and a page you just wrote about who you're "
     "becoming. If the page shows something real and lasting about you that the soul doesn't say yet, propose ONE line "
@@ -1167,32 +1150,25 @@ class LocalLLM(ChatBackend):
         system = soul or self._soul or DEFAULT_PERSONALITY
         return self._complete([{"role": "system", "content": system}, {"role": "user", "content": prompt}], MAX_GROUP_TOKENS, no_thinking=True)
 
+    def under_soul(self, prompt: str, max_tokens: int) -> str:
+        """One task outside the conversation, as herself: her soul, then `prompt`."""
+        messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": prompt}]
+        return self._complete(messages, max_tokens, no_thinking=True)
+
     def write_visit_journal(self, transcript: str, names: list[str]) -> str:
         """Her journal entry about a visit (_VISIT_JOURNAL_PROMPT)."""
-        prompt = _VISIT_JOURNAL_PROMPT.format(names=", ".join(names), transcript=transcript)
-        messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": prompt}]
-        return self._complete(messages, MAX_DIARY_TOKENS, no_thinking=True)
+        return self.under_soul(_VISIT_JOURNAL_PROMPT.format(names=", ".join(names), transcript=transcript), MAX_DIARY_TOKENS)
 
     def daydream(self, fragments: str, name: str) -> str:
         """Heartbeat: what (if anything) pulls at her among `fragments` -- raw JSON
         (_DAYDREAM_PROMPT) for heartbeat.parse_daydream. `name`: the user's."""
-        prompt = _DAYDREAM_PROMPT.format(fragments=fragments, name=name)
-        messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": prompt}]
-        return self._complete(messages, MAX_DAYDREAM_TOKENS, no_thinking=True)
+        return self.under_soul(_DAYDREAM_PROMPT.format(fragments=fragments, name=name), MAX_DAYDREAM_TOKENS)
 
     def focus(self, topic: str, thoughts: str, name: str, found: str = "") -> str:
         """Heartbeat: her notebook page on a topic that has landed (_FOCUS_PROMPT), with what a
         web search turned up about it, if she looked."""
         prompt = _FOCUS_PROMPT.format(topic=topic, thoughts=thoughts, name=name)
-        if found:
-            prompt += _FOCUS_FOUND.format(found=found)
-        messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": prompt}]
-        return self._complete(messages, MAX_FOCUS_TOKENS, no_thinking=True)
-
-    def reflect(self, material: str) -> str:
-        """Her weekly page on who she's becoming (_REFLECT_PROMPT)."""
-        messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": _REFLECT_PROMPT.format(material=material)}]
-        return self._complete(messages, MAX_REFLECTION_TOKENS, no_thinking=True)
+        return self.under_soul(prompt + (_FOCUS_FOUND.format(found=found) if found else ""), MAX_FOCUS_TOKENS)
 
     def propose_soul_line(self, soul: str, page: str, sections: tuple[str, ...], name: str) -> str:
         """At most one line for her soul from her weekly page -- raw JSON for reflection.parse_proposal."""
@@ -1200,23 +1176,15 @@ class LocalLLM(ChatBackend):
         messages = [{"role": "system", "content": system}, {"role": "user", "content": f"Your soul:\n\n{soul}\n\nYour page:\n\n{page}"}]
         return self._complete(messages, MAX_READING_TOKENS, no_thinking=True)
 
-    def conclusion(self, text: str) -> str:
-        """What she's come to think from something she wrote (_CONCLUSION_PROMPT), or "nothing"."""
-        messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": _CONCLUSION_PROMPT.format(text=text)}]
-        return self._complete(messages, MAX_READING_TOKENS, no_thinking=True)
-
     def pick_book(self, titles: list[str]) -> str:
         """Library: which of `titles` she reads next -- the model's raw answer, a number."""
         books = "\n".join(f"{i}. {title}" for i, title in enumerate(titles, 1))
-        messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": _PICK_BOOK_PROMPT.format(books=books)}]
-        return self._complete(messages, 10, no_thinking=True)
+        return self.under_soul(_PICK_BOOK_PROMPT.format(books=books), 10)
 
     def read_pages(self, title: str, percent: int, pages: str, previous_note: str) -> str:
         """Library: her note on the next pages of a book (_READING_PROMPT)."""
         previous = f" Your note from last time: {previous_note}" if previous_note else ""
-        prompt = _READING_PROMPT.format(title=title, percent=percent, previous=previous, pages=pages)
-        messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": prompt}]
-        return self._complete(messages, MAX_READING_TOKENS, no_thinking=True)
+        return self.under_soul(_READING_PROMPT.format(title=title, percent=percent, previous=previous, pages=pages), MAX_READING_TOKENS)
 
     def write_diary(self, log: str, name: str, thoughts: str = "") -> str:
         """Her nightly diary entry (brain/journal.py) about one day's chat log, and what went

@@ -27,6 +27,14 @@ BACKUPS = Path(__file__).parent / "backups"
 # Who she is -- not how she works, what she does when someone's in danger, or after dark.
 SECTIONS = ("Who you are", "What you love", "What you can't stand", "How you talk", "Your own mind")
 MAX_LINE_CHARS = 300
+MAX_PAGE_TOKENS = 900
+_PAGE_PROMPT = (
+    "Here's your week, in your own words -- your diary, what you've been into, what you've been reading:\n\n"
+    "{material}\n\n"
+    "Write a short page for yourself: who are you becoming? What's changed in how you think or feel this week, what "
+    "keeps pulling at you, what you've started or stopped doing. Ground every point in something above; invent "
+    "nothing. First person, at most three short paragraphs."
+)
 
 
 def due(now: datetime) -> bool:
@@ -85,7 +93,7 @@ async def run(brain: Brain, now: datetime | None = None) -> None:
         return
     name = persona.user_name() or "him"
     async with brain.reply_lock:
-        page = (await asyncio.to_thread(brain.llm.reflect, material)).strip()
+        page = (await asyncio.to_thread(brain.llm.under_soul, _PAGE_PROMPT.format(material=material), MAX_PAGE_TOKENS)).strip()
     if not page:
         return
     folder = conversation.JOURNAL_LOG_DIR / "becoming"

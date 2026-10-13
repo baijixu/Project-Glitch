@@ -99,7 +99,7 @@ MOOD_STYLES = {
 _LAUGH_CUE = re.compile(r"[(*]\s*(?:laugh|chuckl|giggl)\w*[^)*]{0,20}[)*]", re.IGNORECASE)
 
 
-def _strip_emoji(text: str) -> str:
+def _spoken(text: str) -> str:
     text = _LAUGH_CUE.sub("haha", text)
     return re.sub(r"\s+", " ", _EMOJI_PATTERN.sub("", text)).strip()
 
@@ -212,7 +212,7 @@ class RemoteTTS:
             return self.fallback.synthesize(text, mood)
 
     def _synthesize(self, text: str, mood: str) -> tuple[bytes, list[protocol.VisemeFrame]]:
-        text = _strip_emoji(text)
+        text = _spoken(text)
         style = {"instructions": MOOD_STYLES[mood]} if mood in MOOD_STYLES else {}
         response = self._client.audio.speech.create(
             model=self._model, voice=self._voice, input=text, response_format="wav", **style

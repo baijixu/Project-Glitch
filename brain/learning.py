@@ -349,6 +349,15 @@ async def propose_unread(day: date, brain: Brain) -> None:
         await propose_from_log(unread, day, name, brain)
 
 
+MAX_CONCLUSION_TOKENS = 400
+_CONCLUSION_PROMPT = (
+    "Below is something you wrote on your own:\n\n{text}\n\n"
+    "In one sentence, in the first person: what have you come to think? The view you'd want to remember and stand "
+    "by -- not a summary of what you wrote. Under 40 words, no preamble. If it didn't lead you anywhere you'd stand "
+    "by, reply with just: nothing"
+)
+
+
 async def propose_own(text: str, source: str, brain: Brain) -> None:
     """What she's come to think from her own thinking -- a landed page, a finished book -- as one
     memory: proposed for his review with memory training on, otherwise kept like any other.
@@ -357,7 +366,7 @@ async def propose_own(text: str, source: str, brain: Brain) -> None:
         return
     try:
         async with brain.reply_lock:
-            fact = (await asyncio.to_thread(brain.llm.conclusion, text)).strip().strip('"')
+            fact = (await asyncio.to_thread(brain.llm.under_soul, _CONCLUSION_PROMPT.format(text=text), MAX_CONCLUSION_TOKENS)).strip().strip('"')
         if not fact or fact.lower().rstrip(".") == "nothing" or len(fact) > training.MAX_FACT_CHARS:
             return
         if training.read_active():
