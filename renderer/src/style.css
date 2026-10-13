@@ -604,17 +604,17 @@ body.overlay-chat-active #overlay-edit-button {
   box-shadow: 0 0 6px rgba(63, 143, 224, 0.8);
 }
 
-/* Sits just left of #connection-light, same row -- red: TCP connect to
+/* Sits left of #tts-light, by the RP badge, same row -- red: TCP connect to
    the harness endpoint failed (down/unreachable). blue: reachable, but
    Glitch isn't currently plugged into it. green: active, same meaning as
    #connection-light's own green just for the harness specifically. See
    brain_client.js's _renderHarnessLight for how these three map from
    harness_health/harness_state. */
 #harness-light {
-  right: 90px;
+  right: 116px;
 }
 
-/* Sits left of the RP badge, same row -- same three-color meaning as
+/* Sits just left of #connection-light, same row -- same three-color meaning as
    #harness-light (green/blue/red/grey), just for the active speech
    engine instead: green when it's the one actually in use, blue/red from
    the last reachability check on whichever's selected in the Settings
@@ -622,7 +622,7 @@ body.overlay-chat-active #overlay-edit-button {
    tts_engines.NONE_NAME beyond grey (see brain_client.js's
    _renderTtsLight) -- there's no engine at all to check reachability for. */
 #tts-light {
-  right: 116px;
+  right: 90px;
 }
 
 /* Sits left of #harness-light, same row -- text pill rather than a plain

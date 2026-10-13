@@ -35,7 +35,7 @@ talk to her from your PC, or from your phone over your home network or [Tailscal
 The shipped default avatar in the Neon UI style (Settings → UI Style), with the chat history and Settings open:
 
 - **top left:** chat history (with Resend Last and Clear Chat, and 👍/👎 on her replies)
-- **top right:** the **RP** badge (lit while role-play is on), three status lights (Brain connection, harness, speech engine), and **Settings**
+- **top right:** the **RP** badge (lit while role-play is on), three status lights (harness, speech engine, Brain connection), and **Settings**
 - **right edge:** camera, screen capture, hold to talk
 - **bottom:** attach a picture or text file, the message box, and **Send**
 
