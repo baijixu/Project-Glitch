@@ -95,6 +95,7 @@ export class TrainingUI {
     const note = (text) => row.appendChild(Object.assign(document.createElement("div"), { className: "lesson-reason", textContent: text }));
     if (kind === "update") note(`Update this memory? Now: "${proposal.old}"`);
     if (kind === "retire") note("Retire this memory?");
+    if (kind === "soul") note(`Add this to her soul, under "${proposal.old}"? (Her weekly reflection; soul.md is backed up first.)`);
 
     const box = document.createElement("textarea");
     box.className = "settings-text-input training-fact";
@@ -117,6 +118,12 @@ export class TrainingUI {
     const meta = document.createElement("div");
     meta.className = "lesson-meta";
     const resolve = (extra) => this._send({ type: "resolve_memory_proposal", id: proposal.id, ...extra });
+    if (kind === "soul") {
+      meta.appendChild(this._button("✓ Add to soul", "Write it into soul.md (edit the wording first if you like)", () => box.value.trim() && resolve({ approve: true, fact: box.value.trim() })));
+      meta.appendChild(this._button("✕ Reject", "Leave her soul as it is", () => resolve({ approve: false }), true));
+      row.appendChild(meta);
+      return row;
+    }
     if (kind !== "add") {
       if (kind === "update") {
         meta.appendChild(this._button("✓ Update", "Save the new wording", () => box.value.trim() && resolve({ approve: true, fact: box.value.trim() })));
