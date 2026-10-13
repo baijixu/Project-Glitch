@@ -48,6 +48,9 @@ def extract(filename: str, data: bytes) -> str:
         text = "\n\n".join("".join(t.text or "" for t in p.iter(f"{w}t")) for p in body.iter(f"{w}p"))
     else:
         raise ValueError(f"she can read {', '.join(FORMATS)} files")
+    text = text.replace("\r\n", "\n")  # Windows line endings hide the paragraph breaks her pages end on
+    # A Project Gutenberg book opens and closes with its license -- she'd read that first.
+    text = re.sub(r"(?s)\A.*?^\*\*\* ?START OF TH(?:E|IS) PROJECT GUTENBERG[^\n]*\n|^\*\*\* ?END OF TH(?:E|IS) PROJECT GUTENBERG.*\Z", "", text, flags=re.MULTILINE)
     text = re.sub(r"\n{3,}", "\n\n", re.sub(r"[ \t]+", " ", text)).strip()
     if len(text) < 200:
         raise ValueError("no text in it to read -- a scanned PDF is pictures of pages")
