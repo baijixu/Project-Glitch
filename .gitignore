@@ -129,3 +129,5 @@ brain/library/
 brain/library.json
 # How far into a day her memory proposals have read (brain/learning.py).
 brain/proposed_through.json
+# When she last looked back on her week (brain/reflection.py).
+brain/reflection_last.txt

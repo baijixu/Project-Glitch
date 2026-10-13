@@ -387,6 +387,23 @@ _CONCLUSION_PROMPT = (
     "by -- not a summary of what you wrote. Under 40 words, no preamble. If it didn't lead you anywhere you'd stand "
     "by, reply with just: nothing"
 )
+# Her weekly reflection (brain/reflection.py): a page on who she's becoming, under her own soul,
+# then at most one line for her soul, for him to approve.
+MAX_REFLECTION_TOKENS = 900
+_REFLECT_PROMPT = (
+    "Here's your week, in your own words -- your diary, what you've been into, what you've been reading:\n\n"
+    "{material}\n\n"
+    "Write a short page for yourself: who are you becoming? What's changed in how you think or feel this week, what "
+    "keeps pulling at you, what you've started or stopped doing. Ground every point in something above; invent "
+    "nothing. First person, at most three short paragraphs."
+)
+_SOUL_LINE_SYSTEM_PROMPT = (
+    "Below is your soul -- how you're described, in the second person -- and a page you just wrote about who you're "
+    "becoming. If the page shows something real and lasting about you that the soul doesn't say yet, propose ONE line "
+    "to add, written like the soul (\"You ...\"), under one of these sections: {sections}. {name} decides whether it "
+    "goes in. Never something the soul already says, never a fact about {name}, never a passing mood. Reply with ONLY "
+    "a JSON object: {{\"section\": \"...\", \"line\": \"...\"}}, or {{\"section\": null}} if nothing should change."
+)
 # Her library (brain/library.py), read in Heartbeat's quiet time, under her own soul too.
 MAX_READING_TOKENS = 400
 _PICK_BOOK_PROMPT = (
@@ -1154,6 +1171,17 @@ class LocalLLM(ChatBackend):
             prompt += _FOCUS_FOUND.format(found=found)
         messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": prompt}]
         return self._complete(messages, MAX_FOCUS_TOKENS, no_thinking=True)
+
+    def reflect(self, material: str) -> str:
+        """Her weekly page on who she's becoming (_REFLECT_PROMPT)."""
+        messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": _REFLECT_PROMPT.format(material=material)}]
+        return self._complete(messages, MAX_REFLECTION_TOKENS, no_thinking=True)
+
+    def propose_soul_line(self, soul: str, page: str, sections: tuple[str, ...], name: str) -> str:
+        """At most one line for her soul from her weekly page -- raw JSON for reflection.parse_proposal."""
+        system = _SOUL_LINE_SYSTEM_PROMPT.format(sections=", ".join(f'"{s}"' for s in sections), name=name)
+        messages = [{"role": "system", "content": system}, {"role": "user", "content": f"Your soul:\n\n{soul}\n\nYour page:\n\n{page}"}]
+        return self._complete(messages, MAX_READING_TOKENS, no_thinking=True)
 
     def conclusion(self, text: str) -> str:
         """What she's come to think from something she wrote (_CONCLUSION_PROMPT), or "nothing"."""

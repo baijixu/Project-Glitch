@@ -444,6 +444,18 @@ async def resolve_memory_proposal(websocket: websockets.ServerConnection, data: 
     proposal = training.get_pending(proposal_id)
     if proposal is None:
         error = "that proposal is no longer in the list"
+    elif data.get("approve") and proposal.get("kind") == "soul":
+        import reflection  # it imports heartbeat, which imports this module
+
+        line = " ".join(str(data.get("fact") or proposal["fact"]).split())
+        try:
+            reflection.add_to_soul(proposal["old"], line)
+        except (ValueError, OSError) as exc:
+            print(f"[brain] adding to her soul failed: {exc!r}")
+            error = "couldn't add it to her soul -- it's still in the list"
+        else:
+            training.remove_pending(proposal_id)
+            brain.llm.update_soul(persona.effective_soul())  # an edit, not a new her: the conversation carries on
     elif data.get("approve") and proposal.get("kind") in ("update", "retire"):
         retire = proposal["kind"] == "retire" or bool(data.get("retire"))
         fact = str(data.get("fact") or proposal["fact"]).strip()

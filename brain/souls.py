@@ -18,7 +18,7 @@ from pathlib import Path
 
 from store import Choice, NamedStore
 
-SOUL_MD_PATH = Path(__file__).parent / "soul.md"  # her main soul -- see the module docstring; written only by write_main_soul
+SOUL_MD_PATH = Path(__file__).parent / "soul.md"  # her main soul -- see the module docstring; written only by write_main_soul (his editor, or a reflection line he approved)
 RP_SOUL_PATH = Path(__file__).parent / "rp_soul.md"  # the selected role-play soul -- everything here that "loads" a soul writes this
 
 # Splits description from examples in a soul file -- and reads as a heading in her prompt.
@@ -60,7 +60,7 @@ def read_soul(name: str) -> tuple[str, str]:
 
 
 def write_main_soul(content: str) -> None:
-    """Overwrites soul.md -- the only writer of it, called only by Settings' editor."""
+    """Overwrites soul.md -- the only writer of it, called by Settings' editor and a weekly-reflection line he approved (reflection.py)."""
     SOUL_MD_PATH.write_text(content, encoding="utf-8")
 
 

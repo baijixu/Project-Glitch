@@ -21,6 +21,7 @@ import memory
 import persona
 import protocol
 import training
+import reflection
 import upkeep
 from hub import Brain
 
@@ -96,6 +97,9 @@ async def journal_loop(brain: Brain) -> None:
                     learning.mark_proposed(day, log)
                     if upkeep.due(datetime.now()):
                         await upkeep.run(brain)
+                        await learning.broadcast_training_state()
+                    if reflection.due(datetime.now()):  # her week, looked back on, and maybe a line for her soul
+                        await reflection.run(brain)
                         await learning.broadcast_training_state()
         except Exception as exc:  # never let one bad night stop the loop
             print(f"[journal] couldn't write today's entry: {exc!r}")
