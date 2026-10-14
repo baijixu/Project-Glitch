@@ -11,6 +11,7 @@ With memory training on, the same day's log is where her memory proposals come f
 
 import asyncio
 import re
+import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -68,6 +69,16 @@ async def set_status(text: str) -> None:
     await hub.broadcast(protocol.brain_status(text))
 
 
+async def progress_exam() -> None:
+    """tools/progress.py in its own process (~45 minutes): her weekly scores, brain/self/progress/."""
+    exam = await asyncio.create_subprocess_exec(
+        sys.executable, str(Path(__file__).parent.parent / "tools" / "progress.py"),
+        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
+    )
+    _, errors = await exam.communicate()
+    print("[journal] her weekly exam is done" if exam.returncode == 0 else f"[journal] her weekly exam failed: {errors.decode(errors='replace')[-500:]}")
+
+
 async def journal_loop(brain: Brain) -> None:
     delay = 0  # check right away: a restart after JOURNAL_HOUR shouldn't push her diary back half an hour
     while True:
@@ -99,6 +110,7 @@ async def journal_loop(brain: Brain) -> None:
                 if reflection.due(datetime.now()):  # her week, looked back on, and maybe a line for her soul
                     await reflection.run(brain)
                     await learning.broadcast_training_state()
+                    hub.spawn(progress_exam())  # and her weekly exam, the same night
         except Exception as exc:  # never let one bad night stop the loop
             print(f"[journal] couldn't write today's entry: {exc!r}")
         finally:
