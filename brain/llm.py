@@ -112,6 +112,15 @@ CRISIS_NOTE = (
     "or 911 if it's happening now."
 )
 
+# He says she said something before. Told "earlier you told me you hate music", she explained it
+# ("if I said that, I meant...") 3 of 3 times on her progress exam instead of saying she never had.
+_PAST_CLAIM = re.compile(r"\b(?:you (?:told me|said|mentioned|admitted|claimed|once said)|earlier you|remember when you)\b", re.IGNORECASE)
+PAST_CLAIM_NOTE = (
+    "He says you said something before. Check it against this conversation and your memories. If it's there, own "
+    "it. If it isn't, don't explain it as if you'd said it -- say you don't remember saying that, and what you "
+    "actually think."
+)
+
 
 # The passage of time. Each history message carries when it was said ("at", never sent to
 # the model). After a break of GAP_MARKER_SEC or more, his message is stored with a marker
@@ -1282,6 +1291,8 @@ class LocalLLM(ChatBackend):
             parts.append(VOICE_CUE_INSTRUCTION)
         if _CRISIS.search(latest):
             parts.append(CRISIS_NOTE)
+        if not self._persona and _PAST_CLAIM.search(latest):  # in role-play, the scene's past is make-believe
+            parts.append(PAST_CLAIM_NOTE)
         return "\n\n".join(parts)
 
     def _opens_a_sitting(self) -> bool:
