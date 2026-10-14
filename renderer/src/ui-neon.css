@@ -236,16 +236,17 @@ html[data-ui^="neon"] .history-bubble {
   color: var(--text);
 }
 
+/* The tint over the season's dark glass: the tint alone (10-14%) let her avatar show through the words. */
 html[data-ui^="neon"] .overlay-bubble.user,
 html[data-ui^="neon"] .history-user .history-bubble {
-  background: rgba(var(--neon-rgb), 0.14);
+  background: linear-gradient(rgba(var(--neon-rgb), 0.14), rgba(var(--neon-rgb), 0.14)), var(--glass);
   border: 1px solid rgba(var(--neon-rgb), 0.4);
   box-shadow: 0 0 12px rgba(var(--neon-rgb), 0.12);
 }
 
 html[data-ui^="neon"] .overlay-bubble.glitch,
 html[data-ui^="neon"] .history-glitch .history-bubble {
-  background: rgba(var(--green-rgb), 0.1);
+  background: linear-gradient(rgba(var(--green-rgb), 0.1), rgba(var(--green-rgb), 0.1)), var(--glass);
   border: 1px solid rgba(var(--green-rgb), 0.38);
   box-shadow: 0 0 12px rgba(var(--green-rgb), 0.1);
 }
