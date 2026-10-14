@@ -15,6 +15,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import conversation
+import curiosity
 import hub
 import learning
 import persona
@@ -88,6 +89,8 @@ async def journal_loop(brain: Brain) -> None:
                 JOURNAL_DIR.mkdir(exist_ok=True)
                 path.write_text(f"# {path.stem} -- {day:%A %d %B}\n\n{text.strip()}\n", encoding="utf-8")
                 print(f"[journal] wrote {path.name}")
+                if (question := curiosity.question_after("What I.m wondering", text)) and curiosity.read_active():
+                    curiosity.add_question(question)  # his inbox, and her next reach-out
                 await learning.lesson_from_diary(text, brain)  # after the lock, like her memory proposals
                 await learning.propose_unread(day, brain)  # after the lock: his replies first
                 if learning.can_propose(brain) and upkeep.due(datetime.now()):

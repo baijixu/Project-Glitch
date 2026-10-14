@@ -45,7 +45,7 @@ PACING_PATH = _DIR / "curiosity_pacing.json"
 
 MAX_OPEN = 4  # she never hoards more than this waiting to be asked
 MAX_CLOSED_KEPT = 30  # remembered so the same question isn't proposed again
-MAX_QUESTION_CHARS = 200
+MAX_QUESTION_CHARS = 300  # her diary's questions run long: 6 of 8 in October were over 200 (the longest 287)
 OFFER_EVERY_TURNS = 6  # at least this many of the user's messages between questions she's nudged to ask
 PROPOSE_EVERY_TURNS = 8  # how often the background "what am I curious about?" call runs
 MAX_OFFERS_UNUSED = 3  # closed unasked if offered this many times and she never worked it in
@@ -377,20 +377,13 @@ def question_to_reach_out_with() -> dict | None:
     return pool[0] if pool else None
 
 
-_WONDERING = re.compile(r"^#+ What I.m wondering[^\n]*\n+(.+?)\s*(?=^#|\Z)", re.MULTILINE | re.DOTALL)
-
-
-def take_diary_question(entry: str) -> str:
-    """What her diary entry (journal.py) says she's wondering, the first time it's asked for --
-    so she reaches out with each entry's question once -- else ""."""
-    match = _WONDERING.search(entry)
-    pacing = _pacing()
-    key = entry.split("\n", 1)[0]  # "# 2026-10-06 -- Tuesday 06 October"
-    if not match or pacing.get("diary_asked") == key:
-        return ""
-    pacing["diary_asked"] = key
-    _save_pacing(pacing)
-    return match[1].strip()[: MAX_QUESTION_CHARS * 2]
+def question_after(heading: str, entry: str) -> str:
+    """The first question after `heading` (a pattern) in one of her journal entries, or "" -- under
+    a "### heading", a plain line or on the heading's own line, however she wrote it that night.
+    Each heading it's used for is her entry's last, so nothing after it is another section's."""
+    after = re.search(heading + r"(.*)", entry, re.DOTALL | re.IGNORECASE)
+    question = re.search(r"[^\n.!?]*\?", after[1]) if after else None
+    return question[0].strip(" -*#\"") if question else ""
 
 
 def mark_reached_out(question_id: str | None) -> None:

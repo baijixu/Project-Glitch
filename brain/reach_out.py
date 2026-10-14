@@ -176,15 +176,14 @@ async def _reach_out(brain: Brain, *, test: bool = False) -> None:
     """
     question = None if test else curiosity.question_to_reach_out_with()
     journal = conversation.read_latest_journal()
-    wondering = "" if test or question else curiosity.take_diary_question(journal)  # no saved question: her diary's
     brain.llm.set_user_info(persona.effective_user_info())
     brain.llm.set_left_off(conversation.read_left_off())  # she only reaches out outside role-play
     brain.llm.set_journal(journal)
     brain.llm.set_sampling(sampling.active_values())
     brain.llm.set_curiosity("")  # the reach-out note carries its own instruction
-    print("[brain] a quiet spell -- reaching out" + (f" with {question['text']!r}" if question else " with her diary's question" if wondering else ""))
+    print("[brain] a quiet spell -- reaching out" + (f" with {question['text']!r}" if question else ""))
     try:
-        result = await asyncio.to_thread(brain.llm.reach_out, question["text"] if question else wondering or None)
+        result = await asyncio.to_thread(brain.llm.reach_out, question["text"] if question else None)
         text, mood = result.text, result.mood
     finally:
         curiosity.mark_reached_out(question["id"] if question else None)
@@ -195,7 +194,7 @@ async def _reach_out(brain: Brain, *, test: bool = False) -> None:
     await hub.debug_broadcast(
         "curiosity",
         f"reached out {'(test from Settings)' if test else 'after a quiet spell'} "
-        f"({'with a saved question' if question else 'with her diary question' if wondering else 'a check-in'}, {len(text)} chars, "
+        f"({'with a saved question' if question else 'a check-in'}, {len(text)} chars, "
         f"to {len(hub.RENDERER_CONNECTIONS)} device(s))",
     )
     await hub.broadcast(protocol.set_expression(face(mood), 1.0))

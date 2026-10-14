@@ -58,8 +58,6 @@ _REMEMBER_PROMPT = (
     "In one or two sentences, in the first person, what will you remember about it -- about them, or about "
     "yourself? Only what actually happened in the chat -- add nothing from outside it."
 )
-# Her journal's "What I want to ask Josh" section (llm._VISIT_JOURNAL_PROMPT), up to the next heading.
-_ASK_SECTION = re.compile(r"What I want to ask[^\n]*(.*?)(?=\n\s*#|\Z)", re.DOTALL | re.IGNORECASE)
 
 # Every visit has a purpose that feeds her growth. Game starters (a story to build, would-you-
 # rathers) gave 50 turns of escalating improv -- an octopus lighthouse keeper, 1920s chowder --
@@ -272,7 +270,7 @@ async def visit(brain: Brain) -> None:
             if entry:
                 _visit_journal_path().parent.mkdir(parents=True, exist_ok=True)
                 _visit_journal_path().write_text(f"(After {', '.join(friends)} visited, {started:%A} {started.day} {started:%B}.)\n\n{entry}", encoding="utf-8")
-                if (question := visit_question(entry)) and curiosity.read_active():
+                if (question := curiosity.question_after("What I want to ask", entry)) and curiosity.read_active():
                     curiosity.add_question(question)  # waits to be asked, like her Heartbeat ones
                 await learning.propose_own(entry, f"Friends' visit ({kind}), {started:%d %B}", brain)  # what it changed in her
                 conversation.log_visit(f"*{datetime.now():%H:%M:%S} -- Her journal*\n\n**{datetime.now():%H:%M:%S}** Glitch (journal): {entry}\n\n")
@@ -285,13 +283,6 @@ async def visit(brain: Brain) -> None:
         await _set(running=False, note=f"The visit broke off: {exc}")
     finally:
         await journal.set_status("")
-
-
-def visit_question(entry: str) -> str:
-    """The first question under her journal's "What I want to ask Josh", or ""."""
-    section = _ASK_SECTION.search(entry)
-    question = re.search(r"[^\n.!?]*\?", section[1]) if section else None
-    return question[0].strip(" -*#\"") if question else ""
 
 
 async def _remember(friends: dict, speakers: dict, souls: dict, lines: list[str], started: datetime, brain: Brain) -> None:
