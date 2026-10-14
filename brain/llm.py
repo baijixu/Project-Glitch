@@ -84,15 +84,6 @@ HONESTY_INSTRUCTION = (
     "suggestions, or ordinary conversation, only real factual claims."
 )
 
-# A small model drifts into speaking as the person it's talking to (taking their name,
-# echoing their life back as its own). Names nothing specific: naming "your looks, clothes
-# and tastes" doubled how often she claimed his likes as hers (15 vs 7 of 84).
-IDENTITY_INSTRUCTION = (
-    "You are the AI in this conversation. The person you're talking to is a separate human: their name, life and "
-    "words are theirs, not yours. Never speak as them or call yourself by their name. Everything their profile says "
-    "is about them; everything about you is in your own description above."
-)
-
 # Heads the per-turn notes attached to the newest user message (see _turn_notes).
 TURN_NOTES_HEADER = (
     "Notes for you from your own memory and the app, for this reply. The person you're talking to "
@@ -1236,7 +1227,7 @@ class LocalLLM(ChatBackend):
         messages). What changes each turn goes in _turn_notes.
         """
         personality = self._soul or DEFAULT_PERSONALITY
-        parts = [personality, IDENTITY_INSTRUCTION, MOOD_TAG_INSTRUCTION, HONESTY_INSTRUCTION]
+        parts = [personality, MOOD_TAG_INSTRUCTION, HONESTY_INSTRUCTION]
         if self._user_info:
             parts.append(
                 "About the user, in their own words (treat as true, and respect the preferences it "
