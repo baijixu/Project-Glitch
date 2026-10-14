@@ -539,7 +539,8 @@ something it can do (make a picture, read a feed, handle a file), her model hand
 tells you what came back in her own words. One task a reply, each a fresh conversation there, and her reply waits for it (minutes, for
 an agent run). It's offered only on your own messages, never in her background jobs or in private chat, and not after a web
 search in the same reply, so instructions planted in a web page can't reach a harness that runs things on your PC. A reply
-with a task in it isn't saved as a memory of you. Pick **None** in the Harness dropdown to turn it off.
+with a task in it isn't saved as a memory of you. Pick **None** in the Harness dropdown to turn it off. Hermes refuses a
+model served with less than 64K context; on a 24 GB card a 27B fits at 64K with the KV cache at q4_0.
 
 ### Chat logs
 
