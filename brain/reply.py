@@ -327,7 +327,7 @@ async def reply_to(
 
         # In the background. After a web search or a picture her reply is about the world, not
         # him, so only his side is remembered -- no headlines or "the keyboard has blue keys".
-        omit_reply = reply.used_web_search or bool(image_b64)
+        omit_reply = reply.used_tool or bool(image_b64)
         hub.spawn(learning.maybe_retain_memory(websocket, text, "" if omit_reply else reply_text, brain, asked=answered))
         if curious:
             curiosity.end_turn(reply_text)

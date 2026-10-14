@@ -26,6 +26,7 @@ import httpx
 from openai import BadRequestError, OpenAI
 
 import conversation
+import harness
 import web_search
 
 # The avatar's expression presets; "neutral" means none of them.
@@ -523,7 +524,7 @@ _LESSON_SYSTEM_PROMPT = (
     "Never guess a new lesson from a bare rating."
 )
 
-# The one tool offered when web search is on. Ollama's /api/chat takes this OpenAI shape too.
+# Offered when web search is on. Ollama's /api/chat takes this OpenAI shape too.
 WEB_SEARCH_TOOL = {
     "type": "function",
     "function": {
@@ -572,6 +573,68 @@ def _run_web_search_tool(arguments: dict) -> str:
         "alongside real releases, with nothing in the title/snippet reliably telling them apart: don't "
         "present something as an artist's real, official work unless the source clearly is official -- "
         "hedge instead (e.g. \"this might be a fan-made AI cover, not a real release\") when it isn't."
+    )
+
+
+# Her hands: the harness picked in Settings -> Harness does a task for her while she stays
+# herself (soul, memory, voice), instead of taking over as her brain.
+ASK_HERMES_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "ask_hermes",
+        "description": (
+            "Hand a task to Hermes, the agent that works for you, and get back its report. Hermes has "
+            "skills you don't: making images, reading RSS feeds, arXiv, Reddit or YouTube, handling "
+            "files and documents, running things on Josh's PC. Use it only when Josh asks you to do "
+            "something like that -- never for talking, your opinions or what you remember. It can "
+            "take minutes."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {"task": {"type": "string", "description": "The whole task, said plainly"}},
+            "required": ["task"],
+        },
+    },
+}
+# An agent run with several tool steps, or an image on PC2, takes minutes.
+HERMES_TIMEOUT_SEC = 900
+
+
+def _hands() -> dict | None:
+    """The harness picked in Settings -> Harness ({"endpoint", "model", "api_key"}), or None
+    for none -- and none in private chat, since the harness keeps its own memory."""
+    name = harness.read_selected_harness_name()
+    if not name or conversation.PRIVATE.read():
+        return None
+    try:
+        config = harness.read_harness(name)
+    except (OSError, ValueError):
+        return None
+    return config if config.get("endpoint") else None
+
+
+def _run_hermes_tool(arguments: dict) -> str:
+    task = (arguments or {}).get("task", "").strip()
+    hands = _hands()
+    if not task or not hands:
+        return "No task given." if hands else "Hermes isn't set up -- tell Josh you can't do that right now."
+    print(f"[hermes] task: {task!r}")
+    # No session id: each task starts a fresh Hermes conversation.
+    client = OpenAI(
+        base_url=hands["endpoint"], api_key=hands.get("api_key") or "not-needed", timeout=HERMES_TIMEOUT_SEC, max_retries=0
+    )
+    try:
+        response = client.chat.completions.create(
+            model=hands.get("model") or "", messages=[{"role": "user", "content": task}]
+        )
+        report = _extract_mood(_reply_content(response.choices[0].message.content))[1]
+    except Exception as exc:  # noqa: BLE001 -- any failure is hers to tell, not a crash
+        print(f"[hermes] failed: {exc!r}")
+        return f"Hermes didn't answer ({type(exc).__name__}) -- tell Josh it didn't work."
+    print(f"[hermes] report: {report[:200]!r}")
+    return (
+        f"BEGIN HERMES REPORT\n{report or '(empty)'}\nEND HERMES REPORT\n\n"
+        "This is what Hermes says it did. Tell Josh in your own words, and don't claim more than it says."
     )
 
 
@@ -716,7 +779,7 @@ class Reply:
     usage: dict = field(default_factory=dict)
     trimmed: dict | None = None  # what _trim_history dropped this turn: {"dropped", "kept", "budget"}
     fell_back: bool = False  # thinking ran out of room, so it answered again with thinking off
-    used_web_search: bool = False  # search results are woven in, so the reply isn't a memory of the user
+    used_tool: bool = False  # search results or a Hermes report are woven in, so the reply isn't a memory of the user
 
 
 class ChatBackend:
@@ -1003,10 +1066,17 @@ class LocalLLM(ChatBackend):
                 return result["content"]
             working.append(result["raw_message"])
             for call in result["tool_calls"]:
-                if call["name"] == "web_search":
-                    if into is not None:
-                        into.used_web_search = True
+                offered = any(t["function"]["name"] == call["name"] for t in tools or [])
+                if offered and into is not None:
+                    into.used_tool = True
+                if offered and call["name"] == "web_search":
                     output = _run_web_search_tool(call["arguments"])
+                    # Web pages may carry planted instructions: nothing read there reaches Hermes.
+                    tools = [t for t in tools if t is not ASK_HERMES_TOOL]
+                elif offered and call["name"] == "ask_hermes":
+                    output = _run_hermes_tool(call["arguments"])
+                    # One task a reply: given a thin report she re-asked four times, each an agent run.
+                    tools = [t for t in tools if t is not ASK_HERMES_TOOL]
                 else:
                     output = "Unknown tool."
                 working.append({"role": "tool", "tool_call_id": call["id"], "content": output})
@@ -1345,14 +1415,19 @@ class LocalLLM(ChatBackend):
         """Answers his message: text without the mood tag, and the mood. on_text gets the
         raw reply as it streams. A picture (image_b64) goes as the OpenAI multimodal list --
         a model without vision fails like a bad model name. web_search_enabled offers
-        WEB_SEARCH_TOOL.
+        WEB_SEARCH_TOOL; a harness picked in Settings offers ASK_HERMES_TOOL -- only here,
+        on his own message, never in her background jobs.
         """
         now = _now()
         content = self._mark_gap(_image_content(user_text, image_b64, image_mime), now)
         self._history.append({"role": "user", "content": content, **_said(now)})
         result = Reply(trimmed=self._trim_history())
-        tools = [WEB_SEARCH_TOOL] if web_search_enabled else None
-        if not self._answer(self._request_messages(), tools, result, on_text, on_thinking):
+        tools = []
+        if web_search_enabled:
+            tools.append(WEB_SEARCH_TOOL)
+        if _hands():
+            tools.append(ASK_HERMES_TOOL)
+        if not self._answer(self._request_messages(), tools or None, result, on_text, on_thinking):
             self._history_changed()  # the user's own turn stays (see cancel_reply)
             return Reply(trimmed=result.trimmed)  # cancelled while in flight -- discarded, never reaches _history
         if not result.text.strip():
