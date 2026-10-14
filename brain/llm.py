@@ -171,8 +171,14 @@ def _message_time(message: dict) -> datetime | None:
 
 
 def _for_model(message: dict) -> dict:
-    """A history message as the model gets it -- without the "at" time."""
-    return {k: v for k, v in message.items() if k != "at"}
+    """A history message as the model gets it -- without the "at" time or the private flag."""
+    return {k: v for k, v in message.items() if k not in ("at", "private")}
+
+
+def _said(now: datetime) -> dict:
+    """When a message was said, and whether in private chat -- conversation.save_state marks
+    a private stretch off in conversation.json, so whoever reads the file skips it."""
+    return {"at": now.isoformat(timespec="seconds"), **({"private": True} if conversation.PRIVATE.read() else {})}
 
 
 def strip_gap_marker(text: str) -> str:
@@ -1332,7 +1338,7 @@ class LocalLLM(ChatBackend):
         """
         now = _now()
         content = self._mark_gap(_image_content(user_text, image_b64, image_mime), now)
-        self._history.append({"role": "user", "content": content, "at": now.isoformat(timespec="seconds")})
+        self._history.append({"role": "user", "content": content, **_said(now)})
         result = Reply(trimmed=self._trim_history())
         tools = [WEB_SEARCH_TOOL] if web_search_enabled else None
         if not self._answer(self._request_messages(), tools, result, on_text, on_thinking):
@@ -1343,7 +1349,7 @@ class LocalLLM(ChatBackend):
             self._history_changed()
             return result
         # Stored without the mood tag -- the system prompt alone keeps the model tagging.
-        self._history.append({"role": "assistant", "content": result.text, "at": _now().isoformat(timespec="seconds")})
+        self._history.append({"role": "assistant", "content": result.text, **_said(_now())})
         self._history_changed()
         return result
 
@@ -1436,7 +1442,7 @@ class LocalLLM(ChatBackend):
         result = Reply()
         if not self._answer(messages, None, result) or not result.text.strip():
             return Reply(mood=result.mood)  # cleared or cancelled meanwhile, or nothing to say
-        self._history.append({"role": "assistant", "content": result.text, "at": _now().isoformat(timespec="seconds")})
+        self._history.append({"role": "assistant", "content": result.text, **_said(_now())})
         self._history_changed()
         return result
 

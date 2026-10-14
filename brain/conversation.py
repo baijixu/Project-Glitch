@@ -6,7 +6,7 @@
   role-play is toggled. Separate files, so a role-play scene can't overwrite the
   normal conversation: turning role-play off brings it back, and turning it on
   resumes the last scene. Each file is tagged with its mode and only restored into it. Pictures are stored as a short "[picture]" note, not
-  the image data.
+  the image data. A private chat stays in it (his phone syncs from it), between PRIVATE_START and PRIVATE_END.
 
 * chat_logs/YYYY-MM-DD.md -- a plain, timestamped, append-only log of every
   exchange (none in private chat), one file per day, for the user to read.
@@ -52,7 +52,25 @@ def text_of(content) -> str:
 def _storable(message: dict) -> dict:
     """A history message with any image replaced by PICTURE_NOTE."""
     when = {"at": message["at"]} if isinstance(message.get("at"), str) else {}  # when it was said (llm.py)
-    return {"role": message.get("role"), "content": text_of(message.get("content")), **when}
+    private = {"private": True} if message.get("private") else {}
+    return {"role": message.get("role"), "content": text_of(message.get("content")), **when, **private}
+
+
+# A private stretch, marked off in conversation.json: kept so the chat still syncs to his phone,
+# but anyone reading the file skips from START to END. Not messages: load_state drops them.
+PRIVATE_START = {"role": "private", "content": "=== PRIVATE CHAT START -- skip everything until PRIVATE CHAT END ==="}
+PRIVATE_END = {"role": "private", "content": "=== PRIVATE CHAT END ==="}
+
+
+def _marked(messages: list[dict]) -> list[dict]:
+    """`messages` with PRIVATE_START before each private stretch and PRIVATE_END after it."""
+    out, inside = [], False
+    for message in messages:
+        if bool(message.get("private")) != inside:
+            inside = not inside
+            out.append(PRIVATE_START if inside else PRIVATE_END)
+        out.append(message)
+    return out
 
 
 def _path(mode: str):
@@ -62,7 +80,7 @@ def _path(mode: str):
 def save_state(history: list[dict], mode: str) -> None:
     """Best-effort: a disk problem must never break a reply."""
     try:
-        data = {"mode": mode, "saved": datetime.now().isoformat(timespec="seconds"), "messages": [_storable(m) for m in history]}
+        data = {"mode": mode, "saved": datetime.now().isoformat(timespec="seconds"), "messages": _marked([_storable(m) for m in history])}
         path = _path(mode)
         tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -80,7 +98,8 @@ def load_state(mode: str) -> list[dict]:
     if not isinstance(data, dict) or data.get("mode") != mode or not isinstance(data.get("messages"), list):
         return []
     return [
-        {"role": m["role"], "content": m["content"], **({"at": m["at"]} if isinstance(m.get("at"), str) else {})}
+        {"role": m["role"], "content": m["content"], **({"at": m["at"]} if isinstance(m.get("at"), str) else {}),
+         **({"private": True} if m.get("private") is True else {})}
         for m in data["messages"]
         if isinstance(m, dict)
         and m.get("role") in ("user", "assistant")
