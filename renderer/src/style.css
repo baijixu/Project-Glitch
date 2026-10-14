@@ -31,7 +31,9 @@ body {
   object-fit: contain;
 }
 
-#status {
+/* Bottom left, by the chat box: "processing..." / "thinking 350" / "writing" while she works on
+   a reply, over the status line ("Friends are over (3/20)..."), small pills that stay out of her way. */
+#status-stack {
   position: fixed;
   left: 20px;
   bottom: 20px;
@@ -42,6 +44,15 @@ body {
      the chat bar instead of just visually near it. Same fix already
      applied to #memory-toast for the identical reason. */
   z-index: 22;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  pointer-events: none;
+}
+
+#status,
+#processing-indicator {
   color: #eee;
   background: rgba(0, 0, 0, 0.4);
   padding: 4px 12px;
@@ -50,9 +61,9 @@ body {
   font-weight: 500;
 }
 
-#status:empty {
-  padding: 0;
-  background: none;
+#status:empty,
+#processing-indicator[hidden] {
+  display: none;
 }
 
 #subtitle {
@@ -506,37 +517,6 @@ body.overlay-chat-active #overlay-edit-button {
 .inbox-question {
   margin-bottom: 6px;
   color: #e6e8f0;
-}
-
-/* "processing..." beside the chat-history flower while she works on a reply.
-   Same height and backing as the corner buttons, so it reads over any avatar. */
-#processing-indicator {
-  position: fixed;
-  top: 16px;
-  left: 70px; /* the flower's 16px + 44px, plus a 10px gap */
-  z-index: 20;
-  height: 44px;
-  padding: 0 14px;
-  border-radius: 22px;
-  background: rgba(0, 0, 0, 0.4);
-  color: #eee;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  pointer-events: none;
-}
-
-#processing-indicator[hidden] {
-  display: none;
-}
-
-/* Phones: the top row can't fit it beside the lights and RP badge, so it
-   drops under the flower instead. */
-@media (max-width: 480px) {
-  #processing-indicator {
-    top: 124px; /* under the flower and the inbox */
-    left: 16px;
-  }
 }
 
 .processing-dot {

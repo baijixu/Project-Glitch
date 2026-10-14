@@ -158,15 +158,7 @@ html[data-ui^="neon"] #mic-button:hover:not(:disabled) {
   transform: none;
 }
 
-html[data-ui^="neon"] #processing-indicator {
-  border-radius: 12px;
-  color: var(--neon);
-  font-size: 12px;
-  letter-spacing: 3px;
-  text-transform: uppercase;
-  text-shadow: 0 0 8px rgba(var(--neon-rgb), 0.7);
-}
-
+html[data-ui^="neon"] #processing-indicator,
 html[data-ui^="neon"] #status:not(:empty),
 html[data-ui^="neon"] #memory-toast {
   border-radius: 8px;
