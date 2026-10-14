@@ -76,7 +76,7 @@ async def reach_out_loop(brain: Brain) -> None:
                 and not brain.reply_lock.locked()
                 and curiosity.should_reach_out(time.time())
             ):
-                async with brain.reply_lock:
+                async with brain.busy("Reaching out..."):
                     await _reach_out(brain)
         except Exception as exc:  # never let one bad attempt stop the loop
             print(f"[brain] reaching out failed: {exc!r}")

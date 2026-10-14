@@ -349,7 +349,8 @@ async def propose_unread(day: date, brain: Brain) -> None:
     unread = unproposed(day, log)
     mark_proposed(day, log)
     if f" {name}: " in unread:
-        await propose_from_log(unread, day, name, brain)
+        async with hub.doing("Going over your chat for memories..."):
+            await propose_from_log(unread, day, name, brain)
 
 
 MAX_CONCLUSION_TOKENS = 400
@@ -371,7 +372,7 @@ async def propose_own(text: str, source: str, brain: Brain) -> None:
     if not (brain.llm.owns_conversation and memory.read_memory_active() and memory.server_backed()):
         return
     try:
-        async with brain.reply_lock:
+        async with brain.busy("Working out what she thinks..."):
             fact = (await asyncio.to_thread(brain.llm.under_soul, _CONCLUSION_PROMPT.format(text=text), MAX_CONCLUSION_TOKENS)).strip().strip('"')
         if not fact or fact.lower().rstrip(".") == "nothing" or len(fact) > training.MAX_FACT_CHARS:
             return

@@ -20,7 +20,6 @@ import curiosity
 import hub
 import learning
 import persona
-import protocol
 import reflection
 import upkeep
 from hub import Brain
@@ -59,23 +58,14 @@ def day_thoughts(day: date) -> str:
     return log.split("\n", 1)[-1].strip()[-MAX_THOUGHT_CHARS:]  # without the "# Thoughts -- <day>" title
 
 
-# Shown in every device's status box while she writes (handshake.py sends it to one that connects meanwhile).
-STATUS = ""
-
-
-async def set_status(text: str) -> None:
-    global STATUS
-    STATUS = text
-    await hub.broadcast(protocol.brain_status(text))
-
-
 async def progress_exam() -> None:
     """tools/progress.py in its own process (~45 minutes): her weekly scores, brain/self/progress/."""
     exam = await asyncio.create_subprocess_exec(
         sys.executable, str(Path(__file__).parent.parent / "tools" / "progress.py"),
         stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
     )
-    _, errors = await exam.communicate()
+    async with hub.doing("Taking her weekly exam..."):
+        _, errors = await exam.communicate()
     print("[journal] her weekly exam is done" if exam.returncode == 0 else f"[journal] her weekly exam failed: {errors.decode(errors='replace')[-500:]}")
 
 
@@ -93,8 +83,7 @@ async def journal_loop(brain: Brain) -> None:
             log = day_log(day, name)
             if not log:
                 continue
-            await set_status("Journaling...")
-            async with brain.reply_lock:  # one model, one job at a time
+            async with brain.busy("Writing her diary..."):  # one model, one job at a time
                 text = await asyncio.to_thread(brain.llm.write_diary, log, name, day_thoughts(day))
             if text.strip():
                 JOURNAL_DIR.mkdir(exist_ok=True)
@@ -105,7 +94,8 @@ async def journal_loop(brain: Brain) -> None:
                 await learning.lesson_from_diary(text, brain)  # after the lock, like her memory proposals
                 await learning.propose_unread(day, brain)  # after the lock: his replies first
                 if learning.can_propose(brain) and upkeep.due(datetime.now()):
-                    await upkeep.run(brain)
+                    async with hub.doing("Tidying her memories..."):
+                        await upkeep.run(brain)
                     await learning.broadcast_training_state()
                 if reflection.due(datetime.now()):  # her week, looked back on, and maybe a line for her soul
                     await reflection.run(brain)
@@ -113,6 +103,3 @@ async def journal_loop(brain: Brain) -> None:
                     hub.spawn(progress_exam())  # and her weekly exam, the same night
         except Exception as exc:  # never let one bad night stop the loop
             print(f"[journal] couldn't write today's entry: {exc!r}")
-        finally:
-            if STATUS:
-                await set_status("")

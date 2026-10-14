@@ -31,18 +31,13 @@ body {
   object-fit: contain;
 }
 
-/* Bottom left, by the chat box: "processing..." / "thinking 350" / "writing" while she works on
-   a reply, over the status line ("Friends are over (3/20)..."), small pills that stay out of her way. */
+/* Just above the chat bar, at its left: "processing..." / "thinking 350" / "writing" while she works
+   on a reply, over the status line -- whatever she's busy with ("Reading Moby-Dick...", "Friends are
+   over (3/20)...", hub.doing) -- small pills that stay out of her way. */
 #status-stack {
   position: fixed;
-  left: 20px;
-  bottom: 20px;
-  /* #chat-bar sits at z-index:21 and its bounding box overlaps this
-     corner (bottom:8-15px + its own ~40px height reaches up past
-     bottom:20px) -- without this, any status text (e.g. the camera/
-     desktop "access denied" messages) renders genuinely hidden behind
-     the chat bar instead of just visually near it. Same fix already
-     applied to #memory-toast for the identical reason. */
+  left: clamp(8px, 3vw, 20px); /* #chat-bar's left edge */
+  bottom: 62px; /* clear of #chat-bar, level with #memory-toast */
   z-index: 22;
   display: flex;
   flex-direction: column;

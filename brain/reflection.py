@@ -92,7 +92,7 @@ async def run(brain: Brain, now: datetime | None = None) -> None:
     if not material:
         return
     name = persona.user_name() or "him"
-    async with brain.reply_lock:
+    async with brain.busy("Looking back on her week..."):
         page = (await asyncio.to_thread(brain.llm.under_soul, _PAGE_PROMPT.format(material=material), MAX_PAGE_TOKENS)).strip()
     if not page:
         return
@@ -104,7 +104,7 @@ async def run(brain: Brain, now: datetime | None = None) -> None:
     if not learning.can_propose(brain):  # a soul line waits in the memory review list
         return
     soul = souls.read_main_soul()
-    async with brain.reply_lock:
+    async with brain.busy("Thinking about her soul..."):
         raw = await asyncio.to_thread(brain.llm.propose_soul_line, soul, page, SECTIONS, name)
     if proposal := parse_proposal(raw, soul):
         section, line = proposal

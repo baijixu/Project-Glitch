@@ -257,7 +257,7 @@ async def beat(brain: Brain) -> str:
     drifted = await fragments(now, interests)
     if not drifted:
         return "Nothing to think about yet -- no soul, diary, chats or memories to wander through."
-    async with brain.reply_lock:  # one model, one job at a time -- his message waits a few seconds at most
+    async with brain.busy("Daydreaming..."):  # one model, one job at a time -- his message waits a few seconds at most
         found = parse_daydream(await asyncio.to_thread(brain.llm.daydream, "\n".join(f"- {d}" for d in drifted), persona.user_name() or "he"))
     if not found:
         print("[heartbeat] nothing pulled at her")
@@ -313,8 +313,9 @@ def into_lately(now: float | None = None) -> str:
 async def _land(brain: Brain, interests: dict, topic: str, now: datetime) -> bool:
     """A topic that's landed: her notebook page on it. False if she wrote nothing."""
     thoughts = "\n".join(f"- {t}" for t in interests[topic]["thoughts"] + interests[topic]["questions"])
-    found = await asyncio.to_thread(look_up, topic)
-    async with brain.reply_lock:
+    async with hub.doing(f"Reading up on {topic}..."):
+        found = await asyncio.to_thread(look_up, topic)
+    async with brain.busy(f"Writing about {topic}..."):
         page = (await asyncio.to_thread(brain.llm.focus, topic, thoughts, persona.user_name() or "him", found)).strip()
     if not page:
         return False
@@ -338,13 +339,13 @@ async def read_pages(brain: Brain, shelf: dict) -> str:
     names = library.unread(shelf)
     name = shelf["reading"] if shelf["reading"] in names else names[0]
     if shelf["reading"] not in names and len(names) > 1:
-        async with brain.reply_lock:
+        async with brain.busy("Picking a book..."):
             raw = await asyncio.to_thread(brain.llm.pick_book, [shelf["books"][n]["title"] for n in names])
         if (pick := re.search(r"\d+", raw)) and 1 <= int(pick[0]) <= len(names):
             name = names[int(pick[0]) - 1]
     book = shelf["books"][name]
     pages, end = library.next_pages(library.STORE.read_text(name), book["pos"])
-    async with brain.reply_lock:
+    async with brain.busy(f"Reading {book['title']}..."):
         note = (await asyncio.to_thread(brain.llm.read_pages, book["title"], library.percent(book), pages, book["note"])).strip()
     if not note:
         return f"She couldn't get into {book['title']} this time."

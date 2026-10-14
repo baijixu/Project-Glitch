@@ -236,53 +236,53 @@ async def visit(brain: Brain) -> None:
     lines: list[str] = []
     await _set(running=True, count=0, note="")
     try:
-        turn = 0
-        while len(lines) < MAX_MESSAGES and turn < MAX_MESSAGES * 2:
-            if not ACTIVE.read() or profiles.read_roleplay_active() or not brain.llm.owns_conversation:
-                break
-            name = order[turn % len(order)]
-            turn += 1
-            others = ", ".join(n for n in order if n != name)
-            prompt = (
-                f"You're in a group chat with your friends {others}. Today's starter: {starter}\n\n"
-                f"The chat so far:\n{chr(10).join(lines[-TRANSCRIPT_LINES:]) or '(nothing yet -- you open it)'}\n\n"
-                f"Write {name}'s next message: one to three sentences, in your own voice. React to what was just said "
-                f"-- agree, push back, ask, change your mind, or take it deeper. Talk about the subject itself: every "
-                f"message adds a real point, reason or question about it. Bring in your own life only when it truly "
-                f"bears on it, and invent nothing. No running bits: don't repeat a joke, threat or line anyone has used. "
-                f"Only {name}'s words, no name label."
-            )
-            async with brain.reply_lock:  # one model job at a time; his message waits a few seconds at most
-                said = _clean(await asyncio.to_thread(speakers[name].group_message, souls[name], prompt), name)
-                if said and repeats(said, lines):  # once more, then the turn passes
-                    fresh = prompt + " Say something new -- a point, joke or question nobody has made yet."
-                    said = _clean(await asyncio.to_thread(speakers[name].group_message, souls[name], fresh), name)
-            if not said or repeats(said, lines):
-                continue
-            lines.append(f"{name}: {said}")
-            conversation.log_visit(f"**{datetime.now():%H:%M:%S}** {name}: {said}\n\n")
-            await _set(count=len(lines))
-            await journal.set_status(f"Friends are over ({len(lines)}/{MAX_MESSAGES})...")
-        if len(lines) >= 4:
-            await journal.set_status("Journaling about the visit...")
-            async with brain.reply_lock:
-                entry = (await asyncio.to_thread(brain.llm.write_visit_journal, "\n".join(lines), list(friends))).strip()
-            if entry:
-                _visit_journal_path().parent.mkdir(parents=True, exist_ok=True)
-                _visit_journal_path().write_text(f"(After {', '.join(friends)} visited, {started:%A} {started.day} {started:%B}.)\n\n{entry}", encoding="utf-8")
-                if (question := curiosity.question_after("What I want to ask", entry)) and curiosity.read_active():
-                    curiosity.add_question(question)  # waits to be asked, like her Heartbeat ones
-                await learning.propose_own(entry, f"Friends' visit ({kind}), {started:%d %B}", brain)  # what it changed in her
-                conversation.log_visit(f"*{datetime.now():%H:%M:%S} -- Her journal*\n\n**{datetime.now():%H:%M:%S}** Glitch (journal): {entry}\n\n")
-        if len(lines) >= 4:
-            await _remember(friends, speakers, souls, lines, started, brain)
-        print(f"[friends] a visit: {len(lines)} messages")
-        await _set(running=False, note=f"Done: {len(lines)} messages. Read it in Chat Logs -> Visits.")
+        async with hub.doing(f"Friends are over (0/{MAX_MESSAGES})...") as show:
+            turn = 0
+            while len(lines) < MAX_MESSAGES and turn < MAX_MESSAGES * 2:
+                if not ACTIVE.read() or profiles.read_roleplay_active() or not brain.llm.owns_conversation:
+                    break
+                name = order[turn % len(order)]
+                turn += 1
+                others = ", ".join(n for n in order if n != name)
+                prompt = (
+                    f"You're in a group chat with your friends {others}. Today's starter: {starter}\n\n"
+                    f"The chat so far:\n{chr(10).join(lines[-TRANSCRIPT_LINES:]) or '(nothing yet -- you open it)'}\n\n"
+                    f"Write {name}'s next message: one to three sentences, in your own voice. React to what was just said "
+                    f"-- agree, push back, ask, change your mind, or take it deeper. Talk about the subject itself: every "
+                    f"message adds a real point, reason or question about it. Bring in your own life only when it truly "
+                    f"bears on it, and invent nothing. No running bits: don't repeat a joke, threat or line anyone has used. "
+                    f"Only {name}'s words, no name label."
+                )
+                async with brain.reply_lock:  # one model job at a time; his message waits a few seconds at most
+                    said = _clean(await asyncio.to_thread(speakers[name].group_message, souls[name], prompt), name)
+                    if said and repeats(said, lines):  # once more, then the turn passes
+                        fresh = prompt + " Say something new -- a point, joke or question nobody has made yet."
+                        said = _clean(await asyncio.to_thread(speakers[name].group_message, souls[name], fresh), name)
+                if not said or repeats(said, lines):
+                    continue
+                lines.append(f"{name}: {said}")
+                conversation.log_visit(f"**{datetime.now():%H:%M:%S}** {name}: {said}\n\n")
+                await _set(count=len(lines))
+                await show(f"Friends are over ({len(lines)}/{MAX_MESSAGES})...")
+            if len(lines) >= 4:
+                await show("Writing about the visit...")
+                async with brain.reply_lock:
+                    entry = (await asyncio.to_thread(brain.llm.write_visit_journal, "\n".join(lines), list(friends))).strip()
+                if entry:
+                    _visit_journal_path().parent.mkdir(parents=True, exist_ok=True)
+                    _visit_journal_path().write_text(f"(After {', '.join(friends)} visited, {started:%A} {started.day} {started:%B}.)\n\n{entry}", encoding="utf-8")
+                    if (question := curiosity.question_after("What I want to ask", entry)) and curiosity.read_active():
+                        curiosity.add_question(question)  # waits to be asked, like her Heartbeat ones
+                    await learning.propose_own(entry, f"Friends' visit ({kind}), {started:%d %B}", brain)  # what it changed in her
+                    conversation.log_visit(f"*{datetime.now():%H:%M:%S} -- Her journal*\n\n**{datetime.now():%H:%M:%S}** Glitch (journal): {entry}\n\n")
+            if len(lines) >= 4:
+                await show("Her friends are saying goodbye...")
+                await _remember(friends, speakers, souls, lines, started, brain)
+            print(f"[friends] a visit: {len(lines)} messages")
+            await _set(running=False, note=f"Done: {len(lines)} messages. Read it in Chat Logs -> Visits.")
     except Exception as exc:
         print(f"[friends] the visit broke off: {exc!r}")
         await _set(running=False, note=f"The visit broke off: {exc}")
-    finally:
-        await journal.set_status("")
 
 
 async def _remember(friends: dict, speakers: dict, souls: dict, lines: list[str], started: datetime, brain: Brain) -> None:

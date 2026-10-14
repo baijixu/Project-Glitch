@@ -121,7 +121,7 @@ async def _write_left_off(brain: Brain, transcript: str, name: str) -> None:
     """Her note on where the cleared conversation left off, saved for her next ones
     (reply_to puts it in her prompt) and shown on every device. Holds the reply lock
     meanwhile, so her first reply in the new conversation already has it."""
-    async with brain.reply_lock:
+    async with brain.busy("Noting where you left off..."):
         try:
             note = await asyncio.to_thread(brain.llm.write_left_off, transcript, name)
         except Exception as exc:
@@ -214,7 +214,8 @@ async def reply_to(
         if memory.read_memory_active() and not profiles.read_roleplay_active():
             recall_start = time.monotonic()
             try:
-                relevant = await memory.recall_for_prompt(text)
+                async with hub.doing("Remembering..."):
+                    relevant = await memory.recall_for_prompt(text)
             except Exception as exc:
                 await hub.debug_log(websocket, "memory", f"recall failed: {exc!r}", (time.monotonic() - recall_start) * 1000)
             else:

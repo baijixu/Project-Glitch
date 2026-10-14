@@ -4,6 +4,7 @@ debugging, a background task that can't be garbage-collected mid-way.
 """
 
 import asyncio
+import contextlib
 import ipaddress
 import json
 from collections.abc import Awaitable, Callable
@@ -126,11 +127,44 @@ async def debug_broadcast(category: str, message: str, ms: float | None = None) 
         await debug_log(websocket, category, message, ms)
 
 
+# What she's busy with right now, on every device's status line (brain_status) -- her diary, a
+# book, friends over -- for as long as each job runs. Jobs can overlap, so each keeps its own entry.
+_DOING: dict[object, str] = {}
+
+
+def doing_now() -> str:
+    return " · ".join(_DOING.values())
+
+
+@contextlib.asynccontextmanager
+async def doing(what: str):
+    """Shows `what` while the block runs; yields a function to change it (a visit's count)."""
+    key = object()  # its own entry, alive as long as the job
+
+    async def show(text: str) -> None:
+        _DOING[key] = text
+        await broadcast(protocol.brain_status(doing_now()))
+
+    await show(what)
+    try:
+        yield show
+    finally:
+        _DOING.pop(key, None)
+        await broadcast(protocol.brain_status(doing_now()))
+
+
 class Brain:
     """The active LLM/TTS/STT engines. One Brain, shared by every connected device:
     one conversation, one soul, one set of engines -- a change from one device
     applies to all of them.
     """
+
+    @contextlib.asynccontextmanager
+    async def busy(self, what: str):
+        """A background model job: its turn on the model (reply_lock), and `what` on the status
+        line once it has it -- not while it waits."""
+        async with self.reply_lock, doing(what) as show:
+            yield show
 
     def __init__(self, llm: ChatBackend, tts: RemoteTTS | NoneTTS, stt: FasterWhisperSTT) -> None:
         self.llm = llm
