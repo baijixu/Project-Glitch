@@ -47,6 +47,7 @@ SAVE_HARNESS = "save_harness"
 GET_HARNESS = "get_harness"
 DELETE_HARNESS = "delete_harness"
 SET_VOICE_ACTIVE = "set_voice_active"
+SET_PRIVATE_ACTIVE = "set_private_active"
 SET_WEB_SEARCH_ACTIVE = "set_web_search_active"
 RATE_REPLY = "rate_reply"
 SET_LESSONS_ACTIVE = "set_lessons_active"
@@ -199,6 +200,11 @@ def roleplay_state(active: bool) -> dict:
 def roleplay_engine(name: str) -> dict:
     """The engine role-play switches to, or "" to stay on the current one."""
     return {"type": "roleplay_engine", "name": name}
+
+
+def private_state(active: bool) -> dict:
+    """Whether private chat is on (conversation.PRIVATE): nothing said goes in the logs."""
+    return {"type": "private_state", "active": active}
 
 
 def voice_state(active: bool) -> dict:

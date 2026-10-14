@@ -220,7 +220,8 @@ html[data-ui^="neon"] .rp-badge {
   box-shadow: none;
 }
 
-html[data-ui^="neon"] .rp-badge.active {
+html[data-ui^="neon"] .rp-badge.active,
+html[data-ui^="neon"] .rp-badge.private {
   background: rgba(var(--green-rgb), 0.12);
   border-color: var(--green);
   color: var(--green);

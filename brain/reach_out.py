@@ -32,6 +32,8 @@ async def maybe_propose_question(
     and image turns, whose replies are about the world rather than the user. Never surfaces
     a failure -- a turn with no new question is the normal outcome.
     """
+    if conversation.PRIVATE.read():  # a saved question would carry what he said
+        return
     start = time.monotonic()
     known = "\n".join(part for part in (persona.effective_user_info(), brain.llm.memory_block) if part)
     try:

@@ -630,14 +630,9 @@ body.overlay-chat-active #overlay-edit-button {
   right: 90px;
 }
 
-/* Sits left of #harness-light, same row -- text pill rather than a plain
-   dot since "RP" needs to actually read as a label, not just a color.
-   green: role-play's on (mirrors profileOptionsEl/soulSectionEl becoming
-   visible -- see _renderRoleplayToggle). grey: off. Painted green before
-   any real data arrives too (_roleplayActive starts true, the same
-   "reasonable guess, corrected on the real roleplay_state" pattern as
-   _connectionState painting red before connect() resolves anything) --
-   only wrong for the instant before that first message lands. */
+/* Sits left of #harness-light, same row -- a text pill, since it has to read as a label.
+   Only there while something's on: green "RP" in role-play (.active, characters_ui.js),
+   green "PM" in private chat (.private, settings_ui.js) -- PM when both are. */
 .rp-badge {
   position: fixed;
   top: 28px;
@@ -655,7 +650,18 @@ body.overlay-chat-active #overlay-edit-button {
   user-select: none;
 }
 
-.rp-badge.active {
+.rp-badge:not(.active):not(.private),
+.rp-badge .pm-label,
+.rp-badge.private .rp-label {
+  display: none;
+}
+
+.rp-badge.private .pm-label {
+  display: inline;
+}
+
+.rp-badge.active,
+.rp-badge.private {
   background: #4fcf6e;
   box-shadow: 0 0 6px rgba(79, 207, 110, 0.8);
 }

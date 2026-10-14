@@ -1,5 +1,5 @@
 // The Settings controls small enough not to need a module of their own: the
-// Brain-side on/off switches (voice, web search, curiosity, heartbeat, memory), memory's
+// Brain-side on/off switches (private chat, voice, web search, curiosity, heartbeat, memory), memory's
 // download and clear, the Notes and soul.md/user.md editors, and the context
 // meter.
 
@@ -15,6 +15,7 @@ const HEARTBEAT_PAUSED = {
 
 // Brain-side switches: message it sends -> the state message Brain answers with.
 const SWITCHES = [
+  { id: "private-toggle", set: "set_private_active", state: "private_state" },
   { id: "voice-toggle", set: "set_voice_active", state: "voice_state" },
   { id: "web-search-toggle", set: "set_web_search_active", state: "web_search_state" },
   { id: "curiosity-toggle", set: "set_curiosity_active", state: "curiosity_state" },
@@ -101,6 +102,11 @@ export class SettingsUI {
         if ($(id)) $(id).checked = !!data.active;
       };
     }
+    const showPrivate = handlers.private_state;
+    handlers.private_state = (data) => {
+      showPrivate(data);
+      $("roleplay-badge")?.classList.toggle("private", !!data.active); // the PM badge
+    };
     return handlers;
   }
 

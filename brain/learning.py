@@ -12,6 +12,7 @@ from pathlib import Path
 
 import websockets
 
+import conversation
 import curiosity
 import hub
 import journal
@@ -143,6 +144,8 @@ async def _rate_reply(websocket: websockets.ServerConnection, data: dict, brain:
     note = str(data.get("note", "")).strip()
     if rating not in ("up", "down") or not reply_text.strip() or hub.fields_too_long(user_text, reply_text, note):
         return
+    if conversation.PRIVATE.read():  # the rating log keeps both sides of the exchange
+        return await hub.debug_log(websocket, "lessons", "rating not kept (private chat)")
     roleplay = profiles.read_roleplay_active()
     lessons.log_rating(user_text, reply_text, rating, note, roleplay)
     await hub.debug_log(websocket, "lessons", f"rating logged ({rating})")
@@ -547,6 +550,8 @@ async def maybe_retain_memory(
     the user or affect anything else, it's a pure background nice-to-have.
     """
     if not brain.llm.owns_conversation or not memory.read_memory_active() or profiles.read_roleplay_active():
+        return
+    if conversation.PRIVATE.read():  # nothing from a private chat is kept
         return
     if not user_text.strip() and not reply_text.strip():
         return  # an image-only turn with nothing the user said -- nothing left worth keeping

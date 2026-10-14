@@ -52,6 +52,12 @@ async def _set_voice_active(websocket: websockets.ServerConnection, data: dict, 
     await hub.broadcast(protocol.voice_state(VOICE_ACTIVE.read()))
 
 
+@hub.handles(protocol.SET_PRIVATE_ACTIVE)
+async def _set_private_active(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    conversation.PRIVATE.write(bool(data.get("active")))
+    await hub.broadcast(protocol.private_state(conversation.PRIVATE.read()))
+
+
 @hub.handles(protocol.SET_WEB_SEARCH_ACTIVE)
 async def _set_web_search_active(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     web_search.set_active(bool(data.get("active")))
@@ -81,7 +87,7 @@ async def _user_audio(websocket: websockets.ServerConnection, data: dict, brain:
         await hub.send(websocket, protocol.no_reply())
         return
     await hub.debug_log(websocket, "stt", "transcription ok", (time.monotonic() - start) * 1000)
-    print(f"[brain] user_audio transcribed: {text!r}")
+    print(f"[brain] user_audio transcribed: {'(private)' if conversation.PRIVATE.read() else repr(text)}")
     if text.strip():
         await hub.send(websocket, protocol.user_transcript(text))
     await reply_to(websocket, text, brain)
@@ -94,8 +100,9 @@ async def clear_conversation(websocket: websockets.ServerConnection, data: dict,
     """
     global LAST_CONTEXT_USAGE
     name = persona.user_name() or "User"
-    # Her own conversations only: a role-play scene isn't where she and the user left off.
-    keep_note = brain.llm.owns_conversation and not profiles.read_roleplay_active()
+    # Her own conversations only: a role-play scene isn't where she and the user left off,
+    # and a private chat leaves nothing behind.
+    keep_note = brain.llm.owns_conversation and not profiles.read_roleplay_active() and not conversation.PRIVATE.read()
     transcript = brain.llm.transcript(name) if keep_note else ""
     brain.llm.clear_history()  # with a harness: a new session there
     if brain.llm.owns_conversation:  # a harness's conversations stay out of her chat log -- see reply_to
@@ -196,7 +203,7 @@ async def reply_to(
         # A blank voice message or empty text: say so, or the device waits forever.
         await hub.send(websocket, protocol.no_reply())
         return
-    print(f"[brain] user said: {text!r}" + (" (+ image)" if image_b64 else ""))
+    print(f"[brain] user said: {'(private)' if conversation.PRIVATE.read() else repr(text)}" + (" (+ image)" if image_b64 else ""))  # restart.log is on disk
     curiosity.note_user_message(time.time())  # starts a new random wait before she may reach out (see reach_out.reach_out_loop)
     await reach_out.broadcast_curiosity_timer()
 

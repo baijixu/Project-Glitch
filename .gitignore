@@ -23,6 +23,7 @@ brain/active_background.txt
 
 # Whether Glitch's spoken voice is on (brain/voice_settings.py).
 brain/voice_active.txt
+brain/private_active.txt
 
 # Whether Glitch's own LLM path can search the web (brain/web_search.py).
 brain/web_search_active.txt

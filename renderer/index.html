@@ -48,7 +48,7 @@
     <span id="connection-light" class="connection-light" title="Connection to Brain"></span>
     <span id="harness-light" class="connection-light" title="Harness status"></span>
     <span id="tts-light" class="connection-light" title="Speech engine status"></span>
-    <span id="roleplay-badge" class="rp-badge" title="Role-play">RP</span>
+    <span id="roleplay-badge" class="rp-badge" title="Role-play / private chat"><span class="rp-label">RP</span><span class="pm-label">PM</span></span>
     <button id="settings-button" class="corner-button" title="Settings">⚙️</button>
     <aside id="settings-panel" class="slide-panel">
       <h2>Settings</h2>
@@ -61,6 +61,13 @@
           <button id="open-notes-button" class="settings-action-button">Notes</button>
         </section>
         <section id="quick-toggles-section" class="settings-section">
+          <label class="settings-toggle-row" title="Nothing you two say is kept: no chat log, memories or diary">
+            <span>Private Chat</span>
+            <span class="settings-toggle">
+              <input type="checkbox" id="private-toggle" class="settings-toggle-input" />
+              <span class="settings-toggle-track"></span>
+            </span>
+          </label>
           <label class="settings-toggle-row">
             <span>Voice</span>
             <span class="settings-toggle">

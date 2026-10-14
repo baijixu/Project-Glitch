@@ -9,7 +9,7 @@
   the image data.
 
 * chat_logs/YYYY-MM-DD.md -- a plain, timestamped, append-only log of every
-  exchange, one file per day, for the user to read. Never read back by Brain.
+  exchange (none in private chat), one file per day, for the user to read.
 
 Both live beside this file and are gitignored (they're the user's conversations).
 """
@@ -18,6 +18,8 @@ import json
 import re
 from datetime import datetime
 from pathlib import Path
+
+from store import Toggle
 
 _DIR = Path(__file__).parent
 STATE_PATH = _DIR / "conversation.json"  # normal chat (the original file name, kept)
@@ -31,7 +33,11 @@ JOURNAL_LOG_DIR = _DIR / "self"
 # Her note on where the last conversation left off, written as Clear Chat ends it (reply.py).
 LEFT_OFF_PATH = _DIR / "left_off.md"
 
-MAIN, ROLEPLAY, JOURNAL, THOUGHTS, VISITS = "main", "roleplay", "journal", "thoughts", "visits"  # thoughts: heartbeat.py, visits: friends.py
+# Private chat (the PM badge): what he and she say isn't written to the logs, so her diary and the
+# Chat Logs never see it. Everything else carries on -- her memories, the chat on screen.
+PRIVATE = Toggle(_DIR / "private_active.txt", default=False)
+
+MAIN, ROLEPLAY, JOURNAL, THOUGHTS, VISITS ="main", "roleplay", "journal", "thoughts", "visits"  # thoughts: heartbeat.py, visits: friends.py
 PICTURE_NOTE = "[picture]"
 
 
@@ -140,6 +146,8 @@ def log_marker(text: str, now: datetime | None = None, *, mode: str = MAIN) -> N
 
 def log_reach_out(text: str, *, now: datetime | None = None) -> None:
     """Her message when she spoke first (reach_out.py's _reach_out) -- no "You:" line."""
+    if PRIVATE.read():
+        return
     now = now or datetime.now()
     _append(MAIN, f"**{now:%H:%M:%S}** Glitch (reaching out): {text.strip()}\n\n", now)
 
@@ -158,6 +166,8 @@ def log_visit(text: str, *, now: datetime | None = None) -> None:
 
 def log_exchange(user_text: str, reply_text: str, *, roleplay: bool, picture: bool = False, now: datetime | None = None) -> None:
     """Appends one exchange to today's log -- the role-play one when role-play is on."""
+    if PRIVATE.read():
+        return
     now = now or datetime.now()
     said = (user_text.strip() + (f" {PICTURE_NOTE}" if picture else "")).strip() or PICTURE_NOTE
     entry = f"**{now:%H:%M:%S}** You: {said}\n\n**{now:%H:%M:%S}** Glitch: {reply_text.strip()}\n\n"
