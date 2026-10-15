@@ -97,6 +97,9 @@ MOOD_STYLES = {
 # Qwen3-TTS reads "(chuckles)" / "*laughs*" out as words (13 of 16 takes) but really laughs at "haha",
 # so a laugh cue (llm.VOICE_CUE_INSTRUCTION) is spoken as one. The subtitle keeps what she wrote.
 _LAUGH_CUE = re.compile(r"[(*\[]\s*(?:laugh|chuckl|giggl)\w*[^)*\]]{0,20}[)*\]]", re.IGNORECASE)
+# A sigh cue is read out as a garbled word ("*sigh*" heard as "Si", "(sighs)" as "Size", "*sighs*" as
+# Korean or Japanese) but "Ahh..." comes out as a tired exhale -- picked by ear over "Haah..." and a pause.
+_SIGH_CUE = re.compile(r"[(*\[]\s*sigh\w*[^)*\]]{0,20}[)*\]]", re.IGNORECASE)
 
 
 # A bilingual voice (Qwen3-TTS's Serena, for one) can read digits in Mandarin, a number on its own
@@ -160,7 +163,7 @@ def _say_number(m: re.Match) -> str:
 
 
 def _spoken(text: str) -> str:
-    text = _NUMBER.sub(_say_number, _LAUGH_CUE.sub("haha", text))
+    text = _NUMBER.sub(_say_number, _SIGH_CUE.sub("Ahh...", _LAUGH_CUE.sub("haha", text)))
     return re.sub(r"\s+", " ", _EMOJI_PATTERN.sub("", text)).strip()
 
 
