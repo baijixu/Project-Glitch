@@ -118,6 +118,7 @@ async def main() -> None:
     print(f"[brain] listening on ws://{host}:{port}")
     hub.spawn(health.health_check_loop())
     hub.spawn(reach_out.reach_out_loop(brain))
+    reach_out.listen_for_agents(brain)
     hub.spawn(journal.journal_loop(brain))
     hub.spawn(heartbeat.heartbeat_loop(brain))
     hub.spawn(friends.visit_loop(brain))

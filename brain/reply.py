@@ -5,7 +5,6 @@ device, then the context meter, memory and curiosity in the background.
 
 import asyncio
 import base64
-import contextlib
 import re
 import tempfile
 import time
@@ -21,7 +20,6 @@ import hub
 import learning
 import lessons
 import library
-import llm
 import memory
 import persona
 import pictures
@@ -387,21 +385,13 @@ async def _stream_reply(
         finally:
             loop.call_soon_threadsafe(pieces.put_nowait, None)
 
-    llm.on_agent = lambda agent: loop.call_soon_threadsafe(pieces.put_nowait, (agent,))  # one reply at a time (reply_lock)
     answering = asyncio.ensure_future(asyncio.to_thread(answer))
-    async with contextlib.AsyncExitStack() as asking:
-        while (piece := await pieces.get()) is not None:
-            if isinstance(piece, tuple):  # her agent's task started (its name) or ended (None)
-                if piece[0]:
-                    await asking.enter_async_context(hub.doing(f"Asking {piece[0]}..."))
-                else:
-                    await asking.aclose()
-                continue
-            if isinstance(piece, int):
-                await hub.send(websocket, protocol.thinking(piece))
-                continue
-            for sentence in sentences.feed(piece):
-                await say(sentence, sentences.mood)
+    while (piece := await pieces.get()) is not None:
+        if isinstance(piece, int):
+            await hub.send(websocket, protocol.thinking(piece))
+            continue
+        for sentence in sentences.feed(piece):
+            await say(sentence, sentences.mood)
     return await answering
 
 

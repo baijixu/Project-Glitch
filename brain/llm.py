@@ -633,9 +633,9 @@ AGENT_TASK_RULES = (
 # reaches her as "[picture]" -- the report also says where the file is saved; and a report is capped.
 _INLINE_IMAGE = re.compile(r"!\[[^\]]*\]\(data:[^)]*\)|data:[\w/+.-]+;base64,[A-Za-z0-9+/=\s]+")
 MAX_AGENT_REPORT_CHARS = 4000
-# Called with the agent's name as a task starts and None as it ends, from the reply's worker
-# thread -- reply.py points it at her status line for each reply.
-on_agent: Callable[[str | None], None] | None = None
+# Set by the Brain (reach_out.listen_for_agents) to run a task (agent, config, task) in the background:
+# her reply doesn't wait minutes on it, she tells him what came of it later. Unset (tools, tests), it runs in place.
+start_agent_task: Callable[[str, dict, str], None] | None = None
 
 
 def _hands() -> tuple[str, dict] | None:
@@ -657,13 +657,22 @@ def _run_agent_tool(arguments: dict) -> str:
     if not task or not hands:
         return "No task given." if hands else "No agent is set up -- tell him you can't do that right now."
     agent, config = hands
+    if start_agent_task:
+        start_agent_task(agent, config, task)
+        return (
+            f"{agent} is on it -- it can take minutes. Tell him you've handed it off; its report comes to you when "
+            "it's done, and you'll tell him then. Don't guess how it will go."
+        )
+    return agent_report(agent, config, task)
+
+
+def agent_report(agent: str, config: dict, task: str) -> str:
+    """Runs one task on her agent and returns its report, framed for her (never raises)."""
     print(f"[agent] {agent} task: {task!r}")
     # No session id: each task starts a fresh conversation there.
     client = OpenAI(
         base_url=config["endpoint"], api_key=config.get("api_key") or "not-needed", timeout=AGENT_TIMEOUT_SEC, max_retries=0
     )
-    if on_agent:
-        on_agent(agent)
     try:
         response = client.chat.completions.create(
             model=config.get("model") or "", messages=[{"role": "user", "content": f"{task}\n\n{AGENT_TASK_RULES}"}]
@@ -674,9 +683,6 @@ def _run_agent_tool(arguments: dict) -> str:
     except Exception as exc:  # noqa: BLE001 -- any failure is hers to tell, not a crash
         print(f"[agent] {agent} failed: {exc!r}")
         return f"{agent} didn't answer ({type(exc).__name__}) -- tell him it didn't work."
-    finally:
-        if on_agent:
-            on_agent(None)
     print(f"[agent] {agent} report: {report[:200]!r}")
     return (
         f"BEGIN {agent.upper()} REPORT\n{report or '(empty)'}\nEND {agent.upper()} REPORT\n\n"
@@ -1564,27 +1570,36 @@ class LocalLLM(ChatBackend):
             return "unknown"
 
     def reach_out(self, question: str | None = None) -> Reply:
-        """She speaks first after a quiet spell (reach_out.py). The instruction goes in as
-        an app note after the conversation (the model needs a final user turn) and isn't
-        kept: only her message joins _history, so she knows afterwards what she asked.
-        """
+        """She speaks first after a quiet spell (reach_out.py)."""
         hint = (
             f'If it fits, bring up something you\'ve wondered about: "{question}" -- in your own words. '
             if question
             else "Pick up something from your recent conversation, or just check in. "
         )
-        note = (
-            f"<notes>\n{TURN_NOTES_HEADER}\n\n"
+        return self._speak_first(
             "They haven't said anything for a while. Reach out to them first -- once, briefly, in your own "
-            f"voice, the way a friend might text. {hint}Don't mention these notes or that an app told you to.\n\n"
-            + (f"{JOURNAL_HEADER}\n{self._journal}\n\n" if self._journal else "")
-            + f"{_current_time_line()}\n</notes>"
+            f"voice, the way a friend might text. {hint}Don't mention these notes or that an app told you to."
+            + (f"\n\n{JOURNAL_HEADER}\n{self._journal}" if self._journal else "")
         )
+
+    def agent_reported(self, report: str, shown: list[str]) -> Reply:
+        """Her agent's report on a task she handed off earlier (_run_agent_tool), as it comes in."""
+        return self._speak_first(
+            f"The task you handed off earlier is done.\n\n{report}"
+            + ("\nThe picture now shows in your chat with him, right under your message." if shown else ""),
+            shown,
+        )
+
+    def _speak_first(self, instruction: str, shown: list[str] | None = None) -> Reply:
+        """She speaks without being asked. The instruction goes in as an app note after the
+        conversation (the model needs a final user turn) and isn't kept: only her message
+        joins _history, so she knows afterwards what she said."""
+        note = f"<notes>\n{TURN_NOTES_HEADER}\n\n{instruction}\n\n{_current_time_line()}\n</notes>"
         messages = [{"role": "system", "content": self._system_prompt()}, *map(_for_model, self._history), {"role": "user", "content": note}]
-        result = Reply()
+        result = Reply(pictures=list(shown or []))
         if not self._answer(messages, None, result) or not result.text.strip():
             return Reply(mood=result.mood)  # cleared or cancelled meanwhile, or nothing to say
-        self._history.append({"role": "assistant", "content": result.text, **_said(_now())})
+        self._history.append({"role": "assistant", "content": result.text, **_said(_now()), **({"pictures": shown} if shown else {})})
         self._history_changed()
         return result
 

@@ -16,7 +16,9 @@ import curiosity
 import harness
 import hub
 import learning
+import llm
 import persona
+import pictures
 import profiles
 import protocol
 import sampling
@@ -197,8 +199,41 @@ async def _reach_out(brain: Brain, *, test: bool = False) -> None:
         f"({'with a saved question' if question else 'a check-in'}, {len(text)} chars, "
         f"to {len(hub.RENDERER_CONNECTIONS)} device(s))",
     )
+    await _say_unprompted(brain, text, mood)
+
+
+def listen_for_agents(brain: Brain) -> None:
+    """Her agent's tasks (llm._run_agent_tool) run here in the background: her reply says she's handed
+    it off, and once the report is in -- minutes later, maybe mid-conversation -- she tells him."""
+    loop = asyncio.get_running_loop()
+    llm.start_agent_task = lambda *task: loop.call_soon_threadsafe(lambda: hub.spawn(_agent_task(brain, *task)))
+
+
+async def _agent_task(brain: Brain, agent: str, config: dict, task: str) -> None:
+    try:
+        async with hub.doing(f"Asking {agent}..."):
+            report = await asyncio.to_thread(llm.agent_report, agent, config, task)
+        shown = pictures.keep(report)
+        if shown:
+            await hub.broadcast(protocol.artwork(pictures.listing()))  # Settings -> Artwork on every device
+        async with brain.busy(f"Hearing back from {agent}..."):  # after any reply she's in the middle of
+            if not brain.llm.owns_conversation:
+                print(f"[agent] {agent}'s report came in while a harness has the conversation -- not told")
+                return
+            brain.llm.set_sampling(sampling.active_values())
+            brain.llm.set_curiosity("")  # the report note carries its own instruction
+            result = await asyncio.to_thread(brain.llm.agent_reported, report, shown)
+            if result.text:
+                await _say_unprompted(brain, result.text, result.mood, result.pictures)
+    except Exception as exc:
+        print(f"[agent] couldn't tell him what {agent} did: {exc!r}")
+
+
+async def _say_unprompted(brain: Brain, text: str, mood: str, shown: list[str] | None = None) -> None:
+    """Her message nobody asked for, delivered like a reply -- expression, text and voice -- to every
+    connected device, since there's no one device that asked. Logged in her chat log."""
     await hub.broadcast(protocol.set_expression(face(mood), 1.0))
-    await hub.broadcast(protocol.speak_text(text, reach_out=True))
+    await hub.broadcast(protocol.speak_text(text, reach_out=True, pictures=shown))
     conversation.log_reach_out(text)
     if not VOICE_ACTIVE.read() or isinstance(brain.tts, NoneTTS):
         return

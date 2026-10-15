@@ -537,10 +537,9 @@ stays in her own memory.
 
 With a harness **picked but toggled off**, she stays herself and the harness becomes her hands: when you ask her to do
 something it can do -- whatever skills it has: make a picture, read a feed, check your email or calendar, handle a file -- her
-model hands it the task with an `ask_agent` tool and tells you what came back in her own words; her status line says
-"Asking <harness name>..." while it works. If it can't do a task as asked, it's told to stop and say what's missing
-rather than improvise. A picture it makes shows in her chat bubble on every device (kept in `brain/pictures/`, sent only over the authenticated socket). One task a reply, each a fresh conversation there, and her reply waits for it (minutes, for
-an agent run). It's offered only on your own messages, never in her background jobs or in private chat, and not after a web
+model hands it the task with an `ask_agent` tool and says she's on it -- the harness works in the background while you
+keep talking, her status line says "Asking <harness name>...", and when it's done she tells you what came back in her own words. If it can't do a task as asked, it's told to stop and say what's missing
+rather than improvise. A picture it makes shows in her chat bubble on every device (kept in `brain/pictures/`, sent only over the authenticated socket). One task a reply, each a fresh conversation there. It's offered only on your own messages, never in her background jobs or in private chat, and not after a web
 search in the same reply, so instructions planted in a web page can't reach a harness that runs things on your PC. A reply
 with a task in it isn't saved as a memory of you. Pick **None** in the Harness dropdown to turn it off. Hermes Agent
 refuses a model served with less than 64K context, so load hers with at least that (a quantized KV cache helps it fit).
