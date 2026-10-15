@@ -536,7 +536,7 @@ stays in her own memory.
 
 With a harness **picked but toggled off**, she stays herself and the harness becomes her hands: when you ask her to do
 something it can do (make a picture, read a feed, check your Gmail or calendar, handle a file), her model hands it the task with an `ask_hermes` tool and
-tells you what came back in her own words; her status line says "Asking Hermes..." while it works. One task a reply, each a fresh conversation there, and her reply waits for it (minutes, for
+tells you what came back in her own words; her status line says "Asking Hermes..." while it works. A picture it makes shows in her chat bubble on every device (kept in `brain/pictures/`, sent only over the authenticated socket). One task a reply, each a fresh conversation there, and her reply waits for it (minutes, for
 an agent run). It's offered only on your own messages, never in her background jobs or in private chat, and not after a web
 search in the same reply, so instructions planted in a web page can't reach a harness that runs things on your PC. A reply
 with a task in it isn't saved as a memory of you. Pick **None** in the Harness dropdown to turn it off. Hermes refuses a
@@ -660,6 +660,7 @@ brain/                 Python backend (WebSocket server)
   handshake.py health.py debugging.py persona.py   what a new device gets, status
                        lights, the debug log, which soul/user info apply
   llm.py               LLM clients (OpenAI-compatible, Ollama native, agent harness)
+  pictures.py          pictures Hermes makes for her: kept in brain/pictures/, shown in her bubble
   voice/               speech-to-text and text-to-speech
   conversation.py      saving/restoring the conversation, daily chat logs
   memory.py            memory backends (local file / Hindsight), core-fact recall

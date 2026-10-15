@@ -49,6 +49,7 @@ DELETE_HARNESS = "delete_harness"
 SET_VOICE_ACTIVE = "set_voice_active"
 SET_PRIVATE_ACTIVE = "set_private_active"
 SET_WEB_SEARCH_ACTIVE = "set_web_search_active"
+GET_PICTURE = "get_picture"
 RATE_REPLY = "rate_reply"
 SET_LESSONS_ACTIVE = "set_lessons_active"
 SET_LESSONS_AUTONOMY = "set_lessons_autonomy"
@@ -114,12 +115,18 @@ def debug_event(category: str, message: str, ms: float | None = None) -> dict:
     return payload
 
 
-def speak_text(text: str, reach_out: bool = False, partial: bool = False) -> dict:
+def speak_text(text: str, reach_out: bool = False, partial: bool = False, pictures: list[str] | None = None) -> dict:
     """Her reply's text. `partial`: one more sentence of a reply still being written
     (the final speak_text then carries all of it). `reach_out`: she spoke first --
-    not the reply a device may be waiting for."""
+    not the reply a device may be waiting for. `pictures`: what she shows with it (get_picture)."""
     flags = {"reach_out": reach_out, "partial": partial}
-    return {"type": "speak_text", "text": text, **{flag: True for flag, on in flags.items() if on}}
+    shown = {"pictures": pictures} if pictures else {}
+    return {"type": "speak_text", "text": text, **{flag: True for flag, on in flags.items() if on}, **shown}
+
+
+def picture(name: str, mime: str, data_b64: str) -> dict:
+    """One of her pictures (pictures.py), in reply to get_picture; empty data if it's gone."""
+    return {"type": "picture", "name": name, "mime": mime, "data_b64": data_b64}
 
 
 def speak_audio(audio_b64: str, sample_rate: int, text: str, frames: list["VisemeFrame"]) -> dict:

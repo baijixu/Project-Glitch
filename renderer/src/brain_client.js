@@ -155,7 +155,12 @@ export class BrainClient {
         }),
       user_transcript: (data) => this.capture.handleTranscript(data.text),
       conversation_cleared: () => this.history.clear(),
-      chat_history: (data) => this.history.sync(data.messages || []),
+      chat_history: (data) => {
+        this.history.sync(data.messages || []);
+        // Sent after every (re)connect: pictures asked for while offline are asked again.
+        for (const name of this._pictureWaiters?.keys() ?? []) this.send({ type: "get_picture", name });
+      },
+      picture: (data) => this._pictureArrived(data),
       brain_status: (data) => this.setStatus(data.text || ""),
       memory_learned: (data) => {
         this._showToast(data.fact);
@@ -261,6 +266,25 @@ export class BrainClient {
 
   get connected() {
     return this.connectionState !== "red";
+  }
+
+  // One of her pictures as a data URL (null if it's gone), asked of Brain once per name --
+  // over this authenticated socket, never a plain web link.
+  loadPicture(name) {
+    this._pictures ??= new Map();
+    if (!this._pictures.has(name)) {
+      this._pictures.set(name, new Promise((resolve) => ((this._pictureWaiters ??= new Map()).set(name, resolve))));
+      this.send({ type: "get_picture", name });
+    }
+    return this._pictures.get(name);
+  }
+
+  _pictureArrived({ name, mime, data_b64 }) {
+    const resolve = this._pictureWaiters?.get(name);
+    if (!resolve) return;
+    this._pictureWaiters.delete(name);
+    if (!data_b64) this._pictures.delete(name); // gone now -- asked again next time it's shown
+    resolve(data_b64 ? `data:${mime};base64,${data_b64}` : null);
   }
 
   send(message) {
@@ -511,8 +535,10 @@ export class BrainClient {
       else this._streamed = this.history.add("glitch", this._streamedText);
       return;
     }
-    if (this._streamed) this.history.updateText(this._streamed, data.text);
-    else this.history.add("glitch", data.text);
+    if (this._streamed) {
+      this.history.updateText(this._streamed, data.text);
+      this.history.showPictures(this._streamed, data.pictures);
+    } else this.history.add("glitch", data.text, null, data.pictures);
     this._streamed = null;
     this._replyChars = data.text.length;
     if (this.lipSyncActive && this._speechEnd <= this.audioContext.currentTime) this._windDown(); // she'd already caught up
