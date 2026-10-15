@@ -292,6 +292,8 @@ async def beat(brain: Brain) -> str:
 
 
 async def _sour(brain: Brain, interests: dict, topic: str) -> None:
+    if not persona.not_about_him(topic):  # a hard thought about his life isn't a dislike to keep
+        return
     thoughts = "\n".join(f"- {t}" for t in interests[topic]["thoughts"])
     await learning.propose_own(f"{topic} keeps coming back to you, and it doesn't sit well. What you've thought about it lately:\n{thoughts}", f"Soured on {topic}", brain)
 
