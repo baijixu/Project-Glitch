@@ -5,6 +5,7 @@ device, then the context meter, memory and curiosity in the background.
 
 import asyncio
 import base64
+import contextlib
 import re
 import tempfile
 import time
@@ -20,6 +21,7 @@ import hub
 import learning
 import lessons
 import library
+import llm
 import memory
 import persona
 import profiles
@@ -366,13 +368,21 @@ async def _stream_reply(
         finally:
             loop.call_soon_threadsafe(pieces.put_nowait, None)
 
+    llm.on_hermes = lambda running: loop.call_soon_threadsafe(pieces.put_nowait, running)  # one reply at a time (reply_lock)
     answering = asyncio.ensure_future(asyncio.to_thread(answer))
-    while (piece := await pieces.get()) is not None:
-        if isinstance(piece, int):
-            await hub.send(websocket, protocol.thinking(piece))
-            continue
-        for sentence in sentences.feed(piece):
-            await say(sentence, sentences.mood)
+    async with contextlib.AsyncExitStack() as asking:
+        while (piece := await pieces.get()) is not None:
+            if isinstance(piece, bool):  # a Hermes task started or ended -- checked first, a bool is an int
+                if piece:
+                    await asking.enter_async_context(hub.doing("Asking Hermes..."))
+                else:
+                    await asking.aclose()
+                continue
+            if isinstance(piece, int):
+                await hub.send(websocket, protocol.thinking(piece))
+                continue
+            for sentence in sentences.feed(piece):
+                await say(sentence, sentences.mood)
     return await answering
 
 

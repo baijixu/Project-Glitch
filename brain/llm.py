@@ -611,6 +611,9 @@ ASK_HERMES_TOOL = {
 }
 # An agent run with several tool steps, or an image on PC2, takes minutes.
 HERMES_TIMEOUT_SEC = 900
+# Called with True as a Hermes task starts and False as it ends, from the reply's worker
+# thread -- reply.py points it at her status line for each reply.
+on_hermes: Callable[[bool], None] | None = None
 
 
 def _hands() -> dict | None:
@@ -636,6 +639,8 @@ def _run_hermes_tool(arguments: dict) -> str:
     client = OpenAI(
         base_url=hands["endpoint"], api_key=hands.get("api_key") or "not-needed", timeout=HERMES_TIMEOUT_SEC, max_retries=0
     )
+    if on_hermes:
+        on_hermes(True)
     try:
         response = client.chat.completions.create(
             model=hands.get("model") or "", messages=[{"role": "user", "content": task}]
@@ -644,6 +649,9 @@ def _run_hermes_tool(arguments: dict) -> str:
     except Exception as exc:  # noqa: BLE001 -- any failure is hers to tell, not a crash
         print(f"[hermes] failed: {exc!r}")
         return f"Hermes didn't answer ({type(exc).__name__}) -- tell Josh it didn't work."
+    finally:
+        if on_hermes:
+            on_hermes(False)
     print(f"[hermes] report: {report[:200]!r}")
     return (
         f"BEGIN HERMES REPORT\n{report or '(empty)'}\nEND HERMES REPORT\n\n"
