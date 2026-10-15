@@ -180,7 +180,7 @@ def catching_up(now: float | None = None) -> str:
     """What she's been into and reading, by name, to ask her about."""
     now = time.time() if now is None else now
     interests = heartbeat.read_interests()
-    topics = sorted((t for t in interests if _not_about_him(t)), key=lambda t: heartbeat.weight_now(interests[t], now))[-3:]
+    topics = sorted((t for t in interests if _not_about_him(t) and interests[t]["weight"] > 0), key=lambda t: heartbeat.weight_now(interests[t], now))[-3:]
     shelf = library.read_state()
     book = shelf["books"].get(shelf["reading"] or "")
     into = [*topics, *([f"the book she's reading, {book['title']}"] if book else [])]

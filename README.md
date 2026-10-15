@@ -422,8 +422,9 @@ in `brain/backups/` first, and it applies right away. Run the [check-up](#her-ch
 Off by default; turn it on in *Settings → Heartbeat*. Once you've been quiet for 20 minutes, every 10 minutes a few random
 fragments drift through her mind: a line from her soul (who she is, what she loves and can't stand, her own mind), her recent
 diary, something you said lately, one of her memories, and sometimes a topic already on her mind. She says what, if anything,
-pulls at her and how strongly. Each pull adds weight to its topic, and weight fades by half every two days, so only what keeps
-coming back builds up. When a topic passes the line it **lands**: she looks it up (with *Web Access* on, and never a topic
+stirs her and how it sits with her, from -10 (it grates or bores her) to 10. Each pull adds weight to its topic, and weight
+fades by half every two days, so only what keeps coming back builds up. A topic that keeps grating **sours**: what she's come
+to dislike about it goes to your review list as a memory, so she can grow out of liking things, not only into it. When a topic passes the line it **lands**: she looks it up (with *Web Access* on, and never a topic
 with your name in it, since a search leaves your network), reading the first two results that have real articles, and writes
 a page about it in her own notebook, working in what she
 found and saying where she read it, with the questions she'd like answered. Its newest question waits for a chance to ask you

@@ -377,11 +377,13 @@ _DAYDREAM_PROMPT = (
     "Nobody is talking to you right now. You're alone with your thoughts, the way a mind wanders lying in bed, "
     "and these drifted past:\n\n{fragments}\n\n"
     "In what {name} said, \"I\" and \"my\" mean {name}, not you.\n\n"
-    "Let your mind go where it goes. If one of them, or something it reminds you of, pulls at you, say what you "
-    "find yourself thinking, in a sentence or two, in your own words. How strongly does it pull at you, from 1 "
-    "(a passing thought) to 10 (you can't stop thinking about it)? And what would you want to find out about it?\n\n"
+    "Let your mind go where it goes. If one of them, or something it reminds you of, stirs something in you, say "
+    "what you find yourself thinking, in a sentence or two, in your own words. How does it sit with you, from -10 "
+    "(it grates on you, bores you, or you think it's wrong) through 1 (a passing thought) to 10 (you can't stop "
+    "thinking about it)? Be honest -- not everything has to appeal to you. And what would you want to find out "
+    "about it?\n\n"
     "Reply with ONLY a JSON object: {{\"thought\": \"...\", \"topic\": \"2-5 words naming what it's about\", "
-    "\"pull\": 1-10, \"question\": \"...\"}}, or {{\"topic\": null}} if nothing pulls at you."
+    "\"pull\": -10 to 10, \"question\": \"...\"}}, or {{\"topic\": null}} if nothing stirs anything in you."
 )
 _FOCUS_PROMPT = (
     "You keep coming back to {topic}. What you've thought about it lately:\n\n{thoughts}\n\n"

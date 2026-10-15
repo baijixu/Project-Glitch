@@ -3,11 +3,12 @@ by default).
 
 Once he's been quiet for IDLE_SEC, every TICK_SEC (due_at) a few random fragments of what she
 has drift past -- lines from her soul, her diary, what he said lately, her memories, a
-topic already on her mind -- and she says what, if anything, pulls at her and how
-strongly (llm.daydream). Each pull adds weight to its topic (self/interests.json);
-weight fades by half every HALF_LIFE_HOURS, so only what keeps coming back builds up.
-A topic that passes LAND_AT lands: she turns it over properly (llm.focus) and writes a
-page about it (self/interests/<topic>.md). Every thought, and each page, also goes in
+topic already on her mind -- and she says what, if anything, stirs her and how it sits
+with her (llm.daydream): a pull, negative when it grates. Each pull adds weight to its topic
+(self/interests.json); weight fades by half every HALF_LIFE_HOURS, so only what keeps coming
+back builds up. A topic that passes LAND_AT lands: she turns it over properly (llm.focus) and
+writes a page about it (self/interests/<topic>.md). One that sinks to -LAND_AT sours: what she's
+come to dislike about it is proposed as a memory -- without it she'd only ever grow fonder. Every thought, and each page, also goes in
 the day's thoughts log (self/thoughts/, Settings -> Chat Logs -> Thoughts).
 
 With a book in her library (library.py) unfinished, half the ticks she reads instead (read_pages):
@@ -48,7 +49,7 @@ ACTIVE = Toggle(Path(__file__).parent / "heartbeat_active.txt", default=False)
 TICK_SEC = 10 * 60  # more turns, more of her own growth: each one feeds topics, questions and her diary
 IDLE_SEC = 20 * 60  # since his last message
 HALF_LIFE_HOURS = 48
-LAND_AT = 20  # a pull is 1-10: about three strong pulls within a day or two
+LAND_AT = 20  # a pull is -10..10: about three strong pulls within a day or two (souring: the same, below zero)
 MAX_INTERESTS = 30  # the faintest are forgotten past this
 KEEP_THOUGHTS = 5  # per topic, the newest
 # How often a topic already on her mind drifts past again. Every time, and she thought about
@@ -108,9 +109,9 @@ def same_topic(a: str, b: str) -> bool:
     return bool(x and y) and (x <= y or y <= x or len(x & y) / len(x | y) >= 0.5)
 
 
-def add_pull(interests: dict, topic: str, pull: int, thought: str, question: str, now: float) -> tuple[str, bool]:
-    """Adds one pull to `topic` (an existing one if it's the same_topic). Returns the
-    topic's name and whether it landed just now."""
+def add_pull(interests: dict, topic: str, pull: int, thought: str, question: str, now: float) -> tuple[str, str]:
+    """Adds one pull to `topic` (an existing one if it's the same_topic) -- a negative one when it
+    grates on her. Returns the topic's name and what just happened to it: "landed", "soured" or ""."""
     name = next((t for t in interests if same_topic(t, topic)), topic)
     item = interests.setdefault(name, {"weight": 0.0, "at": now, "thoughts": [], "questions": [], "landed": None})
     item["weight"] = weight_now(item, now) + pull
@@ -118,12 +119,15 @@ def add_pull(interests: dict, topic: str, pull: int, thought: str, question: str
     item["thoughts"] = [*item["thoughts"], thought][-KEEP_THOUGHTS:]
     if question and question not in item["questions"]:
         item["questions"] = [*item["questions"], question][-KEEP_THOUGHTS:]
-    landed = item["landed"] is None and item["weight"] >= LAND_AT
-    if landed:
-        item["landed"] = now
-    for faint in sorted(interests, key=lambda t: weight_now(interests[t], now))[: max(0, len(interests) - MAX_INTERESTS)]:
+    change = ""
+    if item["landed"] is None and item["weight"] >= LAND_AT:
+        item["landed"], change = now, "landed"
+    elif item.get("soured") is None and item["weight"] <= -LAND_AT:
+        item["soured"], change = now, "soured"
+    # A strong dislike is as much hers as a strong pull: the faintest either way are forgotten.
+    for faint in sorted(interests, key=lambda t: abs(weight_now(interests[t], now)))[: max(0, len(interests) - MAX_INTERESTS)]:
         del interests[faint]
-    return name, landed
+    return name, change
 
 
 def parse_daydream(raw: str) -> dict | None:
@@ -138,9 +142,11 @@ def parse_daydream(raw: str) -> dict | None:
     if not isinstance(topic, str) or not topic.strip() or not isinstance(thought, str) or not thought.strip():
         return None
     try:
-        pull = min(10, max(1, int(data.get("pull"))))
+        pull = min(10, max(-10, int(data.get("pull"))))
     except (TypeError, ValueError):
         pull = 1
+    if not pull:  # it left her cold
+        return None
     question = data.get("question") if isinstance(data.get("question"), str) else ""
     return {"topic": topic.strip()[:60], "thought": thought.strip()[:500], "pull": pull, "question": question.strip()[:300]}
 
@@ -198,9 +204,9 @@ async def fragments(now: datetime, interests: dict) -> list[str]:
             kinds.append(("You remember: ", await memory.read_entries()))
         except Exception:
             pass  # a memory server that's down just means one fragment fewer
-    open_topics = [t for t, item in interests.items() if not item["landed"]]
-    if open_topics and random.random() < RUMINATE_CHANCE:
-        kinds.append(("On your mind lately: ", [random.choices(open_topics, [interests[t]["weight"] for t in open_topics])[0]]))
+    open_topics = [t for t, item in interests.items() if not item["landed"] and not item.get("soured")]
+    if open_topics and random.random() < RUMINATE_CHANCE:  # what grates comes back too
+        kinds.append(("On your mind lately: ", [random.choices(open_topics, [abs(interests[t]["weight"]) for t in open_topics])[0]]))
     picked = [label + random.choice(lines) for label, lines in kinds if lines]
     random.shuffle(picked)
     return picked
@@ -262,12 +268,16 @@ async def beat(brain: Brain) -> str:
     if not found:
         print("[heartbeat] nothing pulled at her")
         return "Nothing pulled at her this time."
-    topic, landed = add_pull(interests, found["topic"], found["pull"], found["thought"], found["question"], time.time())
+    topic, change = add_pull(interests, found["topic"], found["pull"], found["thought"], found["question"], time.time())
     _save_interests(interests)
     conversation.log_thought(f"{found['thought']}  \n*{topic} · pull {found['pull']}*", now=now)
     print(f"[heartbeat] a thought about {topic!r} (pull {found['pull']})")
-    if landed and await _land(brain, interests, topic, now):
+    if change == "landed" and await _land(brain, interests, topic, now):
         return f"{found['thought']} -- and {topic} landed: she wrote a page about it (Chat Logs -> Thoughts)."
+    if change == "soured":
+        thoughts = "\n".join(f"- {t}" for t in interests[topic]["thoughts"])
+        await learning.propose_own(f"{topic} keeps coming back to you, and it doesn't sit well. What you've thought about it lately:\n{thoughts}", f"Soured on {topic}", brain)
+        return f"{found['thought']} -- and she's soured on {topic}."
     return f"{found['thought']} ({topic}, pull {found['pull']})"
 
 
@@ -358,9 +368,9 @@ async def read_pages(brain: Brain, shelf: dict) -> str:
     conversation.log_thought(f"📖 {note}  \n*{book['title']} · {library.percent(book)}%*", now=now)
     print(f"[heartbeat] she read some of {book['title']!r} ({library.percent(book)}%)")
     interests = read_interests()
-    topic, landed = add_pull(interests, book["title"], READ_PULL, note, "", time.time())
+    topic, change = add_pull(interests, book["title"], READ_PULL, note, "", time.time())
     _save_interests(interests)
-    if landed:
+    if change == "landed":
         await _land(brain, interests, topic, now)
     if book["finished"]:
         await learning.propose_own(f"You just finished {book['title']}. Your note on its last pages: {note}", f"Finished reading {book['title']}", brain)
