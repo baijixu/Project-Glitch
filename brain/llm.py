@@ -122,6 +122,18 @@ PAST_CLAIM_NOTE = (
     "actually think."
 )
 
+# A job for Hermes (a site, feed, paper or video to open, a picture or file to make). With web
+# search on as well she searched first 3 of 8 times -- snippets, not the page -- and a search
+# takes Hermes off the table for that reply; the tool's description alone moved it 4/8 -> 5/8.
+_HERMES_JOB = re.compile(
+    r"\br/\w|\b(?:subreddit|reddit|arxiv|youtube|rss|feed|pdf|spreadsheet)\b|\b(?:picture|image|drawing|photo) of\b",
+    re.IGNORECASE,
+)
+HERMES_JOB_NOTE = (
+    "If he's asking you to open or read a specific site, subreddit, feed, paper or video, or to make a picture or "
+    "file, use ask_hermes first -- web search only sees snippets and can't open it."
+)
+
 
 # The passage of time. Each history message carries when it was said ("at", never sent to
 # the model). After a break of GAP_MARKER_SEC or more, his message is stored with a marker
@@ -584,10 +596,11 @@ ASK_HERMES_TOOL = {
         "name": "ask_hermes",
         "description": (
             "Hand a task to Hermes, the agent that works for you, and get back its report. Hermes has "
-            "skills you don't: making images, reading RSS feeds, arXiv, Reddit or YouTube, handling "
-            "files and documents, running things on Josh's PC. Use it only when Josh asks you to do "
-            "something like that -- never for talking, your opinions or what you remember. It can "
-            "take minutes."
+            "skills you don't: making images, opening and reading a specific site, subreddit, RSS feed, "
+            "arXiv paper or YouTube video (web search only sees search snippets -- for those, ask Hermes "
+            "instead of searching), handling files and documents, running things on Josh's PC. Use it "
+            "only when Josh asks you to do something like that -- never for talking, your opinions or "
+            "what you remember. It can take minutes."
         ),
         "parameters": {
             "type": "object",
@@ -1046,8 +1059,10 @@ class LocalLLM(ChatBackend):
         on_thinking: Callable[[], None] | None = None,
     ) -> str:
         """_complete_raw, looping while the model calls tools: each tool's result is added
-        and it's asked again, until a plain answer or MAX_TOOL_ITERATIONS (then ""). Works
-        on a copy, so tool calls never reach her history.
+        and it's asked again, until a plain answer. After MAX_TOOL_ITERATIONS rounds it's
+        asked once more with no tools, so it answers with what it has -- an empty answer made
+        _answer start over and run Hermes a second time. Works on a copy, so tool calls never
+        reach her history.
 
         `into` collects token usage and whether a web search ran. no_thinking skips a
         reasoning model's thinking -- for the background calls, never her replies (a memory
@@ -1055,9 +1070,9 @@ class LocalLLM(ChatBackend):
         is her sampling profile, for her replies only.
         """
         working = list(messages)
-        for _ in range(MAX_TOOL_ITERATIONS):
+        for round_ in range(MAX_TOOL_ITERATIONS + 1):
             result = self._complete_raw(
-                working, max_tokens, tools, no_thinking=no_thinking, sampling=sampling, on_text=on_text, cancelled=cancelled,
+                working, max_tokens, tools if round_ < MAX_TOOL_ITERATIONS else None, no_thinking=no_thinking, sampling=sampling, on_text=on_text, cancelled=cancelled,
                 on_thinking=on_thinking,
             )
             if into is not None:  # the last call's numbers are the conversation's current size
@@ -1363,6 +1378,8 @@ class LocalLLM(ChatBackend):
             parts.append(CRISIS_NOTE)
         if not self._persona and _PAST_CLAIM.search(latest):  # in role-play, the scene's past is make-believe
             parts.append(PAST_CLAIM_NOTE)
+        if _HERMES_JOB.search(latest) and _hands():
+            parts.append(HERMES_JOB_NOTE)
         return "\n\n".join(parts)
 
     def _opens_a_sitting(self) -> bool:
