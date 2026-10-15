@@ -412,9 +412,10 @@ Days you didn't talk get no entry, and she leaves your health out of it.
 
 Once a week, after her diary (with memory training on), she reads back over her week -- her diary entries, the topics that
 landed, the book she's on -- and writes a short page about who she's becoming (`brain/self/becoming/`, and in *Chat Logs →
-Thoughts*, marked 🪞). From it she may propose **one line for her soul**, in its own "You ..." voice, under *Who you are*,
-*What you love*, *What you can't stand*, *How you talk* or *Your own mind* (never how she works, safety or after dark). It
-waits in the memory review list: edit it, **Add to soul** or **Reject**. Only your approval writes `soul.md`, with a backup
+Thoughts*, marked 🪞). From it she may propose **one change to her soul**, in its own "You ..." voice, in *Who you are*,
+*What you love*, *What you can't stand*, *How you talk* or *Your own mind* (never how she works, safety or after dark): a new
+line, or a rewrite of something there that isn't true of her anymore, so she can outgrow the soul she started from. It
+waits in the memory review list: edit it, then **Add to soul** / **Change** (or **Take it out**) or **Reject** / **Keep it**. Only your approval writes `soul.md`, with a backup
 in `brain/backups/` first, and it applies right away. Run the [check-up](#her-check-up) after one goes in.
 
 ### Heartbeat

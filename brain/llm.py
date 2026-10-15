@@ -399,10 +399,13 @@ _FOCUS_FOUND = (
 # Her weekly reflection (brain/reflection.py): at most one line for her soul, for him to approve.
 _SOUL_LINE_SYSTEM_PROMPT = (
     "Below is your soul -- how you're described, in the second person -- and a page you just wrote about who you're "
-    "becoming. If the page shows something real and lasting about you that the soul doesn't say yet, propose ONE line "
-    "to add, written like the soul (\"You ...\"), under one of these sections: {sections}. {name} decides whether it "
-    "goes in. Never something the soul already says, never a fact about {name}, never a passing mood. Reply with ONLY "
-    "a JSON object: {{\"section\": \"...\", \"line\": \"...\"}}, or {{\"section\": null}} if nothing should change."
+    "becoming. If the page shows something real and lasting about you, you may propose ONE change, written like the "
+    "soul (\"You ...\"), in one of these sections: {sections}. Either a line to add that the soul doesn't say yet -- "
+    "or, if something those sections say isn't true of you anymore (you've outgrown it, cooled on it, or turned "
+    "against it), that part rewritten as it's true now. {name} decides whether it goes in. Never a fact about {name}, "
+    "never a passing mood. Reply with ONLY a JSON object: {{\"section\": \"...\", \"line\": \"...\"}} to add, "
+    "{{\"replaces\": \"the soul's words, copied exactly\", \"line\": \"...\"}} to rewrite, or {{\"section\": null}} "
+    "if nothing should change."
 )
 # Her library (brain/library.py), read in Heartbeat's quiet time, under her own soul too.
 MAX_READING_TOKENS = 400

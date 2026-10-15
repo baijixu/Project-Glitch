@@ -87,7 +87,9 @@ export class TrainingUI {
   }
 
   // kind "add" (a new memory), or from memory upkeep "update" (new wording for one she has,
-  // `old` its current text) or "retire" (one that repeats another).
+  // `old` its current text) or "retire" (one that repeats another), or from her weekly
+  // reflection "soul" (a line for her soul, `old` its section) or "soul_change" (`old`, words
+  // her soul says, rewritten).
   _row(proposal) {
     const row = document.createElement("div");
     row.className = "lesson-row pending";
@@ -96,6 +98,7 @@ export class TrainingUI {
     if (kind === "update") note(`Update this memory? Now: "${proposal.old}"`);
     if (kind === "retire") note("Retire this memory?");
     if (kind === "soul") note(`Add this to her soul, under "${proposal.old}"? (Her weekly reflection; soul.md is backed up first.)`);
+    if (kind === "soul_change") note(`Change this in her soul? Now: "${proposal.old}" (Her weekly reflection; soul.md is backed up first.)`);
 
     const box = document.createElement("textarea");
     box.className = "settings-text-input training-fact";
@@ -118,9 +121,11 @@ export class TrainingUI {
     const meta = document.createElement("div");
     meta.className = "lesson-meta";
     const resolve = (extra) => this._send({ type: "resolve_memory_proposal", id: proposal.id, ...extra });
-    if (kind === "soul") {
-      meta.appendChild(this._button("✓ Add to soul", "Write it into soul.md (edit the wording first if you like)", () => box.value.trim() && resolve({ approve: true, fact: box.value.trim() })));
-      meta.appendChild(this._button("✕ Reject", "Leave her soul as it is", () => resolve({ approve: false }), true));
+    if (kind === "soul" || kind === "soul_change") {
+      const change = kind === "soul_change";
+      meta.appendChild(this._button(change ? "✓ Change" : "✓ Add to soul", "Write it into soul.md (edit the wording first if you like)", () => box.value.trim() && resolve({ approve: true, fact: box.value.trim() })));
+      if (change) meta.appendChild(this._button("Take it out", "Remove those words from her soul instead", () => resolve({ approve: true, remove: true }), true));
+      meta.appendChild(this._button(change ? "✕ Keep it" : "✕ Reject", "Leave her soul as it is", () => resolve({ approve: false }), true));
       row.appendChild(meta);
       return row;
     }

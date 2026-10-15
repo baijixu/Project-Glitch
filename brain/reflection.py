@@ -1,8 +1,10 @@
 """Her weekly reflection: once a week, after her diary (journal.py), she reads back over the week --
 her diary entries, the topics that landed, the book she's on -- and writes a short page about who
 she's becoming (self/becoming/<date>.md, and in Settings -> Chat Logs -> Thoughts). From it she may
-propose ONE line for her soul, in its own second person, under one of SECTIONS. It waits in the
-memory review list; only his approval writes soul.md (a backup first), and it applies at once.
+propose ONE change to her soul, in its own second person: a new line under one of SECTIONS, or a
+rewrite of something those sections say that isn't true of her anymore -- without that, the soul
+he started her from could only grow, never be outgrown. It waits in the memory review list; only
+his approval writes soul.md (a backup first), and it applies at once.
 Run tools/checkup.py after one goes in to see it didn't cost her anything.
 """
 
@@ -57,19 +59,38 @@ def week(now: datetime) -> str:
     return "\n\n".join(p for p in (*parts, landed, library.reading_line()) if p)
 
 
-def parse_proposal(raw: str, soul: str) -> tuple[str, str] | None:
-    """(section, line) from the model's JSON, or None: no change, or one that isn't usable --
-    a section she may not change or her soul doesn't have, an empty or overlong line."""
+def _sections_text(soul: str) -> str:
+    """What SECTIONS say -- the only part of her soul a reflection may rewrite."""
+    parts = re.split(r"^#+\s*(.+)$", soul, flags=re.MULTILINE)  # [before, heading, body, heading, body...]
+    return "\n".join(body for heading, body in zip(parts[1::2], parts[2::2]) if heading.strip() in SECTIONS)
+
+
+def parse_proposal(raw: str, soul: str) -> tuple[str, str, str] | None:
+    """("soul", section, line) to add a line, ("soul_change", old, line) to rewrite `old` -- words
+    SECTIONS really say -- or None: no change, or one that isn't usable (a section she may not
+    change or her soul doesn't have, a quote it doesn't contain, an empty or overlong line)."""
     match = re.search(r"\{.*\}", raw or "", re.DOTALL)
     try:
         data = json.loads(match[0]) if match else {}
     except ValueError:
         return None
-    section, line = data.get("section"), data.get("line")
-    if section not in SECTIONS or f"## {section}" not in soul or not isinstance(line, str):
+    section, line, replaces = data.get("section"), data.get("line"), data.get("replaces")
+    if not isinstance(line, str):
         return None
     line = " ".join(line.split())
-    return (section, line) if 0 < len(line) <= MAX_LINE_CHARS and line not in soul else None
+    if not 0 < len(line) <= MAX_LINE_CHARS or line in soul:
+        return None
+    if isinstance(replaces, str) and replaces.strip():
+        old = " ".join(replaces.split())
+        return ("soul_change", old, line) if len(old) >= 10 and old in _sections_text(soul) else None
+    return ("soul", section, line) if section in SECTIONS and f"## {section}" in soul else None
+
+
+def _rewrite_soul(soul: str, brain: Brain, today: date | None) -> None:
+    BACKUPS.mkdir(exist_ok=True)
+    (BACKUPS / f"soul_before_reflection_{today or date.today():%Y%m%d}.md").write_text(souls.read_main_soul(), encoding="utf-8")
+    souls.write_main_soul(soul)
+    brain.llm.update_soul(persona.effective_soul())  # an edit, not a new her: the conversation carries on
 
 
 def add_to_soul(section: str, line: str, brain: Brain, today: date | None = None) -> None:
@@ -79,10 +100,17 @@ def add_to_soul(section: str, line: str, brain: Brain, today: date | None = None
     start = soul.index(f"## {section}")
     following = re.search(r"\n#{1,2} ", soul[start + 3:])
     end = start + 3 + following.start() if following else len(soul)
-    BACKUPS.mkdir(exist_ok=True)
-    (BACKUPS / f"soul_before_reflection_{today or date.today():%Y%m%d}.md").write_text(soul, encoding="utf-8")
-    souls.write_main_soul(soul[:end].rstrip() + f"\n\n{line}\n\n" + soul[end:].lstrip("\n"))
-    brain.llm.update_soul(persona.effective_soul())  # an edit, not a new her: the conversation carries on
+    _rewrite_soul(soul[:end].rstrip() + f"\n\n{line}\n\n" + soul[end:].lstrip("\n"), brain, today)
+
+
+def change_soul(old: str, line: str, brain: Brain, today: date | None = None) -> None:
+    """His approval: `old` in soul.md rewritten as `line`, or taken out when `line` is "" -- a
+    backup first, and in her prompt at once. ValueError if her soul no longer says `old`."""
+    soul = souls.read_main_soul()
+    if old not in soul:
+        raise ValueError("her soul doesn't say that anymore")
+    soul = re.sub(r"(?m)^[-*][ \t]*\n", "", soul.replace(old, line, 1))  # no bullet left with nothing on it
+    _rewrite_soul(re.sub(r"\n{3,}", "\n\n", soul), brain, today)
 
 
 async def run(brain: Brain, now: datetime | None = None) -> None:
@@ -107,6 +135,6 @@ async def run(brain: Brain, now: datetime | None = None) -> None:
     async with brain.busy("Thinking about her soul..."):
         raw = await asyncio.to_thread(brain.llm.propose_soul_line, soul, page, SECTIONS, name)
     if proposal := parse_proposal(raw, soul):
-        section, line = proposal
-        training.add_pending(line, f"Her weekly reflection, {now:%d %B}", "soul", old=section)
-        print(f"[reflection] she proposed a line for {section!r}")
+        kind, old, line = proposal
+        training.add_pending(line, f"Her weekly reflection, {now:%d %B}", kind, old=old)
+        print(f"[reflection] she proposed {'a line for' if kind == 'soul' else 'rewriting'} {old[:60]!r}")
