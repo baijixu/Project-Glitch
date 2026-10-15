@@ -99,8 +99,68 @@ MOOD_STYLES = {
 _LAUGH_CUE = re.compile(r"[(*\[]\s*(?:laugh|chuckl|giggl)\w*[^)*\]]{0,20}[)*\]]", re.IGNORECASE)
 
 
+# Qwen3-TTS's Serena reads digits in Mandarin ("43 unread" came out "si shi san", and a bare
+# "43." or "90 days." was heard as Chinese) but says "forty-three" in English, so numbers are
+# spoken as English words. Money, times, ordinals, decimals, percents; 1100-2099 like a year.
+_ONES = ("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen "
+         "seventeen eighteen nineteen").split()
+_TENS = "_ _ twenty thirty forty fifty sixty seventy eighty ninety".split()
+_NUMBER = re.compile(
+    r"\$(\d(?:[\d,]*\d)?)(?:\.(\d\d))?"  # $51.25 (a comma after it stays, as a pause)
+    r"|\b(\d{1,2}):(\d\d)\b"  # 6:30
+    r"|\b(\d+)(?:st|nd|rd|th)\b"  # 15th
+    r"|\b(\d(?:[\d,]*\d)?)(?:\.(\d+))?(%?)"  # 43, 1,000, 3.5, 70%
+)
+
+
+def _words(n: int) -> str:
+    if n < 20:
+        return _ONES[n]
+    if n < 100:
+        return _TENS[n // 10] + (f"-{_ONES[n % 10]}" if n % 10 else "")
+    if n < 1000:
+        return f"{_ONES[n // 100]} hundred" + (f" {_words(n % 100)}" if n % 100 else "")
+    if n >= 10**12:  # a serial number or the like: digit by digit
+        return " ".join(_ONES[int(d)] for d in str(n))
+    for size, name in ((10**9, "billion"), (10**6, "million"), (1000, "thousand")):
+        if n >= size:
+            return f"{_words(n // size)} {name}" + (f" {_words(n % size)}" if n % size else "")
+
+
+def _year(n: int) -> str:
+    high, low = divmod(n, 100)
+    if 2000 <= n < 2010 or low == 0 and high % 10 == 0:
+        return _words(n)
+    return f"{_words(high)} " + ("hundred" if low == 0 else f"oh {_ONES[low]}" if low < 10 else _words(low))
+
+
+def _ordinal(n: int) -> str:
+    words = _words(n)
+    for end, nth in (("one", "first"), ("two", "second"), ("three", "third"), ("five", "fifth"), ("eight", "eighth"),
+                     ("nine", "ninth"), ("twelve", "twelfth")):
+        if words.endswith(end):
+            return words[: -len(end)] + nth
+    return words[:-1] + "ieth" if words.endswith("y") else words + "th"
+
+
+def _say_number(m: re.Match) -> str:
+    dollars, cents, hour, minute, nth, whole, fraction, percent = m.groups()
+    if dollars:
+        amount = f"{_words(int(dollars.replace(',', '')))} dollars"
+        return amount + (f" {_words(int(cents))}" if cents and int(cents) else "")
+    if hour:
+        return _words(int(hour)) + (" o'clock" if minute == "00" else f" oh {_ONES[int(minute)]}" if minute < "10" else f" {_words(int(minute))}")
+    if nth:
+        return _ordinal(int(nth))
+    n = int(whole.replace(",", ""))
+    said = _year(n) if not fraction and not percent and "," not in whole and 1100 <= n < 2100 else _words(n)
+    if fraction:
+        said += " point " + " ".join(_ONES[int(d)] for d in fraction)
+    return said + (" percent" if percent else "")
+
+
 def _spoken(text: str) -> str:
-    text = _LAUGH_CUE.sub("haha", text)
+    text = _NUMBER.sub(_say_number, _LAUGH_CUE.sub("haha", text))
     return re.sub(r"\s+", " ", _EMOJI_PATTERN.sub("", text)).strip()
 
 
