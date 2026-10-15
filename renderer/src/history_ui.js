@@ -77,10 +77,11 @@ export class HistoryUI {
 
   // Adds a message: to the History panel, the stored history, and (while on)
   // the over-avatar bubbles. thumbnailUrl is a picture sent with it (shown, not
-  // stored). Returns {bubbleEl, overlayBubbleEl, entry} for updateText.
-  add(role, text, thumbnailUrl) {
+  // stored); pictures are hers, by name (stored, fetched with get_picture).
+  // Returns {bubbleEl, overlayBubbleEl, entry} for updateText.
+  add(role, text, thumbnailUrl, pictures) {
     const timeText = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-    const entry = { role, text, timeText, ...(thumbnailUrl && { picture: true }) };
+    const entry = { role, text, timeText, ...(thumbnailUrl && { picture: true }), ...(pictures?.length && { pictures }) };
     const bubbleEl = this._render(entry, thumbnailUrl);
     this.entries.push(entry);
     while (this.entries.length > MAX_STORED_ENTRIES) this.entries.shift();
@@ -96,6 +97,14 @@ export class HistoryUI {
     entry.text = text;
     if (bubbleEl) bubbleEl.textContent = text;
     if (overlayBubbleEl) overlayBubbleEl.textContent = text; // a no-op if it's already been pushed out
+    this._save();
+  }
+
+  // Her pictures for a bubble that streamed in before they were known (her final speak_text).
+  showPictures(added, pictures) {
+    if (!added || !pictures?.length) return;
+    added.entry.pictures = pictures;
+    if (added.bubbleEl) this._appendPictures(added.bubbleEl, pictures);
     this._save();
   }
 
@@ -126,10 +135,10 @@ export class HistoryUI {
       if (this.overlayEl) this.overlayEl.replaceChildren();
       for (const entry of this.entries) this._render(entry, null);
     }
-    for (const { role, text, at, picture } of missed) {
+    for (const { role, text, at, picture, pictures } of missed) {
       const time = new Date(at);
       const timeText = isNaN(time) ? "" : time.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-      const entry = { role, text, timeText, ...(picture && { picture: true }) };
+      const entry = { role, text, timeText, ...(picture && { picture: true }), ...(pictures?.length && { pictures }) };
       this.entries.push(entry);
       this._render(entry, null);
       if (this.overlayActive) this._addOverlayBubble(role, text);
@@ -327,6 +336,7 @@ export class HistoryUI {
     bubble.className = "history-bubble";
     if (thumbnailUrl) bubble.appendChild(Object.assign(document.createElement("img"), { className: "history-thumbnail", src: thumbnailUrl, alt: "" }));
     if (text) bubble.appendChild(document.createTextNode(text));
+    if (entry.pictures) this._appendPictures(bubble, entry.pictures);
     group.appendChild(bubble);
 
     const meta = document.createElement("div");
@@ -358,6 +368,17 @@ export class HistoryUI {
     this.listEl.appendChild(group);
     this.listEl.scrollTop = this.listEl.scrollHeight;
     return bubble;
+  }
+
+  // Her pictures under her words, each fetched once per device (BrainClient.loadPicture);
+  // one that's gone is left out. A click shows it full size.
+  _appendPictures(bubble, pictures) {
+    for (const name of pictures) {
+      const img = Object.assign(document.createElement("img"), { className: "history-picture", alt: "" });
+      img.addEventListener("click", () => img.classList.toggle("expanded"));
+      bubble.appendChild(img);
+      this._app.loadPicture(name).then((url) => (url ? (img.src = url) : img.remove()));
+    }
   }
 
   // Turning the bubbles off clears what's floating -- nothing else would.

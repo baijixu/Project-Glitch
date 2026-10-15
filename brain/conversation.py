@@ -53,7 +53,8 @@ def _storable(message: dict) -> dict:
     """A history message with any image replaced by PICTURE_NOTE."""
     when = {"at": message["at"]} if isinstance(message.get("at"), str) else {}  # when it was said (llm.py)
     private = {"private": True} if message.get("private") else {}
-    return {"role": message.get("role"), "content": text_of(message.get("content")), **when, **private}
+    shown = {"pictures": message["pictures"]} if message.get("pictures") else {}  # the pictures she showed (pictures.py)
+    return {"role": message.get("role"), "content": text_of(message.get("content")), **when, **private, **shown}
 
 
 # A private stretch, marked off in conversation.json: kept so the chat still syncs to his phone,
@@ -99,7 +100,8 @@ def load_state(mode: str) -> list[dict]:
         return []
     return [
         {"role": m["role"], "content": m["content"], **({"at": m["at"]} if isinstance(m.get("at"), str) else {}),
-         **({"private": True} if m.get("private") is True else {})}
+         **({"private": True} if m.get("private") is True else {}),
+         **({"pictures": [p for p in m["pictures"] if isinstance(p, str)]} if isinstance(m.get("pictures"), list) else {})}
         for m in data["messages"]
         if isinstance(m, dict)
         and m.get("role") in ("user", "assistant")

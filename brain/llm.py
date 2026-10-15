@@ -27,6 +27,7 @@ from openai import BadRequestError, OpenAI
 
 import conversation
 import harness
+import pictures
 import web_search
 
 # The avatar's expression presets; "neutral" means none of them.
@@ -194,8 +195,8 @@ def _message_time(message: dict) -> datetime | None:
 
 
 def _for_model(message: dict) -> dict:
-    """A history message as the model gets it -- without the "at" time or the private flag."""
-    return {k: v for k, v in message.items() if k not in ("at", "private")}
+    """A history message as the model gets it -- without the "at" time, the private flag or her pictures."""
+    return {k: v for k, v in message.items() if k not in ("at", "private", "pictures")}
 
 
 def _said(now: datetime) -> dict:
@@ -614,11 +615,13 @@ ASK_HERMES_TOOL = {
 # An agent run with several tool steps, or an image on PC2, takes minutes.
 HERMES_TIMEOUT_SEC = 900
 # Sent with every task. Asked to delete an email its skill couldn't delete, Hermes spent 24 minutes and 80+
-# model calls writing its own scripts and probing its Google permissions instead of saying so.
+# model calls writing its own scripts and probing its Google permissions instead of saying so. And after a
+# 3-minute render it "verified" the picture with the 27B's vision -- 200+ s a call -- past her 15-minute wait.
 HERMES_TASK_RULES = (
     "Do this with your existing skills and tools, the way they're documented. If they can't do it as asked -- a "
     "command fails, no skill covers it, or a permission is missing -- stop and report what's missing. Don't write "
-    "your own code to get around it, probe permissions or settings, or try workarounds."
+    "your own code to get around it, probe permissions or settings, or try workarounds. For a picture you make, "
+    "report the saved file's full path and stop -- don't open or look at it to check it; Josh sees it in the chat."
 )
 # A picture Hermes pastes into its report as base64 -- its HiDream report carried a 1.8 MB data URI, far past her
 # context window -- reaches her as "[picture]" (the report also says where the file is saved); and a report is capped.
@@ -779,7 +782,8 @@ def _for_screen(message: dict) -> dict:
     if message["role"] == "user" and (attached := _ATTACHED_FILE.match(text)):
         text = f"{(attached[1] or '').strip()} 📎 {attached[2]}".strip()
     role = "glitch" if message["role"] == "assistant" else "user"
-    return {"role": role, "text": text or PICTURE_LABEL, "at": message.get("at", ""), **({"picture": True} if picture else {})}
+    shown = {"role": role, "text": text or PICTURE_LABEL, "at": message.get("at", ""), **({"picture": True} if picture else {})}
+    return {**shown, "pictures": message["pictures"]} if message.get("pictures") else shown
 
 
 SCREEN_MESSAGES = 100  # the latest messages sent to a device's chat panel -- as many as it keeps (history_ui.js)
@@ -816,6 +820,7 @@ class Reply:
     trimmed: dict | None = None  # what _trim_history dropped this turn: {"dropped", "kept", "budget"}
     fell_back: bool = False  # thinking ran out of room, so it answered again with thinking off
     used_tool: bool = False  # search results or a Hermes report are woven in, so the reply isn't a memory of the user
+    pictures: list = field(default_factory=list)  # what Hermes made for this reply, kept in pictures/ (shown under it)
 
 
 class ChatBackend:
@@ -1113,6 +1118,9 @@ class LocalLLM(ChatBackend):
                     tools = [t for t in tools if t is not ASK_HERMES_TOOL]
                 elif offered and call["name"] == "ask_hermes":
                     output = _run_hermes_tool(call["arguments"])
+                    if into is not None and (kept := pictures.keep(output)):
+                        into.pictures += kept
+                        output += "\n\nThe picture now shows in your chat with Josh, right under your reply."
                     # One task a reply: given a thin report she re-asked four times, each an agent run.
                     tools = [t for t in tools if t is not ASK_HERMES_TOOL]
                 else:
@@ -1475,7 +1483,8 @@ class LocalLLM(ChatBackend):
             self._history_changed()
             return result
         # Stored without the mood tag -- the system prompt alone keeps the model tagging.
-        self._history.append({"role": "assistant", "content": result.text, **_said(_now())})
+        shown = {"pictures": result.pictures} if result.pictures else {}
+        self._history.append({"role": "assistant", "content": result.text, **_said(_now()), **shown})
         self._history_changed()
         return result
 

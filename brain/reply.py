@@ -24,6 +24,7 @@ import library
 import llm
 import memory
 import persona
+import pictures
 import profiles
 import protocol
 import reach_out
@@ -168,6 +169,14 @@ async def _sync_other_devices(websocket: websockets.ServerConnection, brain: Bra
     """What was just said or deleted on this device reaches every other device's chat panel."""
     if (chat := brain.llm.screen_messages()) is not None:
         await hub.broadcast(protocol.chat_history(chat), skip=websocket)
+
+
+@hub.handles(protocol.GET_PICTURE)
+async def get_picture(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    """One of her pictures for this device's chat panel -- by name, from pictures/ only."""
+    name = data.get("name", "")
+    mime, data_b64 = pictures.read(name) or ("", "")
+    await hub.send(websocket, protocol.picture(name, mime, data_b64))
 
 
 @hub.handles(protocol.SPEECH_INTERRUPTED)
@@ -319,7 +328,8 @@ async def reply_to(
         for sentence in sentences.finish(reply_text):  # the last one -- or all of it, if it didn't stream
             await say(sentence, mood)
         print(f"[brain] mood: {mood}")
-        await hub.send(websocket, protocol.speak_text(reply_text))  # all of it: the device's record of her reply
+        # all of it: the device's record of her reply, with any picture Hermes made for it
+        await hub.send(websocket, protocol.speak_text(reply_text, pictures=reply.pictures))
         await _sync_other_devices(websocket, brain)
         # Only her own conversations go in her chat log: a harness keeps its own, and
         # personal and professional stay apart.

@@ -1158,6 +1158,20 @@ body.overlay-chat-active #overlay-edit-button {
   color: #cbd0dc;
 }
 
+.history-picture {
+  display: block;
+  max-width: 100%;
+  max-height: 240px;
+  margin-top: 6px;
+  border-radius: 8px;
+  cursor: zoom-in;
+}
+
+.history-picture.expanded {
+  max-height: none;
+  cursor: zoom-out;
+}
+
 .history-thumbnail {
   display: block;
   max-width: 100%;
