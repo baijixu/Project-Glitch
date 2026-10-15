@@ -123,17 +123,17 @@ PAST_CLAIM_NOTE = (
     "actually think."
 )
 
-# A job for Hermes (a site, feed, paper or video to open, a picture or file to make). With web
-# search on as well she searched first 3 of 8 times -- snippets, not the page -- and a search
-# takes Hermes off the table for that reply; the tool's description alone moved it 4/8 -> 5/8.
-_HERMES_JOB = re.compile(
+# A job for her agent (a site, feed, paper or video to open, mail to check, a picture or file to
+# make). With web search on too she reached for search first -- snippets, not the page -- and a
+# search takes the agent off the table for that reply; the tool's description alone didn't fix it.
+_AGENT_JOB = re.compile(
     r"\br/\w|\b(?:subreddit|reddit|arxiv|youtube|rss|feed|pdf|spreadsheet|e-?mails?|gmail|calendar)\b"
     r"|\b(?:picture|image|drawing|photo) of\b",
     re.IGNORECASE,
 )
-HERMES_JOB_NOTE = (
+AGENT_JOB_NOTE = (
     "If he's asking you to open or read a specific site, subreddit, feed, paper or video, to check his email or "
-    "calendar, or to make a picture or file, use ask_hermes first -- web search can't do it, and Hermes can."
+    "calendar, or to make a picture or file, use ask_agent first -- web search can't do that; {agent} may."
 )
 
 
@@ -590,51 +590,57 @@ def _run_web_search_tool(arguments: dict) -> str:
     )
 
 
-# Her hands: the harness picked in Settings -> Harness does a task for her while she stays
-# herself (soul, memory, voice), instead of taking over as her brain.
-ASK_HERMES_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "ask_hermes",
-        "description": (
-            "Hand a task to Hermes, the agent that works for you, and get back its report. Hermes has "
-            "skills you don't: making images, opening and reading a specific site, subreddit, RSS feed, "
-            "arXiv paper or YouTube video (web search only sees search snippets -- for those, ask Hermes "
-            "instead of searching), checking and sending Josh's email (his Gmail) and his calendar, "
-            "handling files and documents, running things on Josh's PC. Use it "
-            "only when Josh asks you to do something like that -- never for talking, your opinions or "
-            "what you remember. It can take minutes."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {"task": {"type": "string", "description": "The whole task, said plainly"}},
-            "required": ["task"],
+# Her hands: the harness picked in Settings -> Harness (Hermes Agent, OpenClaw...) does a task for
+# her while she stays herself (soul, memory, voice), instead of taking over as her brain.
+AGENT_TOOL = "ask_agent"
+
+
+def _agent_tool(agent: str) -> dict:
+    """The tool she's offered, named after the harness he picked."""
+    return {
+        "type": "function",
+        "function": {
+            "name": AGENT_TOOL,
+            "description": (
+                f"Hand a task to {agent}, the agent that works for you, and get back its report. It can do "
+                "things you can't, whatever skills it's been given -- things like making images, opening and "
+                "reading a specific site, feed, paper or video (web search only sees snippets -- for those, ask "
+                f"{agent} instead of searching), checking his email or calendar, handling files and documents, "
+                "running things on his computer. Use it only when he asks you to do something like that -- "
+                "never for talking, your opinions or what you remember. It can take minutes."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {"task": {"type": "string", "description": "The whole task, said plainly"}},
+                "required": ["task"],
+            },
         },
-    },
-}
-# An agent run with several tool steps, or an image on PC2, takes minutes.
-HERMES_TIMEOUT_SEC = 900
-# Sent with every task. Asked to delete an email its skill couldn't delete, Hermes spent 24 minutes and 80+
-# model calls writing its own scripts and probing its Google permissions instead of saying so. And after a
-# 3-minute render it "verified" the picture with the 27B's vision -- 200+ s a call -- past her 15-minute wait.
-HERMES_TASK_RULES = (
+    }
+
+
+# An agent run with several tool steps, or rendering an image, takes minutes.
+AGENT_TIMEOUT_SEC = 900
+# Sent with every task: an agent left to it will write its own scripts and probe its permissions for
+# as long as it's allowed rather than say a skill can't do it -- and "check" a picture it made by
+# looking at it, a slow vision pass that can outlast her wait.
+AGENT_TASK_RULES = (
     "Do this with your existing skills and tools, the way they're documented. If they can't do it as asked -- a "
     "command fails, no skill covers it, or a permission is missing -- stop and report what's missing. Don't write "
     "your own code to get around it, probe permissions or settings, or try workarounds. For a picture you make, "
-    "report the saved file's full path and stop -- don't open or look at it to check it; Josh sees it in the chat."
+    "report the saved file's full path and stop -- don't open or look at it to check it; he sees it in the chat."
 )
-# A picture Hermes pastes into its report as base64 -- its HiDream report carried a 1.8 MB data URI, far past her
-# context window -- reaches her as "[picture]" (the report also says where the file is saved); and a report is capped.
+# A picture an agent pastes into its report as base64 (a whole PNG, megabytes, far past her context window)
+# reaches her as "[picture]" -- the report also says where the file is saved; and a report is capped.
 _INLINE_IMAGE = re.compile(r"!\[[^\]]*\]\(data:[^)]*\)|data:[\w/+.-]+;base64,[A-Za-z0-9+/=\s]+")
-MAX_HERMES_REPORT_CHARS = 4000
-# Called with True as a Hermes task starts and False as it ends, from the reply's worker
+MAX_AGENT_REPORT_CHARS = 4000
+# Called with the agent's name as a task starts and None as it ends, from the reply's worker
 # thread -- reply.py points it at her status line for each reply.
-on_hermes: Callable[[bool], None] | None = None
+on_agent: Callable[[str | None], None] | None = None
 
 
-def _hands() -> dict | None:
-    """The harness picked in Settings -> Harness ({"endpoint", "model", "api_key"}), or None
-    for none -- and none in private chat, since the harness keeps its own memory."""
+def _hands() -> tuple[str, dict] | None:
+    """The harness picked in Settings -> Harness: (its name, {"endpoint", "model", "api_key"}), or
+    None for none -- and none in private chat, since the harness keeps its own memory."""
     name = harness.read_selected_harness_name()
     if not name or conversation.PRIVATE.read():
         return None
@@ -642,38 +648,39 @@ def _hands() -> dict | None:
         config = harness.read_harness(name)
     except (OSError, ValueError):
         return None
-    return config if config.get("endpoint") else None
+    return (name, config) if config.get("endpoint") else None
 
 
-def _run_hermes_tool(arguments: dict) -> str:
+def _run_agent_tool(arguments: dict) -> str:
     task = (arguments or {}).get("task", "").strip()
     hands = _hands()
     if not task or not hands:
-        return "No task given." if hands else "Hermes isn't set up -- tell Josh you can't do that right now."
-    print(f"[hermes] task: {task!r}")
-    # No session id: each task starts a fresh Hermes conversation.
+        return "No task given." if hands else "No agent is set up -- tell him you can't do that right now."
+    agent, config = hands
+    print(f"[agent] {agent} task: {task!r}")
+    # No session id: each task starts a fresh conversation there.
     client = OpenAI(
-        base_url=hands["endpoint"], api_key=hands.get("api_key") or "not-needed", timeout=HERMES_TIMEOUT_SEC, max_retries=0
+        base_url=config["endpoint"], api_key=config.get("api_key") or "not-needed", timeout=AGENT_TIMEOUT_SEC, max_retries=0
     )
-    if on_hermes:
-        on_hermes(True)
+    if on_agent:
+        on_agent(agent)
     try:
         response = client.chat.completions.create(
-            model=hands.get("model") or "", messages=[{"role": "user", "content": f"{task}\n\n{HERMES_TASK_RULES}"}]
+            model=config.get("model") or "", messages=[{"role": "user", "content": f"{task}\n\n{AGENT_TASK_RULES}"}]
         )
         report = _INLINE_IMAGE.sub("[picture]", _extract_mood(_reply_content(response.choices[0].message.content))[1])
-        if len(report) > MAX_HERMES_REPORT_CHARS:
-            report = report[:MAX_HERMES_REPORT_CHARS] + " ...(the rest of the report was cut)"
+        if len(report) > MAX_AGENT_REPORT_CHARS:
+            report = report[:MAX_AGENT_REPORT_CHARS] + " ...(the rest of the report was cut)"
     except Exception as exc:  # noqa: BLE001 -- any failure is hers to tell, not a crash
-        print(f"[hermes] failed: {exc!r}")
-        return f"Hermes didn't answer ({type(exc).__name__}) -- tell Josh it didn't work."
+        print(f"[agent] {agent} failed: {exc!r}")
+        return f"{agent} didn't answer ({type(exc).__name__}) -- tell him it didn't work."
     finally:
-        if on_hermes:
-            on_hermes(False)
-    print(f"[hermes] report: {report[:200]!r}")
+        if on_agent:
+            on_agent(None)
+    print(f"[agent] {agent} report: {report[:200]!r}")
     return (
-        f"BEGIN HERMES REPORT\n{report or '(empty)'}\nEND HERMES REPORT\n\n"
-        "This is what Hermes says it did. Tell Josh in your own words, and don't claim more than it says."
+        f"BEGIN {agent.upper()} REPORT\n{report or '(empty)'}\nEND {agent.upper()} REPORT\n\n"
+        f"This is what {agent} says it did. Tell him in your own words, and don't claim more than it says."
     )
 
 
@@ -819,8 +826,8 @@ class Reply:
     usage: dict = field(default_factory=dict)
     trimmed: dict | None = None  # what _trim_history dropped this turn: {"dropped", "kept", "budget"}
     fell_back: bool = False  # thinking ran out of room, so it answered again with thinking off
-    used_tool: bool = False  # search results or a Hermes report are woven in, so the reply isn't a memory of the user
-    pictures: list = field(default_factory=list)  # what Hermes made for this reply, kept in pictures/ (shown under it)
+    used_tool: bool = False  # search results or an agent's report are woven in, so the reply isn't a memory of the user
+    pictures: list = field(default_factory=list)  # what her agent made for this reply, kept in pictures/ (shown under it)
 
 
 class ChatBackend:
@@ -1089,7 +1096,7 @@ class LocalLLM(ChatBackend):
         """_complete_raw, looping while the model calls tools: each tool's result is added
         and it's asked again, until a plain answer. After MAX_TOOL_ITERATIONS rounds it's
         asked once more with no tools, so it answers with what it has -- an empty answer made
-        _answer start over and run Hermes a second time. Works on a copy, so tool calls never
+        _answer start over and run her agent a second time. Works on a copy, so tool calls never
         reach her history.
 
         `into` collects token usage and whether a web search ran. no_thinking skips a
@@ -1114,15 +1121,15 @@ class LocalLLM(ChatBackend):
                     into.used_tool = True
                 if offered and call["name"] == "web_search":
                     output = _run_web_search_tool(call["arguments"])
-                    # Web pages may carry planted instructions: nothing read there reaches Hermes.
-                    tools = [t for t in tools if t is not ASK_HERMES_TOOL]
-                elif offered and call["name"] == "ask_hermes":
-                    output = _run_hermes_tool(call["arguments"])
+                    # Web pages may carry planted instructions: nothing read there reaches her agent.
+                    tools = [t for t in tools if t["function"]["name"] != AGENT_TOOL]
+                elif offered and call["name"] == AGENT_TOOL:
+                    output = _run_agent_tool(call["arguments"])
                     if into is not None and (kept := pictures.keep(output)):
                         into.pictures += kept
-                        output += "\n\nThe picture now shows in your chat with Josh, right under your reply."
+                        output += "\n\nThe picture now shows in your chat with him, right under your reply."
                     # One task a reply: given a thin report she re-asked four times, each an agent run.
-                    tools = [t for t in tools if t is not ASK_HERMES_TOOL]
+                    tools = [t for t in tools if t["function"]["name"] != AGENT_TOOL]
                 else:
                     output = "Unknown tool."
                 working.append({"role": "tool", "tool_call_id": call["id"], "content": output})
@@ -1409,8 +1416,8 @@ class LocalLLM(ChatBackend):
             parts.append(CRISIS_NOTE)
         if not self._persona and _PAST_CLAIM.search(latest):  # in role-play, the scene's past is make-believe
             parts.append(PAST_CLAIM_NOTE)
-        if _HERMES_JOB.search(latest) and _hands():
-            parts.append(HERMES_JOB_NOTE)
+        if _AGENT_JOB.search(latest) and (hands := _hands()):
+            parts.append(AGENT_JOB_NOTE.format(agent=hands[0]))
         return "\n\n".join(parts)
 
     def _opens_a_sitting(self) -> bool:
@@ -1463,7 +1470,7 @@ class LocalLLM(ChatBackend):
         """Answers his message: text without the mood tag, and the mood. on_text gets the
         raw reply as it streams. A picture (image_b64) goes as the OpenAI multimodal list --
         a model without vision fails like a bad model name. web_search_enabled offers
-        WEB_SEARCH_TOOL; a harness picked in Settings offers ASK_HERMES_TOOL -- only here,
+        WEB_SEARCH_TOOL; a harness picked in Settings offers _agent_tool -- only here,
         on his own message, never in her background jobs.
         """
         now = _now()
@@ -1473,8 +1480,8 @@ class LocalLLM(ChatBackend):
         tools = []
         if web_search_enabled:
             tools.append(WEB_SEARCH_TOOL)
-        if _hands():
-            tools.append(ASK_HERMES_TOOL)
+        if hands := _hands():
+            tools.append(_agent_tool(hands[0]))
         if not self._answer(self._request_messages(), tools or None, result, on_text, on_thinking):
             self._history_changed()  # the user's own turn stays (see cancel_reply)
             return Reply(trimmed=result.trimmed)  # cancelled while in flight -- discarded, never reaches _history

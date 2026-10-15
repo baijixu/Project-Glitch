@@ -1,5 +1,5 @@
-"""Pictures she shows in the chat: one Hermes made for her (llm.ASK_HERMES_TOOL) is copied into
-pictures/ (gitignored) as its report names it, so it outlasts Hermes tidying its own folder, and
+"""Pictures she shows in the chat: one her agent made for her (llm._agent_tool) is copied into
+pictures/ (gitignored) as its report names it, so it outlasts the agent tidying its own folder, and
 reaches a device only as a get_picture answer over the authenticated socket -- never as a plain
 web link that would skip the auth token.
 """
@@ -13,7 +13,7 @@ from pathlib import Path
 
 DIR = Path(__file__).parent / "pictures"
 MAX_BYTES = 20 * 1024 * 1024
-# An absolute Windows or POSIX path to an image, as Hermes writes it in a report.
+# An absolute Windows or POSIX path to an image, as an agent writes it in a report.
 _IMAGE_PATH = re.compile(r"(?:[A-Za-z]:[\\/]|/)[^\s\"'`<>|*?]*?\.(?:png|jpe?g|webp)\b", re.IGNORECASE)
 _NAME = re.compile(r"[\w.-]+")
 

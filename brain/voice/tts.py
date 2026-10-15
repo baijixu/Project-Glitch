@@ -99,9 +99,9 @@ MOOD_STYLES = {
 _LAUGH_CUE = re.compile(r"[(*\[]\s*(?:laugh|chuckl|giggl)\w*[^)*\]]{0,20}[)*\]]", re.IGNORECASE)
 
 
-# Qwen3-TTS's Serena reads digits in Mandarin ("43 unread" came out "si shi san", and a bare
-# "43." or "90 days." was heard as Chinese) but says "forty-three" in English, so numbers are
-# spoken as English words. Money, times, ordinals, decimals, percents; 1100-2099 like a year.
+# A bilingual voice (Qwen3-TTS's Serena, for one) can read digits in Mandarin, a number on its own
+# most of all, but says "forty-three" in English, so numbers are spoken as English words.
+# Money, times, ordinals, decimals, percents; 1100-2099 like a year.
 _ONES = ("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen "
          "seventeen eighteen nineteen").split()
 _TENS = "_ _ twenty thirty forty fifty sixty seventy eighty ninety".split()

@@ -335,7 +335,7 @@ async def reply_to(
         for sentence in sentences.finish(reply_text):  # the last one -- or all of it, if it didn't stream
             await say(sentence, mood)
         print(f"[brain] mood: {mood}")
-        # all of it: the device's record of her reply, with any picture Hermes made for it
+        # all of it: the device's record of her reply, with any picture her agent made for it
         await hub.send(websocket, protocol.speak_text(reply_text, pictures=reply.pictures))
         if reply.pictures:
             await hub.broadcast(protocol.artwork(pictures.listing()))  # Settings -> Artwork on every device
@@ -387,13 +387,13 @@ async def _stream_reply(
         finally:
             loop.call_soon_threadsafe(pieces.put_nowait, None)
 
-    llm.on_hermes = lambda running: loop.call_soon_threadsafe(pieces.put_nowait, running)  # one reply at a time (reply_lock)
+    llm.on_agent = lambda agent: loop.call_soon_threadsafe(pieces.put_nowait, (agent,))  # one reply at a time (reply_lock)
     answering = asyncio.ensure_future(asyncio.to_thread(answer))
     async with contextlib.AsyncExitStack() as asking:
         while (piece := await pieces.get()) is not None:
-            if isinstance(piece, bool):  # a Hermes task started or ended -- checked first, a bool is an int
-                if piece:
-                    await asking.enter_async_context(hub.doing("Asking Hermes..."))
+            if isinstance(piece, tuple):  # her agent's task started (its name) or ended (None)
+                if piece[0]:
+                    await asking.enter_async_context(hub.doing(f"Asking {piece[0]}..."))
                 else:
                     await asking.aclose()
                 continue

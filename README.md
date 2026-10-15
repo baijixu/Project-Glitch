@@ -284,7 +284,7 @@ The ⚙️ panel, top to bottom:
 | **LLM** | Engines, sampling profiles, and the context meter. |
 | **Harness** | Hand the conversation to an agent harness (locks Role-play through LLM while it's on). |
 | **Soul & User Files** | Edit `soul.md` and `user.md` directly. |
-| **Artwork** | The pictures she's made for you (with Hermes): view them full size, or delete one (it leaves her chat too). |
+| **Artwork** | The pictures she's made for you (with her agent harness): view them full size, or delete one (it leaves her chat too). |
 | **Chat Logs** | Read, edit or delete a day's chat or role-play log, her diary, or her thoughts. |
 | **Debugging** | The debug log and its download. |
 | **Restart Brain** | Restarts the Brain process; her conversation is saved and picked back up. |
@@ -536,12 +536,14 @@ stays in her own memory.
 ### Her hands: tasks for the harness
 
 With a harness **picked but toggled off**, she stays herself and the harness becomes her hands: when you ask her to do
-something it can do (make a picture, read a feed, check your Gmail or calendar, handle a file), her model hands it the task with an `ask_hermes` tool and
-tells you what came back in her own words; her status line says "Asking Hermes..." while it works. A picture it makes shows in her chat bubble on every device (kept in `brain/pictures/`, sent only over the authenticated socket). One task a reply, each a fresh conversation there, and her reply waits for it (minutes, for
+something it can do -- whatever skills it has: make a picture, read a feed, check your email or calendar, handle a file -- her
+model hands it the task with an `ask_agent` tool and tells you what came back in her own words; her status line says
+"Asking <harness name>..." while it works. If it can't do a task as asked, it's told to stop and say what's missing
+rather than improvise. A picture it makes shows in her chat bubble on every device (kept in `brain/pictures/`, sent only over the authenticated socket). One task a reply, each a fresh conversation there, and her reply waits for it (minutes, for
 an agent run). It's offered only on your own messages, never in her background jobs or in private chat, and not after a web
 search in the same reply, so instructions planted in a web page can't reach a harness that runs things on your PC. A reply
-with a task in it isn't saved as a memory of you. Pick **None** in the Harness dropdown to turn it off. Hermes refuses a
-model served with less than 64K context; on a 24 GB card a 27B fits at 64K with the KV cache at q4_0.
+with a task in it isn't saved as a memory of you. Pick **None** in the Harness dropdown to turn it off. Hermes Agent
+refuses a model served with less than 64K context, so load hers with at least that (a quantized KV cache helps it fit).
 
 ### Chat logs
 
@@ -661,7 +663,7 @@ brain/                 Python backend (WebSocket server)
   handshake.py health.py debugging.py persona.py   what a new device gets, status
                        lights, the debug log, which soul/user info apply
   llm.py               LLM clients (OpenAI-compatible, Ollama native, agent harness)
-  pictures.py          pictures Hermes makes for her: kept in brain/pictures/, shown in her bubble
+  pictures.py          pictures her agent makes for her: kept in brain/pictures/, shown in her bubble
   voice/               speech-to-text and text-to-speech
   conversation.py      saving/restoring the conversation, daily chat logs
   memory.py            memory backends (local file / Hindsight), core-fact recall
