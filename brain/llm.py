@@ -620,6 +620,10 @@ HERMES_TASK_RULES = (
     "command fails, no skill covers it, or a permission is missing -- stop and report what's missing. Don't write "
     "your own code to get around it, probe permissions or settings, or try workarounds."
 )
+# A picture Hermes pastes into its report as base64 -- its HiDream report carried a 1.8 MB data URI, far past her
+# context window -- reaches her as "[picture]" (the report also says where the file is saved); and a report is capped.
+_INLINE_IMAGE = re.compile(r"!\[[^\]]*\]\(data:[^)]*\)|data:[\w/+.-]+;base64,[A-Za-z0-9+/=\s]+")
+MAX_HERMES_REPORT_CHARS = 4000
 # Called with True as a Hermes task starts and False as it ends, from the reply's worker
 # thread -- reply.py points it at her status line for each reply.
 on_hermes: Callable[[bool], None] | None = None
@@ -654,7 +658,9 @@ def _run_hermes_tool(arguments: dict) -> str:
         response = client.chat.completions.create(
             model=hands.get("model") or "", messages=[{"role": "user", "content": f"{task}\n\n{HERMES_TASK_RULES}"}]
         )
-        report = _extract_mood(_reply_content(response.choices[0].message.content))[1]
+        report = _INLINE_IMAGE.sub("[picture]", _extract_mood(_reply_content(response.choices[0].message.content))[1])
+        if len(report) > MAX_HERMES_REPORT_CHARS:
+            report = report[:MAX_HERMES_REPORT_CHARS] + " ...(the rest of the report was cut)"
     except Exception as exc:  # noqa: BLE001 -- any failure is hers to tell, not a crash
         print(f"[hermes] failed: {exc!r}")
         return f"Hermes didn't answer ({type(exc).__name__}) -- tell Josh it didn't work."
