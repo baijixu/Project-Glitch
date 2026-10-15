@@ -126,12 +126,13 @@ PAST_CLAIM_NOTE = (
 # search on as well she searched first 3 of 8 times -- snippets, not the page -- and a search
 # takes Hermes off the table for that reply; the tool's description alone moved it 4/8 -> 5/8.
 _HERMES_JOB = re.compile(
-    r"\br/\w|\b(?:subreddit|reddit|arxiv|youtube|rss|feed|pdf|spreadsheet)\b|\b(?:picture|image|drawing|photo) of\b",
+    r"\br/\w|\b(?:subreddit|reddit|arxiv|youtube|rss|feed|pdf|spreadsheet|e-?mails?|gmail|calendar)\b"
+    r"|\b(?:picture|image|drawing|photo) of\b",
     re.IGNORECASE,
 )
 HERMES_JOB_NOTE = (
-    "If he's asking you to open or read a specific site, subreddit, feed, paper or video, or to make a picture or "
-    "file, use ask_hermes first -- web search only sees snippets and can't open it."
+    "If he's asking you to open or read a specific site, subreddit, feed, paper or video, to check his email or "
+    "calendar, or to make a picture or file, use ask_hermes first -- web search can't do it, and Hermes can."
 )
 
 
@@ -598,7 +599,8 @@ ASK_HERMES_TOOL = {
             "Hand a task to Hermes, the agent that works for you, and get back its report. Hermes has "
             "skills you don't: making images, opening and reading a specific site, subreddit, RSS feed, "
             "arXiv paper or YouTube video (web search only sees search snippets -- for those, ask Hermes "
-            "instead of searching), handling files and documents, running things on Josh's PC. Use it "
+            "instead of searching), checking and sending Josh's email (his Gmail) and his calendar, "
+            "handling files and documents, running things on Josh's PC. Use it "
             "only when Josh asks you to do something like that -- never for talking, your opinions or "
             "what you remember. It can take minutes."
         ),
