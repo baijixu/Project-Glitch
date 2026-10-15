@@ -8,7 +8,9 @@ with her (llm.daydream): a pull, negative when it grates. Each pull adds weight 
 (self/interests.json); weight fades by half every HALF_LIFE_HOURS, so only what keeps coming
 back builds up. A topic that passes LAND_AT lands: she turns it over properly (llm.focus) and
 writes a page about it (self/interests/<topic>.md). One that sinks to -LAND_AT sours: what she's
-come to dislike about it is proposed as a memory -- without it she'd only ever grow fonder. Every thought, and each page, also goes in
+come to dislike about it is proposed as a memory -- without it she'd only ever grow fonder.
+Some turns she's made to choose instead (choose): two things of hers -- loves from her soul, topics
+on her mind, her own views -- and one has to lose; what leaves her cold about it is a negative pull. Every thought, and each page, also goes in
 the day's thoughts log (self/thoughts/, Settings -> Chat Logs -> Thoughts).
 
 With a book in her library (library.py) unfinished, half the ticks she reads instead (read_pages):
@@ -61,6 +63,8 @@ READ_RESULTS = 2  # of a landing topic's search results, how many pages she actu
 PAGE_EXCERPT_CHARS = 2500
 LATELY_DAYS = 7  # how long a landed topic counts as what she's been into
 READ_PULL = 5  # a sitting with a book weighs on her like a middling thought: four in two days and it lands
+# Asked about one thing at a time she likes nearly everything; made to pick between two, one loses.
+CHOOSE_CHANCE = 1 / 4  # of the turns she isn't reading
 # After each sitting she says how much she wants to read on (1-10). Asked KEEP or STOP she kept even a
 # software license; scored, the license got 2 and Moby-Dick's whale-classing chapters 7-8.
 DULL_AT = 3
@@ -163,13 +167,13 @@ def _sentences(text: str) -> list[str]:
     return [s.strip("-* ").strip() for line in text.splitlines() for s in _SENTENCE.split(line) if len(s.strip("-* ").strip()) > 15]
 
 
-def soul_sentences() -> list[str]:
+def soul_sentences(wanted: tuple[str, ...] = SOUL_SECTIONS) -> list[str]:
     try:
         text = souls.SOUL_MD_PATH.read_text(encoding="utf-8")
     except OSError:
         return []
     sections = re.split(r"^#+\s*(.+)$", text, flags=re.MULTILINE)  # [before, heading, body, heading, body...]
-    return [s for heading, body in zip(sections[1::2], sections[2::2]) if heading.strip() in SOUL_SECTIONS for s in _sentences(body)]
+    return [s for heading, body in zip(sections[1::2], sections[2::2]) if heading.strip() in wanted for s in _sentences(body)]
 
 
 def _recent_days(now: datetime) -> list[str]:
@@ -265,6 +269,8 @@ async def beat(brain: Brain) -> str:
     if library.unread(shelf) and random.random() < READ_CHANCE:
         return await read_pages(brain, shelf)
     interests = read_interests()
+    if random.random() < CHOOSE_CHANCE and len(pair := await _two_of_hers(interests)) == 2:
+        return await choose(brain, interests, *pair, now)
     drifted = await fragments(now, interests)
     if not drifted:
         return "Nothing to think about yet -- no soul, diary, chats or memories to wander through."
@@ -280,10 +286,46 @@ async def beat(brain: Brain) -> str:
     if change == "landed" and await _land(brain, interests, topic, now):
         return f"{found['thought']} -- and {topic} landed: she wrote a page about it (Chat Logs -> Thoughts)."
     if change == "soured":
-        thoughts = "\n".join(f"- {t}" for t in interests[topic]["thoughts"])
-        await learning.propose_own(f"{topic} keeps coming back to you, and it doesn't sit well. What you've thought about it lately:\n{thoughts}", f"Soured on {topic}", brain)
+        await _sour(brain, interests, topic)
         return f"{found['thought']} -- and she's soured on {topic}."
     return f"{found['thought']} ({topic}, pull {found['pull']})"
+
+
+async def _sour(brain: Brain, interests: dict, topic: str) -> None:
+    thoughts = "\n".join(f"- {t}" for t in interests[topic]["thoughts"])
+    await learning.propose_own(f"{topic} keeps coming back to you, and it doesn't sit well. What you've thought about it lately:\n{thoughts}", f"Soured on {topic}", brain)
+
+
+async def _two_of_hers(interests: dict) -> list[str]:
+    """Two different things of hers to choose between: loves from her soul, topics she's into, her
+    own views among her memories -- never his, so it's never him that loses."""
+    mine = soul_sentences(("What you love",)) + [t for t, item in interests.items() if not item.get("soured")]
+    if memory.read_memory_active():
+        try:
+            mine += [m for m in await memory.read_entries() if m.startswith(("I ", "I'", "My "))]
+        except Exception:
+            pass  # a memory server that's down just means fewer to choose from
+    # "Josh's health anxiety" lost to a topic in a test: his life is never what she grows cold on.
+    mine = sorted({m for m in mine if persona.not_about_him(m)})
+    return random.sample(mine, 2) if len(mine) >= 2 else []
+
+
+async def choose(brain: Brain, interests: dict, a: str, b: str, now: datetime) -> str:
+    """One forced choice: which of `a` and `b` loses, and what about it leaves her cold -- a
+    negative pull on the loser, which can sour it like any thought."""
+    async with brain.busy("Choosing..."):
+        found = parse_daydream(await asyncio.to_thread(brain.llm.choose, a, b))
+    if not found:
+        return "She couldn't pick between them this time."
+    pull = -abs(found["pull"])
+    topic, change = add_pull(interests, found["topic"], pull, found["thought"], "", time.time())
+    _save_interests(interests)
+    conversation.log_thought(f"⚖️ {found['thought']}  \n*{topic} lost · pull {pull}*", now=now)
+    print(f"[heartbeat] made to choose, {topic!r} lost (pull {pull})")
+    if change == "soured":
+        await _sour(brain, interests, topic)
+        return f"{found['thought']} -- and she's soured on {topic}."
+    return f"{found['thought']} ({topic} lost, pull {pull})"
 
 
 def look_up(topic: str) -> str:

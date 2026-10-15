@@ -19,6 +19,12 @@ def effective_soul() -> str:
     return souls.read_main_soul()
 
 
+def not_about_him(text: str) -> bool:
+    """Neither his name nor he/him/his in it: what she may judge, debate or grow cold on is never him."""
+    name = (user_name() or "").lower()
+    return not (name and name in text.lower()) and not re.search(r"\b(he|him|his)\b", text, re.IGNORECASE)
+
+
 def user_name(info: str | None = None) -> str:
     """Their name from their profile ("Name: Josh", "my name is Josh"), or "". `info` is
     the profile to read; the effective one by default (none during role-play)."""

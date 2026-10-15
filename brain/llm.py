@@ -385,6 +385,13 @@ _DAYDREAM_PROMPT = (
     "Reply with ONLY a JSON object: {{\"thought\": \"...\", \"topic\": \"2-5 words naming what it's about\", "
     "\"pull\": -10 to 10, \"question\": \"...\"}}, or {{\"topic\": null}} if nothing stirs anything in you."
 )
+_CHOICE_PROMPT = (
+    "Two things of yours:\n\nA: {a}\nB: {b}\n\n"
+    "If you could only keep one, which one goes? Be honest -- one has to lose, even if you like both. Say what about "
+    "the one that goes leaves you cold or rubs you the wrong way, in a sentence or two, in your own words.\n\n"
+    "Reply with ONLY a JSON object: {{\"thought\": \"...\", \"topic\": \"2-5 words naming the one that goes\", "
+    "\"pull\": 1-10 (how much it bothers you, 1 = you're just cooler on it)}}."
+)
 _FOCUS_PROMPT = (
     "You keep coming back to {topic}. What you've thought about it lately:\n\n{thoughts}\n\n"
     "Write a page about it in your own notebook, just for yourself: what draws you to it, what you already know or "
@@ -1281,6 +1288,11 @@ class LocalLLM(ChatBackend):
         """Heartbeat: what (if anything) pulls at her among `fragments` -- raw JSON
         (_DAYDREAM_PROMPT) for heartbeat.parse_daydream. `name`: the user's."""
         return self.under_soul(_DAYDREAM_PROMPT.format(fragments=fragments, name=name), MAX_DAYDREAM_TOKENS)
+
+    def choose(self, a: str, b: str) -> str:
+        """Heartbeat: which of two things of hers loses, and why -- raw JSON (_CHOICE_PROMPT) for
+        heartbeat.parse_daydream."""
+        return self.under_soul(_CHOICE_PROMPT.format(a=a, b=b), MAX_DAYDREAM_TOKENS)
 
     def focus(self, topic: str, thoughts: str, name: str, found: str = "") -> str:
         """Heartbeat: her notebook page on a topic that has landed (_FOCUS_PROMPT), with what a

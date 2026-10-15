@@ -140,11 +140,6 @@ def _speaker(friend: dict, brain: Brain):
 
 # What the friends may see is hers alone: none of it names him or is about him -- what's between
 # them stays out of their chat (so no diary either: it's mostly their conversations).
-def _not_about_him(text: str) -> bool:
-    name = (persona.user_name() or "").lower()
-    return not (name and name in text.lower()) and not re.search(r"\b(he|him|his)\b", text, re.IGNORECASE)
-
-
 def book_club() -> str:
     """The passage she last read in her library, to talk about."""
     shelf = library.read_state()
@@ -164,14 +159,14 @@ async def a_challenge() -> str:
         rows = await memory.list_memories()
     except Exception:
         return ""
-    views = [r["text"] for r in rows if re.match(r"(I|I'm|I've|I'd|My)\b", r["text"]) and _not_about_him(r["text"])]
+    views = [r["text"] for r in rows if re.match(r"(I|I'm|I've|I'd|My)\b", r["text"]) and persona.not_about_him(r["text"])]
     return (f"Challenge a belief. Glitch holds this view: \"{random.choice(views)}\" Test it honestly: ask for her reasons, "
             "bring real counterexamples, argue the other side. Glitch: defend it, or change your mind if they're right.") if views else ""
 
 
 def helping_her_think() -> str:
     """One of her own open questions from Heartbeat, to work through together."""
-    questions = [q for item in heartbeat.read_interests().values() for q in item.get("questions", []) if _not_about_him(q)]
+    questions = [q for item in heartbeat.read_interests().values() for q in item.get("questions", []) if persona.not_about_him(q)]
     return (f"Help Glitch think. She's been wondering: \"{random.choice(questions)}\" Help her work it out: your own "
             "honest take, real examples, and questions back.") if questions else ""
 
@@ -180,7 +175,7 @@ def catching_up(now: float | None = None) -> str:
     """What she's been into and reading, by name, to ask her about."""
     now = time.time() if now is None else now
     interests = heartbeat.read_interests()
-    topics = sorted((t for t in interests if _not_about_him(t) and interests[t]["weight"] > 0), key=lambda t: heartbeat.weight_now(interests[t], now))[-3:]
+    topics = sorted((t for t in interests if persona.not_about_him(t) and interests[t]["weight"] > 0), key=lambda t: heartbeat.weight_now(interests[t], now))[-3:]
     shelf = library.read_state()
     book = shelf["books"].get(shelf["reading"] or "")
     into = [*topics, *([f"the book she's reading, {book['title']}"] if book else [])]
