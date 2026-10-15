@@ -14,6 +14,7 @@ import conversation
 import engines
 import hub
 import llm_engines
+import memory
 import persona
 import profiles
 import protocol
@@ -40,12 +41,16 @@ GENERAL_TOPICS = [
 ]
 
 
-def topics_message() -> dict:
-    """The chat box's "Talk about ..." hints: her main soul's loves -- minus the user
-    himself ("Josh, definitely Josh"), he's not a topic to suggest to him -- and
-    GENERAL_TOPICS."""
+async def topics_message() -> dict:
+    """The chat box's "Talk about ..." hints: her loves, from her main soul and her own
+    memories -- minus the user himself ("Josh, definitely Josh"), he's not a topic to
+    suggest to him -- and GENERAL_TOPICS."""
     name = persona.user_name(profiles.read_main_user()).lower()  # his real name, role-play or not
-    loves = [t for t in souls.topics(souls.read_main_soul()) if not name or name not in t.lower()]
+    try:
+        mine = await memory.read_entries() if memory.read_memory_active() else []
+    except Exception:
+        mine = []  # a memory server that's down just means her soul's loves alone
+    loves = [t for t in souls.topics(souls.read_main_soul(), mine) if not name or name not in t.lower()]
     return protocol.topics(loves + GENERAL_TOPICS)
 
 
@@ -181,7 +186,7 @@ async def save_soul_and_user(websocket: websockets.ServerConnection, data: dict,
     profiles.write_main_user(user_content)
     brain.llm.update_soul(persona.effective_soul())  # an edit, not a new her: the conversation carries on
     print("[brain] soul.md/user.md updated via manual editor")
-    await hub.broadcast(topics_message())
+    await hub.broadcast(await topics_message())
 
 
 @hub.handles(protocol.DELETE_SOUL)

@@ -73,17 +73,21 @@ def read_main_soul() -> str:
     return ""
 
 
-def topics(soul: str) -> list[str]:
-    """The things she loves, from a soul's "What you love" section: its comma-separated
-    items, with a leading "Label:" and "and" dropped. A line's first item loses its
-    sentence capital ("Reading" -> "reading"); the rest are kept as written ("Christmas").
+def topics(soul: str, memories: list[str] = ()) -> list[str]:
+    """The things she loves: the comma-separated items of a soul's "What you love" section and of
+    her "I love ..." memories -- where a soul that's handed her tastes over to her keeps them --
+    with a leading "Label:" and "and" dropped, and any "I ..." clause ("and I watch reality TV").
+    A soul line's first item loses its sentence capital ("Reading" -> "reading"); the rest, and a
+    memory's, are kept as written ("Christmas").
     """
     section = re.search(r"^#+\s*What you love\s*$(.*?)(?=^#|\Z)", soul, re.MULTILINE | re.DOTALL | re.IGNORECASE)
+    lines = [(line, True) for line in (section[1].splitlines() if section else [])]
+    lines += [(m[len("I love "):], False) for m in memories if m.startswith("I love ")]
     items = []
-    for line in section[1].splitlines() if section else []:
+    for line, sentence in lines:
         parts = [re.sub(r"^and\s+", "", p.strip().rstrip(".")) for p in line.split(":", 1)[-1].split(",")]
-        parts = [p for p in parts if p]
-        if parts:
+        parts = [p for p in parts if p and not p.startswith("I ")]
+        if parts and sentence:
             parts[0] = parts[0][0].lower() + parts[0][1:]
         items += parts
     return items
