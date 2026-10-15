@@ -1158,6 +1158,45 @@ body.overlay-chat-active #overlay-edit-button {
   color: #cbd0dc;
 }
 
+.artwork-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.artwork-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.75em;
+  opacity: 0.85;
+}
+
+.artwork-tile img {
+  width: 100%;
+  aspect-ratio: 9 / 16;
+  object-fit: cover;
+  border-radius: 6px;
+  cursor: zoom-in;
+}
+
+.artwork-tile.expanded {
+  grid-column: 1 / -1;
+}
+
+.artwork-tile.expanded img {
+  aspect-ratio: auto;
+  object-fit: contain;
+  cursor: zoom-out;
+}
+
+.artwork-tile-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .history-picture {
   display: block;
   max-width: 100%;

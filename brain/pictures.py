@@ -36,12 +36,36 @@ def keep(report: str) -> list[str]:
     return names
 
 
-def read(name: str) -> tuple[str, str] | None:
-    """(mime type, base64) of a kept picture, or None -- only a plain name inside DIR."""
+def _path(name: str) -> Path | None:
+    """A kept picture's file -- only for a plain name inside DIR."""
     if not isinstance(name, str) or not _NAME.fullmatch(name) or name.startswith("."):
         return None
+    return DIR / name
+
+
+def listing() -> list[str]:
+    """Every kept picture's name, newest first (names start with when it was kept)."""
+    if not DIR.is_dir():
+        return []
+    return sorted((p.name for p in DIR.iterdir() if p.is_file() and _path(p.name)), reverse=True)
+
+
+def delete(name: str) -> bool:
+    """Deletes a kept picture for good (Settings -> Artwork); False if there was none."""
+    path = _path(name)
     try:
-        data = (DIR / name).read_bytes()
+        path.unlink()
+    except (AttributeError, OSError):
+        return False
+    return True
+
+
+def read(name: str) -> tuple[str, str] | None:
+    """(mime type, base64) of a kept picture, or None -- only a plain name inside DIR."""
+    if (path := _path(name)) is None:
+        return None
+    try:
+        data = path.read_bytes()
     except OSError:
         return None
     return mimetypes.guess_type(name)[0] or "image/png", base64.b64encode(data).decode("ascii")

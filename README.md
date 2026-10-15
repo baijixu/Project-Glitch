@@ -284,6 +284,7 @@ The ⚙️ panel, top to bottom:
 | **LLM** | Engines, sampling profiles, and the context meter. |
 | **Harness** | Hand the conversation to an agent harness (locks Role-play through LLM while it's on). |
 | **Soul & User Files** | Edit `soul.md` and `user.md` directly. |
+| **Artwork** | The pictures she's made for you (with Hermes): view them full size, or delete one (it leaves her chat too). |
 | **Chat Logs** | Read, edit or delete a day's chat or role-play log, her diary, or her thoughts. |
 | **Debugging** | The debug log and its download. |
 | **Restart Brain** | Restarts the Brain process; her conversation is saved and picked back up. |
