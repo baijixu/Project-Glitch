@@ -613,6 +613,13 @@ ASK_HERMES_TOOL = {
 }
 # An agent run with several tool steps, or an image on PC2, takes minutes.
 HERMES_TIMEOUT_SEC = 900
+# Sent with every task. Asked to delete an email its skill couldn't delete, Hermes spent 24 minutes and 80+
+# model calls writing its own scripts and probing its Google permissions instead of saying so.
+HERMES_TASK_RULES = (
+    "Do this with your existing skills and tools, the way they're documented. If they can't do it as asked -- a "
+    "command fails, no skill covers it, or a permission is missing -- stop and report what's missing. Don't write "
+    "your own code to get around it, probe permissions or settings, or try workarounds."
+)
 # Called with True as a Hermes task starts and False as it ends, from the reply's worker
 # thread -- reply.py points it at her status line for each reply.
 on_hermes: Callable[[bool], None] | None = None
@@ -645,7 +652,7 @@ def _run_hermes_tool(arguments: dict) -> str:
         on_hermes(True)
     try:
         response = client.chat.completions.create(
-            model=hands.get("model") or "", messages=[{"role": "user", "content": task}]
+            model=hands.get("model") or "", messages=[{"role": "user", "content": f"{task}\n\n{HERMES_TASK_RULES}"}]
         )
         report = _extract_mood(_reply_content(response.choices[0].message.content))[1]
     except Exception as exc:  # noqa: BLE001 -- any failure is hers to tell, not a crash
