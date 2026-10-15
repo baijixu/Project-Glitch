@@ -50,6 +50,7 @@ SET_VOICE_ACTIVE = "set_voice_active"
 SET_PRIVATE_ACTIVE = "set_private_active"
 SET_WEB_SEARCH_ACTIVE = "set_web_search_active"
 GET_PICTURE = "get_picture"
+DELETE_PICTURE = "delete_picture"
 RATE_REPLY = "rate_reply"
 SET_LESSONS_ACTIVE = "set_lessons_active"
 SET_LESSONS_AUTONOMY = "set_lessons_autonomy"
@@ -122,6 +123,11 @@ def speak_text(text: str, reach_out: bool = False, partial: bool = False, pictur
     flags = {"reach_out": reach_out, "partial": partial}
     shown = {"pictures": pictures} if pictures else {}
     return {"type": "speak_text", "text": text, **{flag: True for flag, on in flags.items() if on}, **shown}
+
+
+def artwork(names: list[str]) -> dict:
+    """Settings -> Artwork: her pictures (pictures.py), newest first, each fetched with get_picture."""
+    return {"type": "artwork", "names": names}
 
 
 def picture(name: str, mime: str, data_b64: str) -> dict:

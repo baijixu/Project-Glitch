@@ -179,6 +179,13 @@ async def get_picture(websocket: websockets.ServerConnection, data: dict, brain:
     await hub.send(websocket, protocol.picture(name, mime, data_b64))
 
 
+@hub.handles(protocol.DELETE_PICTURE)
+async def delete_picture(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    """Settings -> Artwork's 🗑️: gone for good -- from her chat bubble too, which finds it missing."""
+    pictures.delete(data.get("name", ""))
+    await hub.broadcast(protocol.artwork(pictures.listing()))
+
+
 @hub.handles(protocol.SPEECH_INTERRUPTED)
 async def speech_interrupted(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     """The user cut in while she was speaking (🎤 or Send): `heard` is how much of
@@ -330,6 +337,8 @@ async def reply_to(
         print(f"[brain] mood: {mood}")
         # all of it: the device's record of her reply, with any picture Hermes made for it
         await hub.send(websocket, protocol.speak_text(reply_text, pictures=reply.pictures))
+        if reply.pictures:
+            await hub.broadcast(protocol.artwork(pictures.listing()))  # Settings -> Artwork on every device
         await _sync_other_devices(websocket, brain)
         # Only her own conversations go in her chat log: a harness keeps its own, and
         # personal and professional stay apart.

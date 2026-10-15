@@ -375,6 +375,7 @@ export class HistoryUI {
   _appendPictures(bubble, pictures) {
     for (const name of pictures) {
       const img = Object.assign(document.createElement("img"), { className: "history-picture", alt: "" });
+      img.dataset.picture = name;
       img.addEventListener("click", () => img.classList.toggle("expanded"));
       bubble.appendChild(img);
       this._app.loadPicture(name).then((url) => (url ? (img.src = url) : img.remove()));

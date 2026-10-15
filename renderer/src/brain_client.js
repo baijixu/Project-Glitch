@@ -28,6 +28,7 @@ import { DebugUI, describeSettingChange, deviceSummary } from "./debug_ui.js";
 import { FriendsUI } from "./friends_ui.js";
 import { InboxUI } from "./inbox_ui.js";
 import { LibraryUI } from "./library_ui.js";
+import { ArtworkUI } from "./artwork_ui.js";
 import { HarnessUI, LlmEnginesUI, SpeechEnginesUI } from "./engines_ui.js";
 import { HistoryUI } from "./history_ui.js";
 import { LessonsUI } from "./lessons_ui.js";
@@ -118,6 +119,7 @@ export class BrainClient {
     this.speechEngines = new SpeechEnginesUI(this);
     this.friends = new FriendsUI(this);
     this.library = new LibraryUI(this);
+    this.artwork = new ArtworkUI(this);
     this.inbox = new InboxUI(this);
     this.llmEngines = new LlmEnginesUI(this, { onEnginesChanged: (names) => this.characters.setEngineNames(names) });
     this.lessons = new LessonsUI({ send });
@@ -184,6 +186,7 @@ export class BrainClient {
       ...this.characters.handlers,
       ...this.friends.handlers,
       ...this.library.handlers,
+      ...this.artwork.handlers,
       ...this.inbox.handlers,
       ...this.settings.handlers,
       ...this.avatars.handlers,
@@ -277,6 +280,13 @@ export class BrainClient {
       this.send({ type: "get_picture", name });
     }
     return this._pictures.get(name);
+  }
+
+  // Settings -> Artwork's list: a picture deleted (on any device) leaves this one's cache and chat.
+  keepOnlyPictures(names) {
+    const kept = new Set(names);
+    for (const name of this._pictures?.keys() ?? []) if (!kept.has(name)) this._pictures.delete(name);
+    for (const img of document.querySelectorAll("img.history-picture[data-picture]")) if (!kept.has(img.dataset.picture)) img.remove();
   }
 
   _pictureArrived({ name, mime, data_b64 }) {
