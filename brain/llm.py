@@ -414,7 +414,8 @@ _READING_PROMPT = (
     "You're reading {title} on your own time, {percent}% of the way in.{previous} The next pages:\n\n{pages}\n\n"
     "Write a short note to yourself about what you just read, in the first person: what happens or what it says, "
     "and what you make of it -- what grabbed you, what you'd argue with, what it made you think of. Stick to what's "
-    "actually in these pages. Three to five sentences, no heading."
+    "actually in these pages. Three to five sentences, no heading. Then, on a line of its own, just a number: how much "
+    "you honestly want to read on, from 1 (you're forcing yourself) to 10 (you can't put it down)."
 )
 
 # Memory upkeep (brain/upkeep.py): is a memory out of date? Only a verdict -- asked to reword

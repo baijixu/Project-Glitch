@@ -97,7 +97,8 @@ def _epub_text(data: bytes) -> str:
 
 
 def read_state() -> dict:
-    """{"reading": name | None, "last": name | None, "books": {name: {"title", "pos", "chars", "note", "finished"}}}"""
+    """{"reading": name | None, "last": name | None, "books": {name: {"title", "pos", "chars", "note", "finished",
+    "dull" (sittings in a row she barely wanted to go on), "dropped" (she put it down)}}}"""
     try:
         state = json.loads(STATE_PATH.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -131,7 +132,7 @@ def delete_book(name: str) -> None:
 
 
 def unread(state: dict) -> list[str]:
-    return [name for name, book in state["books"].items() if not book["finished"]]
+    return [name for name, book in state["books"].items() if not book["finished"] and not book.get("dropped")]
 
 
 def next_pages(text: str, pos: int) -> tuple[str, int]:
@@ -155,14 +156,14 @@ def reading_line() -> str:
     book = state["books"].get(state["last"] or "")
     if not book or not book["note"]:
         return ""
-    where = "you just finished it" if book["finished"] else f"you're {percent(book)}% in"
+    where = "you just finished it" if book["finished"] else f"you put it down {percent(book)}% in -- it lost you" if book.get("dropped") else f"you're {percent(book)}% in"
     return f"The book you're reading on your own time: {book['title']} ({where}). Your note after your last pages:\n{book['note']}"
 
 
 def library_message(error: str = "") -> dict:
     state = read_state()
     books = [
-        {"name": name, "title": book["title"], "percent": percent(book), "reading": name == state["reading"]}
+        {"name": name, "title": book["title"], "percent": percent(book), "reading": name == state["reading"], "dropped": bool(book.get("dropped"))}
         for name, book in state["books"].items()
     ]
     return protocol.library(books, error)

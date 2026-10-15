@@ -61,6 +61,11 @@ READ_RESULTS = 2  # of a landing topic's search results, how many pages she actu
 PAGE_EXCERPT_CHARS = 2500
 LATELY_DAYS = 7  # how long a landed topic counts as what she's been into
 READ_PULL = 5  # a sitting with a book weighs on her like a middling thought: four in two days and it lands
+# After each sitting she says how much she wants to read on (1-10). Asked KEEP or STOP she kept even a
+# software license; scored, the license got 2 and Moby-Dick's whale-classing chapters 7-8.
+DULL_AT = 3
+DULL_SITTINGS = 2  # in a row, and she puts the book down
+_WANT = re.compile(r"\n\W*(\d{1,2})\W*(?:/\s*10\W*)?$")
 _last_beat = time.time()  # her last thought (or Brain's start: the first comes TICK_SEC in)
 _last_timer: dict | None = None  # the heartbeat_timer last sent to everyone
 
@@ -357,10 +362,14 @@ async def read_pages(brain: Brain, shelf: dict) -> str:
     pages, end = library.next_pages(library.STORE.read_text(name), book["pos"])
     async with brain.busy(f"Reading {book['title']}..."):
         note = (await asyncio.to_thread(brain.llm.read_pages, book["title"], library.percent(book), pages, book["note"])).strip()
+    if want := _WANT.search(note):
+        note = note[: want.start()].strip()
     if not note:
         return f"She couldn't get into {book['title']} this time."
-    book.update(pos=end, note=note, finished=end >= book["chars"])
-    shelf["reading"] = None if book["finished"] else name
+    dull = book.get("dull", 0) + 1 if want and int(want[1]) <= DULL_AT else 0
+    book.update(pos=end, note=note, finished=end >= book["chars"], dull=dull)
+    book["dropped"] = not book["finished"] and dull >= DULL_SITTINGS
+    shelf["reading"] = None if book["finished"] or book["dropped"] else name
     shelf["last"] = name
     library.save_state(shelf)
     await hub.broadcast(library.library_message())  # Settings shows how far she's got
@@ -374,6 +383,10 @@ async def read_pages(brain: Brain, shelf: dict) -> str:
         await _land(brain, interests, topic, now)
     if book["finished"]:
         await learning.propose_own(f"You just finished {book['title']}. Your note on its last pages: {note}", f"Finished reading {book['title']}", brain)
+    if book["dropped"]:
+        conversation.log_thought(f"📕 She put {book['title']} down, {library.percent(book)}% in -- it lost her.", now=now)
+        await learning.propose_own(f"You put {book['title']} down {library.percent(book)}% in -- it lost you. Your note on the last pages you read: {note}", f"Put down {book['title']}", brain)
+        return f"She put {book['title']} down ({library.percent(book)}%): {note}"
     return f"She read some of {book['title']} ({library.percent(book)}%): {note}"
 
 

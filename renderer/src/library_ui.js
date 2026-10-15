@@ -46,7 +46,7 @@ export class LibraryUI {
     for (const book of books) {
       const row = document.createElement("div");
       row.className = "lesson-row";
-      const status = book.percent >= 100 ? "finished" : book.reading ? `reading now, ${book.percent}%` : book.percent ? `${book.percent}%` : "not started";
+      const status = book.percent >= 100 ? "finished" : book.dropped ? `put down at ${book.percent}%` : book.reading ? `reading now, ${book.percent}%` : book.percent ? `${book.percent}%` : "not started";
       row.appendChild(Object.assign(document.createElement("div"), { textContent: book.title }));
       const meta = document.createElement("div");
       meta.className = "lesson-meta";

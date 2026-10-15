@@ -441,7 +441,9 @@ opens, so she can bring up what she's been into, and the day's thoughts go into 
 see how far she's got in each. With [Heartbeat](#heartbeat) on, half its quiet-time turns she reads instead of wandering: she
 picks the next book off the shelf herself, reads about a thousand words at a sitting and writes a short note on them
 (*Chat Logs → Thoughts*, marked 📖). The book she's on and her latest note reach her when a conversation opens, and a book
-builds up in her mind like any topic, so it can land too. The books are kept as plain text in `brain/library/`.
+builds up in her mind like any topic, so it can land too. After each sitting she also says how much she wants to read on;
+two sittings in a row at 3 of 10 or less and she **puts it down** (marked in Settings, 📕 in Thoughts), and why it lost her
+goes to your review list as a memory. The books are kept as plain text in `brain/library/`.
 
 ### Friends
 

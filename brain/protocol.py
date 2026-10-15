@@ -280,7 +280,7 @@ def inbox(questions: list[dict]) -> dict:
 
 
 def library(books: list[dict], error: str = "") -> dict:
-    """Her bookshelf: [{name, title, percent, reading}]. With `error`, only to the device whose change was refused."""
+    """Her bookshelf: [{name, title, percent, reading, dropped}]. With `error`, only to the device whose change was refused."""
     return {"type": "library", "books": books, "error": error}
 
 
