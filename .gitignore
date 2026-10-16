@@ -134,3 +134,6 @@ brain/proposed_through.json
 brain/reflection_last.txt
 brain/pictures/
 brain/pictures.json
+# Mixamo clips for her moves (renderer/src/moves.js): Mixamo's files can't be passed on.
+maximo/
+renderer/assets/animations/

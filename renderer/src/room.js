@@ -1,6 +1,8 @@
 // Her room (assets/room.glb, built in Blender to Josh's floor plan): drawn around her in the same
 // cel-shaded look as her VRM, with a camera that watches from the corner while she's idle and eases
-// in to her face while she talks. Per device (Settings -> UI Style): it's drawn on the GPU she thinks on.
+// in to her face while she talks. She goes where her Brain's work takes her -- the desk to read or
+// write, the bed to daydream (Life) -- with Mixamo clips if they're there (moves.js). Per device
+// (Settings -> UI Style): it's drawn on the GPU she thinks on.
 
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
@@ -14,6 +16,49 @@ const SHOTS = {
   room: { position: new THREE.Vector3(1.1, 1.75, 2.65), target: new THREE.Vector3(-0.6, 0.95, -1.0), fov: 55 },
   face: { position: new THREE.Vector3(0, 1.25, 1.7), target: new THREE.Vector3(0, 1.3, 0), fov: 30 },
 };
+// Where she can be, around her spot on the rug: where she stands, sits or lies, which way she turns,
+// her clip there and while talking (none: her procedural idle), what the corner camera looks at while
+// she's there, and her close-up there -- at the desk from just above the laptop, like its webcam.
+export const SPOTS = {
+  rug: { at: new THREE.Vector3(0, 0, 0), turn: 0, idle: null, talk: null, view: SHOTS.room.target, face: SHOTS.face },
+  desk: {
+    at: new THREE.Vector3(-1.4, 0, -1.35), turn: Math.PI, idle: "Sitting", talk: "Sitting Talking", view: new THREE.Vector3(-1.1, 0.9, -1.5),
+    face: { position: new THREE.Vector3(-1.4, 1.04, -2.05), target: new THREE.Vector3(-1.4, 1.14, -1.4), fov: 45 },
+  },
+  bed: {
+    at: new THREE.Vector3(-1.69, -0.3, 1.35), turn: Math.PI / 2, idle: "Laying Idle", talk: "Laying Hand Gesture", view: new THREE.Vector3(-1.5, 0.6, 0.9),
+    face: { position: new THREE.Vector3(-1.45, 1.45, 0.75), target: new THREE.Vector3(-2.15, 0.68, 1.35), fov: 40 },
+  },
+};
+// Her Brain's status line (hub.doing) -> where she goes to do it.
+const AT_DESK = /^(Reading|Writing|Picking a book|Asking|Hearing back|Working out|Taking her|Tidying|Going over|Noting|Remembering)/;
+const ON_BED = /^(Daydreaming|Choosing|Looking|Thinking about)/;
+const BACK_TO_RUG_SEC = 180; // nothing to do this long, and she gets up
+
+// Where she is: the spot her latest work took her to, until she's had nothing to do for a while.
+export class Life {
+  constructor() {
+    this.spot = "rug";
+    this._busy = false;
+    this._idleFor = 0;
+  }
+
+  // Her Brain's status line changed ("" when she's done). Overlapping jobs are joined with " · ".
+  doing(text) {
+    const first = text.split(" · ")[0];
+    const spot = AT_DESK.test(first) ? "desk" : ON_BED.test(first) ? "bed" : null;
+    if (spot) this.spot = spot;
+    this._busy = !!spot;
+    this._idleFor = 0;
+  }
+
+  update(delta) {
+    if (this._busy || this.spot === "rug") return;
+    this._idleFor += delta;
+    if (this._idleFor > BACK_TO_RUG_SEC) this.spot = "rug";
+  }
+}
+
 const EASE_PER_SEC = 2.5; // about a second to settle into a shot
 const HOLD_SEC = 4; // quiet this long after talking before the camera pulls back -- not between sentences
 
@@ -53,14 +98,18 @@ export class RoomCamera {
     this._quietFor = Infinity;
   }
 
-  update(delta, talking) {
+  update(delta, talking, spot = "rug") {
+    // She moved: cut to the new view, as she did -- easing across the room flies through the furniture.
+    const cut = spot !== this._spot;
+    this._spot = spot;
     this._quietFor = talking ? 0 : this._quietFor + delta;
-    const want = this._quietFor < HOLD_SEC ? "face" : "room";
+    const want = this._quietFor < HOLD_SEC ? spot : `room:${spot}`;
     if (want !== this.shot) {
       this.shot = want;
       this._easing = true;
     }
-    if (this._easing) this._ease(SHOTS[this.shot], 1 - Math.exp(-EASE_PER_SEC * delta));
+    const shot = want === spot ? SPOTS[spot].face : { ...SHOTS.room, target: SPOTS[spot].view };
+    if (this._easing) this._ease(shot, cut ? 1 : 1 - Math.exp(-EASE_PER_SEC * delta));
   }
 
   // Straight to the close-up, e.g. when the room is switched off.

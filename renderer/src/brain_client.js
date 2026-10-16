@@ -163,7 +163,10 @@ export class BrainClient {
         for (const name of this._pictureWaiters?.keys() ?? []) this.send({ type: "get_picture", name });
       },
       picture: (data) => this._pictureArrived(data),
-      brain_status: (data) => this.setStatus(data.text || ""),
+      brain_status: (data) => {
+        this.setStatus(data.text || "");
+        this.onDoing?.(data.text || ""); // her room: where her work takes her
+      },
       memory_learned: (data) => {
         this._showToast(data.fact);
         this.history.add("system", `🧠 Learned: ${data.fact}`);

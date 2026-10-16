@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import { loadRoom, ROOM_PREF, RoomCamera } from "./room.js";
+import { Moves } from "./moves.js";
+import { Life, loadRoom, ROOM_PREF, RoomCamera, SPOTS } from "./room.js";
 import { readPref, writePref } from "./ui.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { VRMUtils } from "@pixiv/three-vrm";
@@ -46,7 +47,9 @@ controls.update();
 // texture colors close to how they were painted.
 scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 const dirLight = new THREE.DirectionalLight(0xffffff, 1.1);
-dirLight.position.set(1.5, 3, 2);
+const SUN_OFFSET = new THREE.Vector3(1.5, 3, 2);
+dirLight.position.copy(SUN_OFFSET);
+scene.add(dirLight.target);
 dirLight.castShadow = true;
 // The shadow only needs to cover her and the floor around her feet; a tight box
 // keeps it sharp. The biases stop the toon shading from speckling itself.
@@ -68,6 +71,18 @@ scene.add(floor);
 // camera moves between the corner and her face (room.js).
 let room = null;
 const roomCamera = new RoomCamera(camera, controls);
+const life = new Life();
+let placedAt = null; // the spot she was last put at
+
+// Puts her at a spot: there, turned its way, with the sun's shadow box following her.
+function place(spot) {
+  placedAt = spot;
+  vrm.scene.position.copy(spot.at);
+  vrm.scene.rotation.y = vrm.scene.userData.baseTurn + spot.turn;
+  dirLight.target.position.copy(spot.at);
+  dirLight.position.copy(spot.at).add(SUN_OFFSET);
+  dirLight.target.updateMatrixWorld();
+}
 async function showRoom(on) {
   writePref(ROOM_PREF, on ? "1" : "0");
   if (on && !room) room = await loadRoom(scene);
@@ -119,6 +134,7 @@ window.visualViewport?.addEventListener("resize", handleViewportResize);
 // once at startup.
 let vrm = null;
 let idle = null;
+let moves = null;
 // Declared before BrainClient exists (setActiveAvatar is used for the
 // very first, pre-BrainClient load too) and guarded inside the function
 // below -- there's nothing to retarget yet on that first call.
@@ -188,12 +204,16 @@ async function setActiveAvatar(source, kind = "vrm") {
     }
   });
   scene.add(newVrm.scene);
+  newVrm.scene.userData.baseTurn = newVrm.scene.rotation.y; // a VRM 0.x comes turned around to face forward
   vrm = newVrm;
+  placedAt = null;
 
   // Her eyes follow you: three-vrm turns them toward the camera on every vrm.update().
   if (vrm.lookAt) vrm.lookAt.target = camera;
   idle = new IdleController(vrm);
   idle.relaxPose();
+  moves = new Moves(vrm);
+  window.__moves = moves; // for console-driven verification while building
 
   if (brain) brain.vrm = vrm; // BrainClient reads this.vrm fresh each call (lipsync/mood) -- a plain reassignment is enough to retarget it
   window.__vrm = vrm; // for console-driven verification while building
@@ -221,6 +241,8 @@ brain = new BrainClient({
   onAvatarSwap: setActiveAvatar,
 });
 brain.onSentence = (text) => idle?.gesture(pickGesture(text)); // a nod for "yeah", a shrug for "I don't know"...
+brain.onDoing = (text) => life.doing(text);
+window.__life = life; // for console-driven verification while building
 brain.connect();
 window.__brain = brain; // for console-driven verification while building
 
@@ -293,9 +315,18 @@ function animate() {
   // against a hidden canvas nobody sees (see setActiveAvatar's "png" case).
   if (avatarKind === "vrm") {
     idle.update(delta, brain.speechLevel);
+    const talking = brain.lipSyncActive || brain._awaitingReply;
+    life.update(delta);
+    const spotName = room?.visible ? life.spot : "rug";
+    const spot = SPOTS[spotName];
+    if (spot !== placedAt) place(spot);
+    const clip = talking ? spot.talk : spot.idle;
+    if (clip) moves.play(clip);
+    else moves.stop(idle);
+    moves.update(delta);
     brain.update(delta);
     vrm.update(delta);
-    if (room?.visible) roomCamera.update(delta, brain.lipSyncActive || brain._awaitingReply);
+    if (room?.visible) roomCamera.update(delta, talking, spotName);
     controls.update();
     renderer.render(scene, camera);
   }
