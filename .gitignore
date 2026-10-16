@@ -133,3 +133,4 @@ brain/proposed_through.json
 # When she last looked back on her week (brain/reflection.py).
 brain/reflection_last.txt
 brain/pictures/
+brain/pictures.json

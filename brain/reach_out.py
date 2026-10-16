@@ -215,7 +215,7 @@ async def _agent_task(brain: Brain, agent: str, config: dict, task: str) -> None
             report = await asyncio.to_thread(llm.agent_report, agent, config, task)
         shown = pictures.keep(report)
         if shown:
-            await hub.broadcast(protocol.artwork(pictures.listing()))  # Settings -> Artwork on every device
+            await hub.broadcast(protocol.artwork(pictures.entries()))  # Settings -> Artwork on every device
         async with brain.busy(f"Hearing back from {agent}..."):  # after any reply she's in the middle of
             if not brain.llm.owns_conversation:
                 print(f"[agent] {agent}'s report came in while a harness has the conversation -- not told")

@@ -10,7 +10,8 @@ back builds up. A topic that passes LAND_AT lands: she turns it over properly (l
 writes a page about it (self/interests/<topic>.md). One that sinks to -LAND_AT sours: what she's
 come to dislike about it is proposed as a memory -- without it she'd only ever grow fonder.
 Some turns she's made to choose instead (choose): two things of hers -- loves from her soul, topics
-on her mind, her own views -- and one has to lose; what leaves her cold about it is a negative pull. Every thought, and each page, also goes in
+on her mind, her own views -- and one has to lose; what leaves her cold about it is a negative pull.
+Some she looks at a picture from her gallery (look_at), the one she's looked at least lately. Every thought, and each page, also goes in
 the day's thoughts log (self/thoughts/, Settings -> Chat Logs -> Thoughts).
 
 With a book in her library (library.py) unfinished, half the ticks she reads instead (read_pages):
@@ -37,6 +38,7 @@ import learning
 import library
 import memory
 import persona
+import pictures
 import profiles
 import protocol
 import souls
@@ -65,6 +67,7 @@ LATELY_DAYS = 7  # how long a landed topic counts as what she's been into
 READ_PULL = 5  # a sitting with a book weighs on her like a middling thought: four in two days and it lands
 # Asked about one thing at a time she likes nearly everything; made to pick between two, one loses.
 CHOOSE_CHANCE = 1 / 4  # of the turns she isn't reading
+GALLERY_CHANCE = 1 / 5  # of those left, how often she looks at a picture in her gallery
 # After each sitting she says how much she wants to read on (1-10). Asked KEEP or STOP she kept even a
 # software license; scored, the license got 2 and Moby-Dick's whale-classing chapters 7-8.
 DULL_AT = 3
@@ -271,6 +274,8 @@ async def beat(brain: Brain) -> str:
     interests = read_interests()
     if random.random() < CHOOSE_CHANCE and len(pair := await _two_of_hers(interests)) == 2:
         return await choose(brain, interests, *pair, now)
+    if random.random() < GALLERY_CHANCE and (name := pictures.least_looked()):
+        return await look_at(brain, interests, name, now)
     drifted = await fragments(now, interests)
     if not drifted:
         return "Nothing to think about yet -- no soul, diary, chats or memories to wander through."
@@ -279,16 +284,22 @@ async def beat(brain: Brain) -> str:
     if not found:
         print("[heartbeat] nothing pulled at her")
         return "Nothing pulled at her this time."
+    return await _weigh(brain, interests, found, now)
+
+
+async def _weigh(brain: Brain, interests: dict, found: dict, now: datetime, mark: str = "", lost: bool = False) -> str:
+    """A thought of hers (parse_daydream's) on its topic, logged in her Thoughts: a page if the
+    topic lands, a dislike proposal if it sours. Returns what happened, in a line."""
     topic, change = add_pull(interests, found["topic"], found["pull"], found["thought"], found["question"], time.time())
     _save_interests(interests)
-    conversation.log_thought(f"{found['thought']}  \n*{topic} · pull {found['pull']}*", now=now)
-    print(f"[heartbeat] a thought about {topic!r} (pull {found['pull']})")
+    conversation.log_thought(f"{mark}{found['thought']}  \n*{topic}{' lost' if lost else ''} · pull {found['pull']}*", now=now)
+    print(f"[heartbeat] a thought about {topic!r}{' (it lost)' if lost else ''} (pull {found['pull']})")
     if change == "landed" and await _land(brain, interests, topic, now):
         return f"{found['thought']} -- and {topic} landed: she wrote a page about it (Chat Logs -> Thoughts)."
     if change == "soured":
         await _sour(brain, interests, topic)
         return f"{found['thought']} -- and she's soured on {topic}."
-    return f"{found['thought']} ({topic}, pull {found['pull']})"
+    return f"{found['thought']} ({topic}{' lost' if lost else ''}, pull {found['pull']})"
 
 
 async def _sour(brain: Brain, interests: dict, topic: str) -> None:
@@ -319,15 +330,21 @@ async def choose(brain: Brain, interests: dict, a: str, b: str, now: datetime) -
         found = parse_daydream(await asyncio.to_thread(brain.llm.choose, a, b))
     if not found:
         return "She couldn't pick between them this time."
-    pull = -abs(found["pull"])
-    topic, change = add_pull(interests, found["topic"], pull, found["thought"], "", time.time())
-    _save_interests(interests)
-    conversation.log_thought(f"⚖️ {found['thought']}  \n*{topic} lost · pull {pull}*", now=now)
-    print(f"[heartbeat] made to choose, {topic!r} lost (pull {pull})")
-    if change == "soured":
-        await _sour(brain, interests, topic)
-        return f"{found['thought']} -- and she's soured on {topic}."
-    return f"{found['thought']} ({topic} lost, pull {pull})"
+    return await _weigh(brain, interests, {**found, "pull": -abs(found["pull"]), "question": ""}, now, "⚖️ ", lost=True)
+
+
+async def look_at(brain: Brain, interests: dict, name: str, now: datetime) -> str:
+    """A picture from her gallery, looked at again on her own: her thought on it, weighed like any."""
+    pictures.looked(name)
+    mime, data_b64 = pictures.read(name) or ("", "")
+    about = next((e["about"] for e in pictures.entries() if e["name"] == name), "")
+    if not data_b64:
+        return "The picture she went to look at is gone."
+    async with brain.busy("Looking at a picture..."):
+        found = parse_daydream(await asyncio.to_thread(brain.llm.look_at_picture, data_b64, mime, about))
+    if not found:
+        return "Nothing in it caught her this time."
+    return await _weigh(brain, interests, found, now, "🖼️ ")
 
 
 def look_up(topic: str) -> str:

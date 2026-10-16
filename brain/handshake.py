@@ -52,7 +52,7 @@ async def handle_ready(websocket: websockets.ServerConnection, data: dict, brain
         protocol.friends_state(friends.ACTIVE.read()),
         friends.friends_message(),
         library.library_message(),
-        protocol.artwork(pictures.listing()),
+        protocol.artwork(pictures.entries()),
         protocol.visit_state(**friends.STATUS),
         reach_out.curiosity_timer_message(),
         reach_out.inbox_message(),

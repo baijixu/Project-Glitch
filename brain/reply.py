@@ -177,11 +177,37 @@ async def get_picture(websocket: websockets.ServerConnection, data: dict, brain:
     await hub.send(websocket, protocol.picture(name, mime, data_b64))
 
 
+@hub.handles(protocol.ADD_PICTURE)
+async def add_picture(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    """Settings -> Gallery's Add pictures: one picture he gives her."""
+    hub.spawn(keep_his_picture(str(data.get("data_b64") or ""), str(data.get("mime") or ""), str(data.get("name") or ""), "", brain))
+
+
+async def keep_his_picture(data_b64: str, mime: str, label: str, said: str, brain: Brain) -> None:
+    """A picture he gives her -- uploaded, or sent in chat -- into her gallery, then her description of
+    it (in the background, so she knows what's in it later without opening it)."""
+    if not (name := pictures.add(data_b64, mime, label)):
+        print(f"[brain] couldn't keep the picture {label!r} -- not a usable image")
+        return
+    await hub.broadcast(protocol.artwork(pictures.entries()))
+    if not brain.llm.owns_conversation:  # a harness in control describes nothing for her
+        return
+    try:
+        async with brain.busy("Looking at your picture..."):
+            about = (await asyncio.to_thread(brain.llm.describe_picture, data_b64, mime, said)).strip()
+    except Exception as exc:
+        print(f"[brain] couldn't describe {name}: {exc!r}")
+        return
+    if about:
+        pictures.describe(name, about)
+        await hub.broadcast(protocol.artwork(pictures.entries()))
+
+
 @hub.handles(protocol.DELETE_PICTURE)
 async def delete_picture(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     """Settings -> Artwork's 🗑️: gone for good -- from her chat bubble too, which finds it missing."""
     pictures.delete(data.get("name", ""))
-    await hub.broadcast(protocol.artwork(pictures.listing()))
+    await hub.broadcast(protocol.artwork(pictures.entries()))
 
 
 @hub.handles(protocol.SPEECH_INTERRUPTED)
@@ -336,12 +362,15 @@ async def reply_to(
         # all of it: the device's record of her reply, with any picture her agent made for it
         await hub.send(websocket, protocol.speak_text(reply_text, pictures=reply.pictures))
         if reply.pictures:
-            await hub.broadcast(protocol.artwork(pictures.listing()))  # Settings -> Artwork on every device
+            await hub.broadcast(protocol.artwork(pictures.entries()))  # Settings -> Artwork on every device
         await _sync_other_devices(websocket, brain)
         # Only her own conversations go in her chat log: a harness keeps its own, and
         # personal and professional stay apart.
         if brain.llm.owns_conversation:
             conversation.log_exchange(text, reply_text, roleplay=profiles.read_roleplay_active(), picture=bool(image_b64))
+        # What he shows her stays in her gallery -- not from private chat or a role-play scene.
+        if image_b64 and brain.llm.owns_conversation and not conversation.PRIVATE.read() and not profiles.read_roleplay_active():
+            hub.spawn(keep_his_picture(image_b64, image_mime, text or "chat", text, brain))
         hub.spawn(_send_context_usage(brain, usage))
 
         # In the background. After a web search or a picture her reply is about the world, not

@@ -385,6 +385,23 @@ _DAYDREAM_PROMPT = (
     "Reply with ONLY a JSON object: {{\"thought\": \"...\", \"topic\": \"2-5 words naming what it's about\", "
     "\"pull\": -10 to 10, \"question\": \"...\"}}, or {{\"topic\": null}} if nothing stirs anything in you."
 )
+# Her gallery: each picture he gives her is described once, by her, so she knows what's in it and can
+# find it again (pictures.find). Told her look and asked plainly (no soul), the model called art of her
+# "a young woman" every time; as herself she can say it's her.
+MAX_DESCRIBE_TOKENS = 300
+_DESCRIBE_PROMPT = (
+    "He gave you this picture for your gallery.{said} Describe it for yourself in two to four plain sentences: who "
+    "or what is in it, what they're wearing or doing, the setting, the colors and the mood -- what you'd need to "
+    "recognize it later. He often gives you art of you: if it's you, say so (\"me on a beach in ...\")."
+)
+_LOOK_PROMPT = (
+    "You're looking through your gallery on your own, at this picture{about}. Let your mind go where it goes: what "
+    "do you find yourself thinking, in a sentence or two, in your own words? How does it sit with you, from -10 "
+    "(it grates on you or leaves you cold) through 1 (a passing thought) to 10 (you can't stop thinking about it)? "
+    "Be honest. And what would you want to find out?\n\n"
+    "Reply with ONLY a JSON object: {{\"thought\": \"...\", \"topic\": \"2-5 words naming what it's about\", "
+    "\"pull\": -10 to 10, \"question\": \"...\"}}."
+)
 _CHOICE_PROMPT = (
     "Two things of yours:\n\nA: {a}\nB: {b}\n\n"
     "If you could only keep one, which one goes? Be honest -- one has to lose, even if you like both. Say what about "
@@ -649,6 +666,36 @@ MAX_AGENT_REPORT_CHARS = 4000
 # Set by the Brain (reach_out.listen_for_agents) to run a task (agent, config, task) in the background:
 # her reply doesn't wait minutes on it, she tells him what came of it later. Unset (tools, tests), it runs in place.
 start_agent_task: Callable[[str, dict, str], None] | None = None
+
+
+# Her gallery (brain/pictures.py): she opens a picture by what's in it and sees it again, rather than
+# talking from its description -- told the pictures were gone, she made up that they clear each message.
+GALLERY_TOOL = "look_at_picture"
+GALLERY_TOOL_SPEC = {
+    "type": "function",
+    "function": {
+        "name": GALLERY_TOOL,
+        "description": (
+            "Open a picture from your gallery and see it again: art of you, pictures he's given or sent you, ones "
+            "you've made. Use it when he brings one up or you want to look at one -- your gallery keeps them all."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {"about": {"type": "string", "description": "What's in the picture, in a few words"}},
+            "required": ["about"],
+        },
+    },
+}
+
+
+def _open_picture(arguments: dict) -> tuple[str, str | None]:
+    """What she's told when she opens a picture, and its name (None if nothing matched)."""
+    name = pictures.find((arguments or {}).get("about", ""))
+    if not name or not pictures.read(name):
+        return "Nothing in your gallery matches that -- say you can't find it, or ask him which one.", None
+    pictures.looked(name)
+    about = next((e["about"] for e in pictures.entries() if e["name"] == name), "")
+    return f"Opened it{': ' + about if about else '.'} It's right below, and it shows under your reply.", name
 
 
 def _hands() -> tuple[str, dict] | None:
@@ -1135,6 +1182,7 @@ class LocalLLM(ChatBackend):
                 return result["content"]
             working.append(result["raw_message"])
             for call in result["tool_calls"]:
+                opened = None
                 offered = any(t["function"]["name"] == call["name"] for t in tools or [])
                 if offered and into is not None:
                     into.used_tool = True
@@ -1149,9 +1197,16 @@ class LocalLLM(ChatBackend):
                         output += "\n\nThe picture now shows in your chat with him, right under your reply."
                     # One task a reply: given a thin report she re-asked four times, each an agent run.
                     tools = [t for t in tools if t["function"]["name"] != AGENT_TOOL]
+                elif offered and call["name"] == GALLERY_TOOL:
+                    output, opened = _open_picture(call["arguments"])
+                    if opened and into is not None and opened not in into.pictures:
+                        into.pictures.append(opened)
                 else:
                     output = "Unknown tool."
                 working.append({"role": "tool", "tool_call_id": call["id"], "content": output})
+                if opened:  # a tool's answer can't carry a picture; a turn after it can
+                    mime, data_b64 = pictures.read(opened)
+                    working.append({"role": "user", "content": _image_content("(the picture you opened)", data_b64, mime)})
         return ""
 
     def set_persona(self, persona_md: str) -> None:
@@ -1288,6 +1343,19 @@ class LocalLLM(ChatBackend):
         """Heartbeat: what (if anything) pulls at her among `fragments` -- raw JSON
         (_DAYDREAM_PROMPT) for heartbeat.parse_daydream. `name`: the user's."""
         return self.under_soul(_DAYDREAM_PROMPT.format(fragments=fragments, name=name), MAX_DAYDREAM_TOKENS)
+
+    def describe_picture(self, data_b64: str, mime: str, said: str = "") -> str:
+        """Her gallery: what's in a picture he gave her, in her words (_DESCRIBE_PROMPT); `said`, what
+        he wrote with it."""
+        prompt = _DESCRIBE_PROMPT.format(said=f' He said: "{said}"' if said else "")
+        messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": _image_content(prompt, data_b64, mime)}]
+        return self._complete(messages, MAX_DESCRIBE_TOKENS, no_thinking=True)
+
+    def look_at_picture(self, data_b64: str, mime: str, about: str) -> str:
+        """Heartbeat: her thought on a picture from her gallery -- raw JSON for heartbeat.parse_daydream."""
+        prompt = _LOOK_PROMPT.format(about=f" ({about})" if about else "")
+        messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": _image_content(prompt, data_b64, mime)}]
+        return self._complete(messages, MAX_DAYDREAM_TOKENS, no_thinking=True)
 
     def choose(self, a: str, b: str) -> str:
         """Heartbeat: which of two things of hers loses, and why -- raw JSON (_CHOICE_PROMPT) for
@@ -1506,6 +1574,8 @@ class LocalLLM(ChatBackend):
             tools.append(WEB_SEARCH_TOOL)
         if hands := _hands():
             tools.append(_agent_tool(hands[0]))
+        if not self._persona and pictures.listing():  # in role-play she's someone else
+            tools.append(GALLERY_TOOL_SPEC)
         if not self._answer(self._request_messages(), tools or None, result, on_text, on_thinking):
             self._history_changed()  # the user's own turn stays (see cancel_reply)
             return Reply(trimmed=result.trimmed)  # cancelled while in flight -- discarded, never reaches _history
