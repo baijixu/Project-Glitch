@@ -23,6 +23,9 @@ for (const side of ["Left", "Right"]) {
 }
 
 const FADE_SEC = 0.5;
+// Clips that would carry her across the floor: kept on the spot (the hips' sideways and forward drift
+// taken out), since Walker moves her body itself, along the path it chose.
+const IN_PLACE = new Set(["Walking", "Running"]);
 
 export class Moves {
   constructor(vrm) {
@@ -69,6 +72,11 @@ export class Moves {
     idle.relaxPose();
   }
 
+  // Whether `name` is there to play (loads it).
+  async has(name) {
+    return !!(await this._clip(name));
+  }
+
   // After idle.update: a playing clip wins over the procedural pose.
   update(delta) {
     if (this.action) this.mixer.update(delta);
@@ -77,7 +85,7 @@ export class Moves {
   _clip(name) {
     if (!this.clips.has(name)) {
       this.clips.set(name, new FBXLoader().loadAsync(`/animations/${encodeURIComponent(name)}.fbx`).then(
-        (asset) => retarget(asset, this.vrm, this.hipsHeight),
+        (asset) => retarget(asset, this.vrm, this.hipsHeight, IN_PLACE.has(name)),
         () => null, // not downloaded: don't ask again
       ));
     }
@@ -87,7 +95,7 @@ export class Moves {
 
 // A Mixamo clip as one for her normalized bones: each rotation is taken out of Mixamo's rest pose
 // into hers, and the hips' movement scaled to her height (three-vrm's loadMixamoAnimation).
-function retarget(asset, vrm, vrmHips) {
+function retarget(asset, vrm, vrmHips, inPlace = false) {
   const clip = THREE.AnimationClip.findByName(asset.animations, "mixamo.com") || asset.animations[0];
   const restInverse = new THREE.Quaternion();
   const parentRest = new THREE.Quaternion();
@@ -109,7 +117,8 @@ function retarget(asset, vrm, vrmHips) {
       }
       tracks.push(new THREE.QuaternionKeyframeTrack(`${node}.${property}`, track.times, values.map((x, i) => (v0 && i % 2 === 0 ? -x : x))));
     } else if (track instanceof THREE.VectorKeyframeTrack) {
-      tracks.push(new THREE.VectorKeyframeTrack(`${node}.${property}`, track.times, track.values.map((x, i) => (v0 && i % 3 !== 1 ? -x : x) * hipsScale)));
+      const values = track.values.map((x, i) => (inPlace && i % 3 !== 1 ? track.values[i % 3] : x)); // first frame's x/z throughout
+      tracks.push(new THREE.VectorKeyframeTrack(`${node}.${property}`, track.times, values.map((x, i) => (v0 && i % 3 !== 1 ? -x : x) * hipsScale)));
     }
   }
   return new THREE.AnimationClip(clip.name, clip.duration, tracks);

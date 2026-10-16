@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { Moves } from "./moves.js";
-import { Life, loadRoom, ROOM_PREF, RoomCamera, SPOTS } from "./room.js";
+import { Life, loadRoom, ROOM_PREF, RoomCamera, SPOTS, Walker } from "./room.js";
 import { readPref, writePref } from "./ui.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { VRMUtils } from "@pixiv/three-vrm";
@@ -72,6 +72,8 @@ scene.add(floor);
 let room = null;
 const roomCamera = new RoomCamera(camera, controls);
 const life = new Life();
+const walker = new Walker();
+let canWalk = false; // a Walking clip is there (moves.js); without one she's just there
 let placedAt = null; // the spot she was last put at
 
 // Puts her at a spot: there, turned its way, with the sun's shadow box following her.
@@ -79,8 +81,12 @@ function place(spot) {
   placedAt = spot;
   vrm.scene.position.copy(spot.at);
   vrm.scene.rotation.y = vrm.scene.userData.baseTurn + spot.turn;
-  dirLight.target.position.copy(spot.at);
-  dirLight.position.copy(spot.at).add(SUN_OFFSET);
+  followWithSun(spot.at);
+}
+
+function followWithSun(at) {
+  dirLight.target.position.copy(at);
+  dirLight.position.copy(at).add(SUN_OFFSET);
   dirLight.target.updateMatrixWorld();
 }
 async function showRoom(on) {
@@ -207,12 +213,14 @@ async function setActiveAvatar(source, kind = "vrm") {
   newVrm.scene.userData.baseTurn = newVrm.scene.rotation.y; // a VRM 0.x comes turned around to face forward
   vrm = newVrm;
   placedAt = null;
+  walker.path = null;
 
   // Her eyes follow you: three-vrm turns them toward the camera on every vrm.update().
   if (vrm.lookAt) vrm.lookAt.target = camera;
   idle = new IdleController(vrm);
   idle.relaxPose();
   moves = new Moves(vrm);
+  moves.has("Walking").then((ok) => (canWalk = ok));
   window.__moves = moves; // for console-driven verification while building
 
   if (brain) brain.vrm = vrm; // BrainClient reads this.vrm fresh each call (lipsync/mood) -- a plain reassignment is enough to retarget it
@@ -319,10 +327,22 @@ function animate() {
     life.update(delta);
     const spotName = room?.visible ? life.spot : "rug";
     const spot = SPOTS[spotName];
-    if (spot !== placedAt) place(spot);
-    const clip = talking ? spot.talk : spot.idle;
-    if (clip) moves.play(clip);
-    else moves.stop(idle);
+    if (spot !== placedAt && !walker.walking) {
+      if (placedAt && canWalk) walker.start(vrm.scene, placedAt, spot);
+      else place(spot);
+    }
+    if (walker.walking) {
+      const leg = walker.update(delta, vrm.scene.userData.baseTurn);
+      followWithSun(vrm.scene.position);
+      if (leg === "done") place(walker.to);
+      else if (leg === "settle" && walker.to.idle) moves.play(walker.to.idle);
+      else if (leg === "settle") moves.stop(idle);
+      else moves.play("Walking");
+    } else {
+      const clip = talking ? spot.talk : spot.idle;
+      if (clip) moves.play(clip);
+      else moves.stop(idle);
+    }
     moves.update(delta);
     brain.update(delta);
     vrm.update(delta);

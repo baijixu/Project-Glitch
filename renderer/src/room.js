@@ -16,17 +16,19 @@ const SHOTS = {
   room: { position: new THREE.Vector3(1.1, 1.75, 2.65), target: new THREE.Vector3(-0.6, 0.95, -1.0), fov: 55 },
   face: { position: new THREE.Vector3(0, 1.25, 1.7), target: new THREE.Vector3(0, 1.3, 0), fov: 30 },
 };
-// Where she can be, around her spot on the rug: where she stands, sits or lies, which way she turns,
+// Where she can be, around her spot on the rug: where she stands, sits or lies, which way she turns, where
+// she walks to and from it (`door`: beside the chair, along the bed's open side -- the straight lines
+// between them miss the furniture),
 // her clip there and while talking (none: her procedural idle), what the corner camera looks at while
 // she's there, and her close-up there -- at the desk from just above the laptop, like its webcam.
 export const SPOTS = {
-  rug: { at: new THREE.Vector3(0, 0, 0), turn: 0, idle: null, talk: null, view: SHOTS.room.target, face: SHOTS.face },
+  rug: { at: new THREE.Vector3(0, 0, 0), door: new THREE.Vector3(0, 0, 0), turn: 0, idle: null, talk: null, view: SHOTS.room.target, face: SHOTS.face },
   desk: {
-    at: new THREE.Vector3(-1.4, 0, -1.35), turn: Math.PI, idle: "Sitting", talk: "Sitting Talking", view: new THREE.Vector3(-1.1, 0.9, -1.5),
+    at: new THREE.Vector3(-1.4, 0, -1.35), door: new THREE.Vector3(-0.85, 0, -1.3), turn: Math.PI, idle: "Sitting", talk: "Sitting Talking", view: new THREE.Vector3(-1.1, 0.9, -1.5),
     face: { position: new THREE.Vector3(-1.4, 1.04, -2.05), target: new THREE.Vector3(-1.4, 1.14, -1.4), fov: 45 },
   },
   bed: {
-    at: new THREE.Vector3(-1.69, -0.3, 1.35), turn: Math.PI / 2, idle: "Laying Idle", talk: "Laying Hand Gesture", view: new THREE.Vector3(-1.5, 0.6, 0.9),
+    at: new THREE.Vector3(-1.69, -0.3, 1.35), door: new THREE.Vector3(-1.5, 0, 0.4), turn: Math.PI / 2, idle: "Laying Idle", talk: "Laying Hand Gesture", view: new THREE.Vector3(-1.5, 0.6, 0.9),
     face: { position: new THREE.Vector3(-1.45, 1.45, 0.75), target: new THREE.Vector3(-2.15, 0.68, 1.35), fov: 40 },
   },
 };
@@ -56,6 +58,66 @@ export class Life {
     if (this._busy || this.spot === "rug") return;
     this._idleFor += delta;
     if (this._idleFor > BACK_TO_RUG_SEC) this.spot = "rug";
+  }
+}
+
+// Walking from one spot to the next, in three legs: up from the old spot to its door, walking straight
+// to the new one's door, then settling into the new spot -- sliding the last half metre while its clip
+// fades in, rather than popping onto the chair. ponytail: straight lines between doors -- a path
+// planner when the room gets furniture in the way.
+const WALK_SPEED = 1.1; // metres a second, about the pace of Mixamo's Walking
+const TURN_PER_SEC = 6; // radians a second she turns toward where she's going
+const SLIDE_SEC = 0.6; // getting up, settling in
+
+export class Walker {
+  constructor() {
+    this.path = null;
+  }
+
+  get walking() {
+    return this.path !== null;
+  }
+
+  start(body, from, to) {
+    this.body = body;
+    this.to = to;
+    this.path = [
+      { leg: "up", at: from.door.clone(), from: body.position.clone(), t: 0 },
+      { leg: "walk", at: to.door.clone() },
+      { leg: "settle", at: to.at.clone(), from: to.door.clone(), t: 0 },
+    ].filter((step) => step.leg !== "up" || step.from.distanceTo(step.at) > 0.05); // standing already: no getting up
+  }
+
+  // Moves her along. Returns the leg she's on ("up", "walk" or "settle"), or "done".
+  update(delta, baseTurn) {
+    const step = this.path[0];
+    const p = this.body.position;
+    if (step.leg !== "walk") {
+      step.t = Math.min(1, step.t + delta / SLIDE_SEC);
+      p.lerpVectors(step.from, step.at, step.t);
+      if (step.leg === "settle") this._turnTo(baseTurn + this.to.turn, delta);
+      if (step.t < 1 || (step.leg === "settle" && !this._facing)) return step.leg;
+    } else {
+      const ahead = step.at.clone().sub(p).setY(0);
+      const stride = WALK_SPEED * delta;
+      if (ahead.length() > stride) {
+        this._turnTo(baseTurn + Math.atan2(ahead.x, ahead.z), delta);
+        p.addScaledVector(ahead.normalize(), stride);
+        return "walk";
+      }
+      p.copy(step.at);
+    }
+    this.path.shift();
+    if (this.path.length) return this.path[0].leg;
+    this.path = null;
+    return "done";
+  }
+
+  _turnTo(yaw, delta) {
+    let turn = yaw - this.body.rotation.y;
+    turn = Math.atan2(Math.sin(turn), Math.cos(turn)); // the short way round
+    this.body.rotation.y += Math.sign(turn) * Math.min(Math.abs(turn), TURN_PER_SEC * delta);
+    this._facing = Math.abs(turn) < 0.05;
   }
 }
 
