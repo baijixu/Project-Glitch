@@ -1,4 +1,6 @@
 import * as THREE from "three";
+import { loadRoom, ROOM_PREF, RoomCamera } from "./room.js";
+import { readPref, writePref } from "./ui.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { VRMUtils } from "@pixiv/three-vrm";
 import { loadAvatar } from "./avatar.js";
@@ -61,6 +63,24 @@ const floor = new THREE.Mesh(new THREE.PlaneGeometry(4, 4), new THREE.MeshStanda
 floor.rotation.x = -Math.PI / 2;
 floor.receiveShadow = true;
 scene.add(floor);
+
+// Her room, when it's on for this device (Settings -> UI Style): it replaces the floor glow, and the
+// camera moves between the corner and her face (room.js).
+let room = null;
+const roomCamera = new RoomCamera(camera, controls);
+async function showRoom(on) {
+  writePref(ROOM_PREF, on ? "1" : "0");
+  if (on && !room) room = await loadRoom(scene);
+  if (room) room.visible = on;
+  floor.visible = !on;
+  if (!on) roomCamera.reset();
+}
+const roomToggle = document.getElementById("room-toggle");
+if (roomToggle) {
+  roomToggle.checked = readPref(ROOM_PREF, "1") !== "0";
+  roomToggle.addEventListener("change", () => showRoom(roomToggle.checked));
+}
+showRoom(readPref(ROOM_PREF, "1") !== "0");
 
 function floorGlowTexture() {
   const size = 256;
@@ -275,6 +295,7 @@ function animate() {
     idle.update(delta, brain.speechLevel);
     brain.update(delta);
     vrm.update(delta);
+    if (room?.visible) roomCamera.update(delta, brain.lipSyncActive || brain._awaitingReply);
     controls.update();
     renderer.render(scene, camera);
   }
