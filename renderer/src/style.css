@@ -1191,6 +1191,16 @@ body.overlay-chat-active #overlay-edit-button {
   cursor: zoom-out;
 }
 
+.artwork-about {
+  display: none;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.artwork-tile.expanded .artwork-about {
+  display: block;
+}
+
 .artwork-tile-meta {
   display: flex;
   align-items: center;

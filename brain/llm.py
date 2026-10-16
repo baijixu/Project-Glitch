@@ -135,6 +135,13 @@ AGENT_JOB_NOTE = (
     "If he's asking you to open or read a specific site, subreddit, feed, paper or video, to check his email or "
     "calendar, or to make a picture or file, use ask_agent first -- web search can't do that; {agent} may."
 )
+# A picture he means is in her gallery: asked about "the beach art of you", she answered from memory
+# ("I can't be sure") with look_at_picture right there -- the tool's description alone didn't do it.
+_PICTURE_TALK = re.compile(r"\b(?:pictures?|pics?|photos?|art|artwork|drawings?|images?|renders?|paintings?)\b", re.IGNORECASE)
+GALLERY_NOTE = (
+    "If he's talking about a picture he gave or showed you, or one you made, open it with look_at_picture before "
+    "you answer -- don't go from memory."
+)
 
 
 # The passage of time. Each history message carries when it was said ("at", never sent to
@@ -1510,6 +1517,8 @@ class LocalLLM(ChatBackend):
             parts.append(PAST_CLAIM_NOTE)
         if _AGENT_JOB.search(latest) and (hands := _hands()):
             parts.append(AGENT_JOB_NOTE.format(agent=hands[0]))
+        if not self._persona and _PICTURE_TALK.search(latest) and pictures.listing():
+            parts.append(GALLERY_NOTE)
         return "\n\n".join(parts)
 
     def _opens_a_sitting(self) -> bool:

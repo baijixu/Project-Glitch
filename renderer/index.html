@@ -490,11 +490,15 @@
           <button id="open-soul-user-editor-button" class="settings-action-button">Edit Soul &amp; User Files</button>
         </section>
         <section id="artwork-section" class="settings-section">
-          <h3>Artwork</h3>
+          <h3>Gallery</h3>
           <p class="settings-hint">
-            Pictures she's made for you (with her agent), kept on this PC (brain/pictures/). Click one to see it
-            full size; deleting one takes it out of her chat too.
+            Her pictures, kept on this PC (brain/pictures/): ones she's made with her agent, ones you add here, and
+            ones you send her in chat (not from private chat or role-play). She describes each once, can open one
+            when you bring it up, and looks through them in her quiet time. Click one to see it full size with her
+            description; deleting one takes it out of her chat too.
           </p>
+          <button id="add-picture-button" class="settings-action-button">Add pictures</button>
+          <input id="picture-file-input" type="file" accept="image/*" multiple hidden />
           <details id="artwork-details">
             <summary class="lessons-subhead">Pictures<span id="artwork-count"></span></summary>
             <div id="artwork-list" class="artwork-grid"></div>

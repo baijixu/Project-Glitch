@@ -479,7 +479,7 @@ function scaledCanvas(source, width, height) {
   return canvas;
 }
 
-function readAsDataUrl(file) {
+export function readAsDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
@@ -489,7 +489,7 @@ function readAsDataUrl(file) {
 }
 
 // Same downscale as a snapshot -- a phone photo can be 10+ MB at full size.
-function downscaleImage(dataUrl) {
+export function downscaleImage(dataUrl) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(scaledCanvas(img, img.naturalWidth, img.naturalHeight).toDataURL("image/jpeg", VISION_JPEG_QUALITY));
