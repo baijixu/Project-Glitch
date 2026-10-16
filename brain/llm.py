@@ -124,16 +124,20 @@ PAST_CLAIM_NOTE = (
 )
 
 # A job for her agent (a site, feed, paper or video to open, mail to check, a picture or file to
-# make). With web search on too she reached for search first -- snippets, not the page -- and a
-# search takes the agent off the table for that reply; the tool's description alone didn't fix it.
+# make) -- or his naming the agent at all. With web search on too she reached for search first --
+# snippets, not the page -- and a search takes the agent off the table for that reply; the tool's
+# description alone didn't fix it. Asked twice by name, deep in a playful chat, she said she was
+# asking it and never called it: nothing reached the agent.
 _AGENT_JOB = re.compile(
     r"\br/\w|\b(?:subreddit|reddit|arxiv|youtube|rss|feed|pdf|spreadsheet|e-?mails?|gmail|calendar)\b"
-    r"|\b(?:picture|image|drawing|photo) of\b",
+    r"|\b(?:picture|image|drawing|photo) of\b|\b(?:draw|render|paint)\b"
+    r"|\b(?:make|generate|create)\b[^.?!]{0,25}\b(?:picture|image|pic|photo|render|drawing)s?\b",
     re.IGNORECASE,
 )
 AGENT_JOB_NOTE = (
     "If he's asking you to open or read a specific site, subreddit, feed, paper or video, to check his email or "
-    "calendar, or to make a picture or file, use ask_agent first -- web search can't do that; {agent} may."
+    "calendar, or to make a picture or file, use ask_agent first -- web search can't do that; {agent} may. Saying "
+    "you're asking {agent} does nothing unless you call ask_agent."
 )
 # A picture he means is in her gallery: asked about "the beach art of you", she answered from memory
 # ("I can't be sure") with look_at_picture right there -- the tool's description alone didn't do it.
@@ -1515,9 +1519,12 @@ class LocalLLM(ChatBackend):
             parts.append(CRISIS_NOTE)
         if not self._persona and _PAST_CLAIM.search(latest):  # in role-play, the scene's past is make-believe
             parts.append(PAST_CLAIM_NOTE)
-        if _AGENT_JOB.search(latest) and (hands := _hands()):
+        hands = _hands()
+        agent_job = hands and (_AGENT_JOB.search(latest) or hands[0].lower() in latest.lower())
+        if agent_job:
             parts.append(AGENT_JOB_NOTE.format(agent=hands[0]))
-        if not self._persona and _PICTURE_TALK.search(latest) and pictures.listing():
+        # A new picture to make isn't one to look up: one note, not two pulling different ways.
+        elif not self._persona and _PICTURE_TALK.search(latest) and pictures.listing():
             parts.append(GALLERY_NOTE)
         return "\n\n".join(parts)
 
