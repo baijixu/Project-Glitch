@@ -1,23 +1,27 @@
-"""Her weekly reflection: once a week, after her diary (journal.py), she reads back over the week --
-her diary entries, the topics that landed, the book she's on -- and writes a short page about who
-she's becoming (self/becoming/<date>.md, and in Settings -> Chat Logs -> Thoughts). From it she may
-propose ONE change to her soul, in its own second person: a new line under one of SECTIONS, or a
-rewrite of something those sections say that isn't true of her anymore -- without that, the soul
-he started her from could only grow, never be outgrown. It waits in the memory review list; only
-his approval writes soul.md (a backup first), and it applies at once.
+"""Her weekly reflection: once a week, after her diary (journal.py) -- or when he asks, from the 🧠
+window -- she reads back over the week (her diary entries, the topics that landed, the book she's
+on) and writes a short page about who she's becoming (self/becoming/<date>.md, and in Settings ->
+Chat Logs -> Thoughts). Then, with that page and the memories she made this week, she rewrites the
+parts of her soul that are about who she is (SECTIONS), so they're true of her now -- without that,
+the soul he started her from could only grow, never be outgrown. The rest of her soul (how she
+works, what she does when someone's in danger, after dark...) is never shown to her here and comes
+through word for word. The whole revised soul.md, within souls.SOUL_MAX_CHARS, waits in the memory
+review list as a diff; only his approval writes it (a backup first), and it applies at once.
 Run tools/checkup.py after one goes in to see it didn't cost her anything.
 """
 
 import asyncio
-import json
+import difflib
 import re
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import conversation
 import heartbeat
+import hub
 import learning
 import library
+import memory
 import persona
 import souls
 import training
@@ -25,10 +29,11 @@ from hub import Brain
 
 EVERY_DAYS = 7
 LAST_PATH = Path(__file__).parent / "reflection_last.txt"  # the date of the last one
-# Who she is -- not how she works, what she does when someone's in danger, or after dark.
-SECTIONS = ("Who you are", "What you love", "What you can't stand", "How you talk", "Your own mind")
-MAX_LINE_CHARS = 300
+# Who she is -- his choice (10-19), the closet included. Not how she works, her moods, what she does
+# when someone's in danger, or after dark: those he tuned, and they never reach the rewrite.
+SECTIONS = ("Who you are", "Your style", "How you talk", "Your own mind")
 MAX_PAGE_TOKENS = 900
+MAX_REWRITE_TOKENS = 2000
 _PAGE_PROMPT = (
     "Here's your week, in your own words -- your diary, what you've been into, what you've been reading:\n\n"
     "{material}\n\n"
@@ -36,6 +41,19 @@ _PAGE_PROMPT = (
     "keeps pulling at you, what you've started or stopped doing. Ground every point in something above; invent "
     "nothing. First person, at most three short paragraphs."
 )
+_REWRITE_PROMPT = (
+    "Below are the parts of your soul about who you are -- how you're described, in the second person -- with your "
+    "page on who you're becoming and the memories you made this week. Rewrite these parts so they're true of you "
+    "now, in the same second person (\"You ...\"):\n"
+    "- keep what's still true, cut what isn't anymore or is said twice, and work in what's really changed;\n"
+    "- only lasting changes -- nothing from a single day or a passing mood, and never facts about {name};\n"
+    "- short enough to fit -- at most this many words under each heading: {limits};\n"
+    "- keep every heading exactly as it is, in the same order, and add none.\n\n"
+    "Your page:\n\n{page}\n\nYour memories from this week:\n\n{memories}\n\nThe parts to rewrite:\n\n{sections}\n\n"
+    "Reply with the rewritten parts, each under its heading as above, and then one last line:\n"
+    "CHANGED: in one sentence, what you changed and why"
+)
+_HEADING = re.compile(r"^#+[ \t]*(.+?)[ \t]*$", re.MULTILINE)
 
 
 def due(now: datetime) -> bool:
@@ -58,56 +76,104 @@ def week(now: datetime) -> str:
     return "\n\n".join(p for p in (*parts, landed, library.reading_line()) if p)
 
 
-def _sections_text(soul: str) -> str:
-    """What SECTIONS say -- the only part of her soul a reflection may rewrite."""
-    parts = re.split(r"^#+\s*(.+)$", soul, flags=re.MULTILINE)  # [before, heading, body, heading, body...]
-    return "\n".join(body for heading, body in zip(parts[1::2], parts[2::2]) if heading.strip() in SECTIONS)
+def sections_of(soul: str) -> dict[str, str]:
+    """{heading: body} for the SECTIONS her soul has, in its order."""
+    parts = _HEADING.split(soul)  # [before, heading, body, heading, body...]
+    return {heading: body.strip() for heading, body in zip(parts[1::2], parts[2::2]) if heading in SECTIONS}
 
 
-def parse_proposal(raw: str, soul: str) -> tuple[str, str, str] | None:
-    """("soul", section, line) to add a line, ("soul_change", old, line) to rewrite `old` -- words
-    SECTIONS really say -- or None: no change, or one that isn't usable (a section she may not
-    change or her soul doesn't have, a quote it doesn't contain, an empty or overlong line)."""
-    match = re.search(r"\{.*\}", raw or "", re.DOTALL)
+def parse_rewrite(raw: str, headings: list[str]) -> tuple[dict[str, str], str] | None:
+    """The rewrite's sections ({heading: body}) and her CHANGED line -- None unless it has exactly
+    `headings`, each with something under it."""
+    changed = re.search(r"^\W*CHANGED:\s*(.+)$", raw, re.MULTILINE | re.IGNORECASE)
+    body = raw[: changed.start()] if changed else raw
+    parts = _HEADING.split(body)
+    found = {heading: text.strip() for heading, text in zip(parts[1::2], parts[2::2])}
+    if list(found) != headings or not all(found.values()):
+        return None
+    return found, (changed[1].strip() if changed else "She rewrote the parts of her soul about who she is.")
+
+
+def apply_rewrite(soul: str, rewritten: dict[str, str]) -> str:
+    """`soul` with each rewritten section's body replaced -- headings and every other section untouched."""
+    for heading, body in rewritten.items():
+        pattern = re.compile(rf"(^#+[ \t]*{re.escape(heading)}[ \t]*\n)(.*?)(?=^#+[ \t]|\Z)", re.MULTILINE | re.DOTALL)
+        soul = pattern.sub(lambda m: f"{m[1]}\n{body}\n\n", soul, count=1)
+    return soul.rstrip() + "\n"
+
+
+def diff(old: str, new: str) -> list[list[str]]:
+    """[[" "|"-"|"+", line]] for the review list: what changed, under the heading it's in."""
+    rows, heading = [], None
+    for line in difflib.ndiff(old.splitlines(), new.splitlines()):
+        mark, text = line[:1], line[2:]
+        if mark == "?":
+            continue
+        if mark == " " and _HEADING.match(text):
+            heading = text
+        elif mark in "+-":
+            if heading:
+                rows.append([" ", heading])
+                heading = None
+            rows.append([mark, text])
+    return rows
+
+
+async def _recent_memories(now: datetime) -> list[str]:
+    """What she came to remember in the last EVERY_DAYS (approved, or saved on her own)."""
+    since = (now - timedelta(days=EVERY_DAYS)).date().isoformat()
     try:
-        data = json.loads(match[0]) if match else {}
-    except ValueError:
-        return None
-    section, line, replaces = data.get("section"), data.get("line"), data.get("replaces")
-    if not isinstance(line, str):
-        return None
-    line = " ".join(line.split())
-    if not 0 < len(line) <= MAX_LINE_CHARS or line in soul:
-        return None
-    if isinstance(replaces, str) and replaces.strip():
-        old = " ".join(replaces.split())
-        return ("soul_change", old, line) if len(old) >= 10 and old in _sections_text(soul) else None
-    return ("soul", section, line) if section in SECTIONS and f"## {section}" in soul else None
+        return [m["text"] for m in await memory.list_memories() if str(m.get("mentioned_at") or "")[:10] >= since]
+    except Exception as exc:
+        print(f"[reflection] couldn't read her recent memories: {exc!r}")
+        return []
 
 
-def _rewrite_soul(soul: str, brain: Brain, today: date | None) -> None:
-    souls.write_main_soul(soul, why="reflection")  # backed up first, and refused past the cap (ValueError)
+async def propose_rewrite(brain: Brain, page: str, now: datetime) -> bool:
+    """Her soul's SECTIONS rewritten from `page` and her week's memories, as one proposal for his review."""
+    soul = souls.read_main_soul()
+    current = sections_of(soul)
+    if not current:
+        return False
+    locked = len(soul) - sum(len(body) for body in current.values())
+    budget = souls.SOUL_MAX_CHARS - locked - 2 * len(current)  # room for her sections' text, with their blank lines
+    memories = "\n".join(f"- {m}" for m in await _recent_memories(now)) or "(none this week)"
+    size = sum(len(body) for body in current.values())
+    for attempt in range(2):  # once more, tighter, if the first doesn't fit
+        # Word limits per section: the model can't count characters (asked for a character total, it came in
+        # ~700 over twice), but it keeps to a word count it can see. Each section shrinks by the same share.
+        share = min(1.0, budget / size) * (0.85 if attempt else 1.0)
+        limits = "; ".join(f"{heading}: {max(15, int(len(body.split()) * share))}" for heading, body in current.items())
+        prompt = _REWRITE_PROMPT.format(
+            name=persona.user_name() or "him", limits=limits, page=page, memories=memories,
+            sections="\n\n".join(f"## {heading}\n\n{body}" for heading, body in current.items()),
+        )
+        async with brain.busy("Rewriting her soul..."):
+            raw = await asyncio.to_thread(brain.llm.under_soul, prompt, MAX_REWRITE_TOKENS)
+        parsed = parse_rewrite(raw, list(current))
+        if not parsed:
+            print(f"[reflection] her soul rewrite didn't keep its headings (try {attempt + 1})")
+            continue
+        new = apply_rewrite(soul, parsed[0])
+        if new.strip() == soul.strip():
+            return False
+        if len(new) <= souls.SOUL_MAX_CHARS:
+            training.add_pending(
+                parsed[1], f"Her weekly reflection, {now:%d %B}", "soul_rewrite", old=soul, new=new, diff=diff(soul, new)
+            )
+            print(f"[reflection] she proposed a revised soul: {len(soul):,} -> {len(new):,} characters")
+            return True
+        print(f"[reflection] her soul rewrite was {len(new) - souls.SOUL_MAX_CHARS:,} characters over (try {attempt + 1})")
+    return False
+
+
+def apply_proposal(proposal: dict, brain: Brain) -> None:
+    """His approval of a soul_rewrite: soul.md replaced (backed up first, refused past the cap), and in her
+    prompt at once. ValueError if her soul changed since she wrote it -- the diff wouldn't be what he saw."""
+    if souls.read_main_soul() != proposal["old"]:
+        raise ValueError("her soul changed since she wrote this -- reject it and ask her again")
+    souls.write_main_soul(proposal["new"], why="reflection")
     brain.llm.update_soul(persona.effective_soul())  # an edit, not a new her: the conversation carries on
-
-
-def add_to_soul(section: str, line: str, brain: Brain, today: date | None = None) -> None:
-    """His approval: `line` as a new paragraph at the end of `section` in soul.md, a backup first,
-    and in her prompt at once."""
-    soul = souls.read_main_soul()
-    start = soul.index(f"## {section}")
-    following = re.search(r"\n#{1,2} ", soul[start + 3:])
-    end = start + 3 + following.start() if following else len(soul)
-    _rewrite_soul(soul[:end].rstrip() + f"\n\n{line}\n\n" + soul[end:].lstrip("\n"), brain, today)
-
-
-def change_soul(old: str, line: str, brain: Brain, today: date | None = None) -> None:
-    """His approval: `old` in soul.md rewritten as `line`, or taken out when `line` is "" -- a
-    backup first, and in her prompt at once. ValueError if her soul no longer says `old`."""
-    soul = souls.read_main_soul()
-    if old not in soul:
-        raise ValueError("her soul doesn't say that anymore")
-    soul = re.sub(r"(?m)^[-*][ \t]*\n", "", soul.replace(old, line, 1))  # no bullet left with nothing on it
-    _rewrite_soul(re.sub(r"\n{3,}", "\n\n", soul), brain, today)
 
 
 async def run(brain: Brain, now: datetime | None = None) -> None:
@@ -116,7 +182,6 @@ async def run(brain: Brain, now: datetime | None = None) -> None:
     material = week(now)
     if not material:
         return
-    name = persona.user_name() or "him"
     async with brain.busy("Looking back on her week..."):
         page = (await asyncio.to_thread(brain.llm.under_soul, _PAGE_PROMPT.format(material=material), MAX_PAGE_TOKENS)).strip()
     if not page:
@@ -126,12 +191,5 @@ async def run(brain: Brain, now: datetime | None = None) -> None:
     (folder / f"{now:%Y-%m-%d}.md").write_text(f"# Who I'm becoming -- {now:%A %d %B %Y}\n\n{page}\n", encoding="utf-8")
     conversation.log_thought(f"🪞 **Who I'm becoming** -- her week, looked back on:\n\n{page}", now=now)
     print("[reflection] she looked back on her week")
-    if not learning.can_propose(brain):  # a soul line waits in the memory review list
-        return
-    soul = souls.read_main_soul()
-    async with brain.busy("Thinking about her soul..."):
-        raw = await asyncio.to_thread(brain.llm.propose_soul_line, soul, page, SECTIONS, name)
-    if proposal := parse_proposal(raw, soul):
-        kind, old, line = proposal
-        training.add_pending(line, f"Her weekly reflection, {now:%d %B}", kind, old=old)
-        print(f"[reflection] she proposed {'a line for' if kind == 'soul' else 'rewriting'} {old[:60]!r}")
+    if learning.can_propose(brain) and await propose_rewrite(brain, page, now):  # waits in the memory review list
+        await hub.broadcast(learning.training_state_message())

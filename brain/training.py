@@ -100,7 +100,8 @@ KINDS = ("add", "update", "retire")
 
 
 def add_pending(
-    fact: str, source: str = "", kind: str = "add", memory_id: str = "", old: str = "", type: str = "", why: str = ""
+    fact: str, source: str = "", kind: str = "add", memory_id: str = "", old: str = "", type: str = "", why: str = "",
+    new: str = "", diff: list | None = None,
 ) -> dict | None:
     """None when it repeats something already waiting, or a memory already has a proposal."""
     fact = fact.strip()
@@ -113,6 +114,8 @@ def add_pending(
     item = {"id": uuid.uuid4().hex, "fact": fact, "source": source.strip()[:200], "created": now}
     if kind != "add":
         item.update(kind=kind, memory_id=memory_id, old=old)
+    if new:  # a revised soul (reflection.propose_rewrite): `old` and `new` whole, `diff` for the review list
+        item.update(new=new, diff=diff or [])
     if type:  # her own decision / lesson / opinion (learning.distill_chat), with why it matters to her
         item.update(type=type, why=why.strip()[:200])
     pending.append(item)
@@ -124,7 +127,7 @@ def add_pending(
 def proposal_type(item: dict) -> str:
     """What a proposal is, for the Growth charts: her decision / lesson / opinion, a new memory
     ("fact"), a soul line, or upkeep on old memories."""
-    return item.get("type") or {"soul": "soul", "soul_change": "soul", "update": "upkeep", "retire": "upkeep"}.get(item.get("kind", "add"), "fact")
+    return item.get("type") or {"soul_rewrite": "soul", "update": "upkeep", "retire": "upkeep"}.get(item.get("kind", "add"), "fact")
 
 
 def get_pending(proposal_id: str) -> dict | None:

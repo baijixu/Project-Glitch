@@ -432,17 +432,6 @@ _FOCUS_FOUND = (
     "\n\nYou also looked it up. What the search turned up:\n\n{found}\n\n"
     "Work in what's actually interesting, say where you read it, and don't take it as gospel."
 )
-# Her weekly reflection (brain/reflection.py): at most one line for her soul, for him to approve.
-_SOUL_LINE_SYSTEM_PROMPT = (
-    "Below is your soul -- how you're described, in the second person -- and a page you just wrote about who you're "
-    "becoming. If the page shows something real and lasting about you, you may propose ONE change, written like the "
-    "soul (\"You ...\"), in one of these sections: {sections}. Either a line to add that the soul doesn't say yet -- "
-    "or, if something those sections say isn't true of you anymore (you've outgrown it, cooled on it, or turned "
-    "against it), that part rewritten as it's true now. {name} decides whether it goes in. Never a fact about {name}, "
-    "never a passing mood. Reply with ONLY a JSON object: {{\"section\": \"...\", \"line\": \"...\"}} to add, "
-    "{{\"replaces\": \"the soul's words, copied exactly\", \"line\": \"...\"}} to rewrite, or {{\"section\": null}} "
-    "if nothing should change."
-)
 # Her library (brain/library.py), read in Heartbeat's quiet time, under her own soul too.
 MAX_READING_TOKENS = 400
 _PICK_BOOK_PROMPT = (
@@ -1381,12 +1370,6 @@ class LocalLLM(ChatBackend):
         web search turned up about it, if she looked."""
         prompt = _FOCUS_PROMPT.format(topic=topic, thoughts=thoughts, name=name)
         return self.under_soul(prompt + (_FOCUS_FOUND.format(found=found) if found else ""), MAX_FOCUS_TOKENS)
-
-    def propose_soul_line(self, soul: str, page: str, sections: tuple[str, ...], name: str) -> str:
-        """At most one line for her soul from her weekly page -- raw JSON for reflection.parse_proposal."""
-        system = _SOUL_LINE_SYSTEM_PROMPT.format(sections=", ".join(f'"{s}"' for s in sections), name=name)
-        messages = [{"role": "system", "content": system}, {"role": "user", "content": f"Your soul:\n\n{soul}\n\nYour page:\n\n{page}"}]
-        return self._complete(messages, MAX_READING_TOKENS, no_thinking=True)
 
     def pick_book(self, titles: list[str]) -> str:
         """Library: which of `titles` she reads next -- the model's raw answer, a number."""

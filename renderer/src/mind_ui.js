@@ -28,6 +28,10 @@ export class MindUI {
       });
     }
     $("mind-close-button")?.addEventListener("click", () => this.modal.close());
+    $("mind-reflect-button")?.addEventListener("click", () => {
+      this._app.send({ type: "reflect_now" });
+      $("mind-reflect-note").hidden = false;
+    });
     $("mind-review-button")?.addEventListener("click", () => this._openReview());
   }
 

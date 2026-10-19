@@ -99,7 +99,7 @@ async def journal_loop(brain: Brain) -> None:
                     async with hub.doing("Tidying her memories..."):
                         await upkeep.run(brain)
                     await learning.broadcast_training_state()
-                if reflection.due(datetime.now()):  # her week, looked back on, and maybe a line for her soul
+                if reflection.due(datetime.now()):  # her week, looked back on, and maybe a revised soul
                     await reflection.run(brain)
                     await learning.broadcast_training_state()
                     hub.spawn(progress_exam())  # and her weekly exam, the same night

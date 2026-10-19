@@ -88,8 +88,19 @@ export class TrainingUI {
 
   // kind "add" (a new memory), or from memory upkeep "update" (new wording for one she has,
   // `old` its current text) or "retire" (one that repeats another), or from her weekly
-  // reflection "soul" (a line for her soul, `old` its section) or "soul_change" (`old`, words
-  // her soul says, rewritten). Her own decision / lesson / opinion from a cleared chat has a `type` and `why`.
+  // reflection "soul_rewrite" (her revised soul.md: `old` and `new` whole, `diff` [[" "|"-"|"+", line]],
+  // `fact` her one line on what changed). Her own decision / lesson / opinion from a cleared chat has a `type` and `why`.
+  // A revised soul's changed lines (red out, green in), each under the heading it's in. Model-written: textContent.
+  _diff(rows) {
+    const box = Object.assign(document.createElement("div"), { className: "soul-diff" });
+    for (const [mark, text] of rows) {
+      const line = Object.assign(document.createElement("div"), { textContent: `${mark} ${text}` });
+      line.className = mark === "+" ? "soul-diff-add" : mark === "-" ? "soul-diff-del" : "soul-diff-ctx";
+      box.appendChild(line);
+    }
+    return box;
+  }
+
   _row(proposal) {
     const row = document.createElement("div");
     row.className = "lesson-row pending";
@@ -97,8 +108,10 @@ export class TrainingUI {
     const note = (text) => row.appendChild(Object.assign(document.createElement("div"), { className: "lesson-reason", textContent: text }));
     if (kind === "update") note(`Update this memory? Now: "${proposal.old}"`);
     if (kind === "retire") note("Retire this memory?");
-    if (kind === "soul") note(`Add this to her soul, under "${proposal.old}"? (Her weekly reflection; soul.md is backed up first.)`);
-    if (kind === "soul_change") note(`Change this in her soul? Now: "${proposal.old}" (Her weekly reflection; soul.md is backed up first.)`);
+    if (kind === "soul_rewrite") {
+      note(`Her revised soul -- ${proposal.old.length.toLocaleString()} -> ${proposal.new.length.toLocaleString()} characters. Approve to replace soul.md (backed up first).`);
+      row.appendChild(this._diff(proposal.diff || []));
+    }
     if (proposal.type) note(`Her ${proposal.type}${proposal.why ? ` -- why it matters to her: ${proposal.why}` : ""}`);
 
     const box = document.createElement("textarea");
@@ -106,7 +119,7 @@ export class TrainingUI {
     box.rows = 2;
     box.maxLength = 300;
     box.value = proposal.fact;
-    box.readOnly = kind === "retire";
+    box.readOnly = kind === "retire" || kind === "soul_rewrite";
     box.addEventListener("blur", () => {
       if (this._pendingState) setTimeout(() => !this._editing() && this._pendingState && this._render(this._pendingState), 0);
     });
@@ -122,11 +135,9 @@ export class TrainingUI {
     const meta = document.createElement("div");
     meta.className = "lesson-meta";
     const resolve = (extra) => this._send({ type: "resolve_memory_proposal", id: proposal.id, ...extra });
-    if (kind === "soul" || kind === "soul_change") {
-      const change = kind === "soul_change";
-      meta.appendChild(this._button(change ? "✓ Change" : "✓ Add to soul", "Write it into soul.md (edit the wording first if you like)", () => box.value.trim() && resolve({ approve: true, fact: box.value.trim() })));
-      if (change) meta.appendChild(this._button("Take it out", "Remove those words from her soul instead", () => resolve({ approve: true, remove: true }), true));
-      meta.appendChild(this._button(change ? "✕ Keep it" : "✕ Reject", "Leave her soul as it is", () => resolve({ approve: false }), true));
+    if (kind === "soul_rewrite") {
+      meta.appendChild(this._button("✓ Replace her soul", "Write the revised soul.md (the old one is backed up first)", () => resolve({ approve: true })));
+      meta.appendChild(this._button("✕ Keep it as it is", "Leave her soul unchanged", () => resolve({ approve: false }), true));
       row.appendChild(meta);
       return row;
     }

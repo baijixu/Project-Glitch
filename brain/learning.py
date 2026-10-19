@@ -296,6 +296,27 @@ async def _get_mind(websocket: websockets.ServerConnection, data: dict, brain: B
     await hub.send(websocket, mind_message(brain))
 
 
+_reflecting = False
+
+
+@hub.handles(protocol.REFLECT_NOW)
+async def _reflect_now(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    """The 🧠 window's button: her weekly look-back and soul revision now, in the background."""
+    global _reflecting
+    if _reflecting:
+        return
+    _reflecting = True
+
+    async def reflect() -> None:
+        global _reflecting
+        try:
+            await reflection.run(brain)
+        finally:
+            _reflecting = False
+
+    hub.spawn(reflect())
+
+
 @hub.handles(protocol.GET_GROWTH)
 async def _get_growth(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     await hub.send(websocket, protocol.growth(metrics.growth()))
@@ -564,13 +585,9 @@ async def resolve_memory_proposal(websocket: websockets.ServerConnection, data: 
     proposal = training.get_pending(proposal_id)
     if proposal is None:
         error = "that proposal is no longer in the list"
-    elif data.get("approve") and proposal.get("kind") in ("soul", "soul_change"):
-        line = " ".join(str(data.get("fact") or proposal["fact"]).split())
+    elif data.get("approve") and proposal.get("kind") == "soul_rewrite":
         try:
-            if proposal["kind"] == "soul":
-                reflection.add_to_soul(proposal["old"], line, brain)
-            else:
-                reflection.change_soul(proposal["old"], "" if data.get("remove") else line, brain)
+            reflection.apply_proposal(proposal, brain)
         except (ValueError, OSError) as exc:
             print(f"[brain] changing her soul failed: {exc!r}")
             error = f"couldn't change her soul ({exc}) -- it's still in the list"
