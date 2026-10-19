@@ -44,6 +44,13 @@ export function renderGrowth(data, period) {
   $("growth-recalled").replaceChildren(lineChart(series.buckets, period, names, lines));
   $("growth-recalled-legend").replaceChildren(...legend(lines));
 
+  const waiting = [
+    { name: "memories", values: series.waiting.memories, color: COLORS[2] },
+    { name: "lessons", values: series.waiting.lessons, color: COLORS[3] },
+  ];
+  $("growth-waiting").replaceChildren(lineChart(series.buckets, period, names, waiting));
+  $("growth-waiting-legend").replaceChildren(...legend(waiting));
+
   $("growth-activities").replaceChildren(hbars(series.activities));
   $("growth-top").replaceChildren(
     ...(data.top.length

@@ -419,7 +419,7 @@ async def handle_action(action: dict) -> tuple[str, str]:
     auto = level == ALL or (level == SMALL and small)
     if not auto:
         _add_pending(action)
-        return "proposed", _describe(action)
+        return "proposed", describe(action)
 
     if kind == "create" and not confirmed:
         _add_candidate(action["content"])
@@ -427,7 +427,7 @@ async def handle_action(action: dict) -> tuple[str, str]:
     return "applied", await _apply(action)
 
 
-def _describe(action: dict) -> str:
+def describe(action: dict) -> str:
     kind = action["action"]
     if kind == "create":
         return f"New lesson: {action['content']}"

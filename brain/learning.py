@@ -303,7 +303,8 @@ def mind_message(brain: Brain) -> dict:
     soul = souls.SOUL_MD_PATH
     text = soul.read_text(encoding="utf-8") if soul.exists() else ""
     edited = datetime.fromtimestamp(soul.stat().st_mtime).isoformat(timespec="minutes") if soul.exists() else ""
-    return protocol.mind(recalled, training.read_pending(), len(text), len(text.splitlines()), edited)
+    waiting_lessons = [lessons.describe(p) for p in lessons.read_pending()]
+    return protocol.mind(recalled, training.read_pending(), waiting_lessons, len(text), len(text.splitlines()), edited)
 
 
 async def daily_snapshot() -> None:
@@ -313,7 +314,7 @@ async def daily_snapshot() -> None:
     except Exception as exc:
         print(f"[metrics] counting her memories failed: {exc!r}")
         size = None
-    metrics.log("bank", size=size, queue=len(training.read_pending()))
+    metrics.log("bank", size=size, queue=len(training.read_pending()), lessons=len(lessons.read_pending()))
 
 
 # How far into a day her memory proposals have read: {"day": "YYYY-MM-DD", "through": "HH:MM:SS"}.

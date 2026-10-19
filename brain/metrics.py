@@ -1,7 +1,7 @@
 """Her growth in numbers, for the 🧠 window's Growth tab: one JSON line per event in
 brain/metrics.jsonl -- memory proposals and his verdicts on them, the memories recalled for
 each reply, what she does with her time, soul.md edits, his thumbs, LLM tokens, and once a
-day how big her memory bank and his review list are. Append-only, local, never in her prompt;
+day how big her memory bank is and how much is waiting for him (memories and lessons). Append-only, local, never in her prompt;
 growth() turns it into the weekly and daily series the charts draw.
 
 Only standard-library imports: training, souls and llm log here, so this can't import them back."""
@@ -78,6 +78,7 @@ def growth(today: date | None = None) -> dict:
         approved: dict = defaultdict(lambda: [0] * count)
         distinct = [set() for _ in keys]
         bank: list = [None] * count
+        waiting: dict = {"memories": [None] * count, "lessons": [None] * count}
         activities: Counter = Counter()
         first = count
         for row in rows:
@@ -91,6 +92,8 @@ def growth(today: date | None = None) -> dict:
                 distinct[i].update(row.get("memories", []))
             elif row["e"] == "bank":
                 bank[i] = row.get("size")  # in time order, so the day's (or week's) last one
+                if "queue" in row:
+                    waiting["memories"][i], waiting["lessons"][i] = row["queue"], row.get("lessons", 0)
             elif row["e"] == "activity":
                 activities[row.get("what") or "other"] += 1
         first = min(first, count - 1)  # an empty log still shows this week / today
@@ -102,6 +105,7 @@ def growth(today: date | None = None) -> dict:
             # None before recall was first logged: those weeks weren't tracked, not empty.
             "recalled": [len(s) if i >= tracked else None for i, s in enumerate(distinct) if i >= first],
             "bank": bank[first:],
+            "waiting": {kind: series[first:] for kind, series in waiting.items()},
             "activities": [list(pair) for pair in activities.most_common()],
         }
     return out
