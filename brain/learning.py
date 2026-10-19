@@ -19,6 +19,7 @@ import journal
 import lessons
 import memory
 import memory_profiles
+import metrics
 import persona
 import profiles
 import protocol
@@ -145,6 +146,7 @@ async def _rate_reply(websocket: websockets.ServerConnection, data: dict, brain:
     note = str(data.get("note", "")).strip()
     if rating not in ("up", "down") or not reply_text.strip() or hub.fields_too_long(user_text, reply_text, note):
         return
+    metrics.log("rating", up=rating == "up")
     if conversation.PRIVATE.read():  # the rating log keeps both sides of the exchange
         return await hub.debug_log(websocket, "lessons", "rating not kept (private chat)")
     roleplay = profiles.read_roleplay_active()
@@ -291,12 +293,27 @@ async def _get_mind(websocket: websockets.ServerConnection, data: dict, brain: B
     await hub.send(websocket, mind_message(brain))
 
 
+@hub.handles(protocol.GET_GROWTH)
+async def _get_growth(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    await hub.send(websocket, protocol.growth(metrics.growth()))
+
+
 def mind_message(brain: Brain) -> dict:
     recalled = [line[2:] for line in brain.llm.memory_block.splitlines() if line.startswith("- ")]
     soul = souls.SOUL_MD_PATH
     text = soul.read_text(encoding="utf-8") if soul.exists() else ""
     edited = datetime.fromtimestamp(soul.stat().st_mtime).isoformat(timespec="minutes") if soul.exists() else ""
     return protocol.mind(recalled, training.read_pending(), len(text), len(text.splitlines()), edited)
+
+
+async def daily_snapshot() -> None:
+    """Once a day (metrics.snapshot_due): how big her memory bank and his review list are."""
+    try:
+        size = len(await memory.list_memories()) if memory.server_backed() else None
+    except Exception as exc:
+        print(f"[metrics] counting her memories failed: {exc!r}")
+        size = None
+    metrics.log("bank", size=size, queue=len(training.read_pending()))
 
 
 # How far into a day her memory proposals have read: {"day": "YYYY-MM-DD", "through": "HH:MM:SS"}.
@@ -527,6 +544,8 @@ async def resolve_memory_proposal(websocket: websockets.ServerConnection, data: 
                 )
     else:
         training.remove_pending(proposal_id)
+    if proposal is not None and not error:
+        metrics.log("approved" if data.get("approve") else "rejected", type=training.proposal_type(proposal))
     await hub.broadcast(training_state_message(error))
 
 
@@ -544,6 +563,8 @@ async def add_memory(websocket: websockets.ServerConnection, data: dict, brain: 
         except Exception as exc:
             print(f"[brain] adding a memory failed: {exc!r}")
             error = "couldn't save it to her memory server"
+        else:
+            metrics.log("approved", type="fact", by="him")
     await hub.broadcast(training_state_message(error))
 
 

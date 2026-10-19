@@ -79,6 +79,7 @@ SET_TRAINING_ACTIVE = "set_training_active"
 RESOLVE_MEMORY_PROPOSAL = "resolve_memory_proposal"
 ADD_MEMORY = "add_memory"
 GET_MIND = "get_mind"
+GET_GROWTH = "get_growth"
 SET_MEMORY_ACTIVE = "set_memory_active"
 CLEAR_MEMORY = "clear_memory"
 GET_MEMORY_CONTENT = "get_memory_content"
@@ -238,6 +239,11 @@ def mind(recalled: list[str], pending: list, soul_chars: int, soul_lines: int, s
     ({id, fact, source, created}), and her soul.md's size and when it last changed (ISO, "" with no soul.md)."""
     return {"type": "mind", "recalled": recalled, "pending": pending,
             "soul": {"chars": soul_chars, "lines": soul_lines, "edited": soul_edited}}
+
+
+def growth(series: dict) -> dict:
+    """The 🧠 window's Growth tab: metrics.growth()'s weekly and daily series and her most-recalled memories."""
+    return {"type": "growth", **series}
 
 
 def training_state(available: bool, active: bool, pending: list, error: str = "") -> dict:

@@ -35,6 +35,7 @@ import conversation
 import curiosity
 import hub
 import learning
+import metrics
 import library
 import memory
 import persona
@@ -270,12 +271,16 @@ async def beat(brain: Brain) -> str:
     now = datetime.now()
     shelf = library.read_state()
     if library.unread(shelf) and random.random() < READ_CHANCE:
+        metrics.log("activity", what="read")
         return await read_pages(brain, shelf)
     interests = read_interests()
     if random.random() < CHOOSE_CHANCE and len(pair := await _two_of_hers(interests)) == 2:
+        metrics.log("activity", what="choose")
         return await choose(brain, interests, *pair, now)
     if random.random() < GALLERY_CHANCE and (name := pictures.least_looked()):
+        metrics.log("activity", what="look at art")
         return await look_at(brain, interests, name, now)
+    metrics.log("activity", what="think")
     drifted = await fragments(now, interests)
     if not drifted:
         return "Nothing to think about yet -- no soul, diary, chats or memories to wander through."

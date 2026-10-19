@@ -27,6 +27,7 @@ from openai import BadRequestError, OpenAI
 
 import conversation
 import harness
+import metrics
 import pictures
 import web_search
 
@@ -1187,6 +1188,8 @@ class LocalLLM(ChatBackend):
                 working, max_tokens, tools if round_ < MAX_TOOL_ITERATIONS else None, no_thinking=no_thinking, sampling=sampling, on_text=on_text, cancelled=cancelled,
                 on_thinking=on_thinking,
             )
+            usage = result.get("usage") or {}
+            metrics.log("llm", tokens=(usage.get("prompt") or 0) + (usage.get("completion") or 0))
             if into is not None:  # the last call's numbers are the conversation's current size
                 into.usage.update({k: v for k, v in (result.get("usage") or {}).items() if v is not None})
             if not result["tool_calls"]:

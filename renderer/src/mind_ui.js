@@ -1,9 +1,11 @@
 // The 🧠 "Her mind" window (top left, under the inbox): what went into her last reply and what's
 // waiting on him -- the memories recalled for it, the memory proposals in his review list, and how
 // big her soul.md is and when it last changed. Asked for (`get_mind`) each time it opens or he
-// hits Refresh, so it's never stale. Memories and proposals are model-written: textContent only.
+// hits Refresh, so it's never stale; its Growth tab asks for `get_growth` and draws the charts
+// (growth_ui.js). Memories and proposals are model-written: textContent only.
 
 import { $, Modal } from "./ui.js";
+import { renderGrowth } from "./growth_ui.js";
 
 const SHOWN_PENDING = 5; // the rest are a click away in Settings
 const CHARS_PER_PAGE = 3000; // a printed page, roughly -- to read soul.md's size at a glance
@@ -13,18 +15,51 @@ export class MindUI {
     this._app = app;
     this.modal = new Modal("mind-modal-backdrop");
     $("mind-button")?.addEventListener("click", () => this._open());
-    $("mind-refresh-button")?.addEventListener("click", () => this._app.send({ type: "get_mind" }));
+    this._tab = "now";
+    this._period = "week";
+    this._growth = null;
+    $("mind-refresh-button")?.addEventListener("click", () => this._ask());
+    for (const tab of document.querySelectorAll("#mind-modal [data-tab]")) tab.addEventListener("click", () => this._showTab(tab.dataset.tab));
+    for (const button of document.querySelectorAll("#mind-modal [data-period]")) {
+      button.addEventListener("click", () => {
+        this._period = button.dataset.period;
+        this._mark("[data-period]", "period", this._period);
+        if (this._growth) renderGrowth(this._growth, this._period);
+      });
+    }
     $("mind-close-button")?.addEventListener("click", () => this.modal.close());
     $("mind-review-button")?.addEventListener("click", () => this._openReview());
   }
 
   get handlers() {
-    return { mind: (data) => this._render(data) };
+    return {
+      mind: (data) => this._render(data),
+      growth: (data) => {
+        this._growth = data;
+        renderGrowth(data, this._period);
+      },
+    };
   }
 
   _open() {
-    this._app.send({ type: "get_mind" });
+    this._ask();
     this.modal.open();
+  }
+
+  _ask() {
+    this._app.send({ type: this._tab === "growth" ? "get_growth" : "get_mind" });
+  }
+
+  _showTab(tab) {
+    this._tab = tab;
+    this._mark("[data-tab]", "tab", tab);
+    $("mind-now").hidden = tab !== "now";
+    $("mind-growth").hidden = tab !== "growth";
+    this._ask();
+  }
+
+  _mark(selector, key, value) {
+    for (const b of document.querySelectorAll(`#mind-modal ${selector}`)) b.classList.toggle("active", b.dataset[key] === value);
   }
 
   _render({ recalled = [], pending = [], soul = {} }) {

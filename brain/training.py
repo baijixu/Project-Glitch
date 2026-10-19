@@ -22,6 +22,8 @@ gitignored.
 import json
 import re
 import uuid
+
+import metrics
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -107,7 +109,13 @@ def add_pending(fact: str, source: str = "", kind: str = "add", memory_id: str =
         item.update(kind=kind, memory_id=memory_id, old=old)
     pending.append(item)
     _write(pending)
+    metrics.log("proposed", type=proposal_type(item))
     return item
+
+
+def proposal_type(item: dict) -> str:
+    """What a proposal is, for the Growth charts: a new memory (\"fact\"), a soul line, or upkeep on old memories."""
+    return {"soul": "soul", "soul_change": "soul", "update": "upkeep", "retire": "upkeep"}.get(item.get("kind", "add"), "fact")
 
 
 def get_pending(proposal_id: str) -> dict | None:

@@ -498,11 +498,88 @@ body.overlay-chat-active #overlay-edit-button {
   top: 70px;
 }
 
+#mind-modal {
+  width: min(640px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.mind-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.mind-tab {
+  border: 1px solid #3a3f55;
+  background: transparent;
+  color: #8a8fa0;
+  border-radius: 999px;
+  padding: 4px 14px;
+  cursor: pointer;
+}
+
+.mind-tab.active {
+  background: #3a3f55;
+  color: #e8eaf0;
+}
+
+.growth-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.growth-grid {
+  stroke: #2d3144;
+  stroke-width: 1;
+}
+
+.growth-axis {
+  fill: #8a8fa0;
+  font-size: 11px;
+}
+
+.growth-label {
+  fill: #c9ccd8;
+  font-size: 11px;
+}
+
+.growth-line {
+  fill: none;
+  stroke-width: 2;
+}
+
+.growth-dot {
+  stroke: #1e2130;
+  stroke-width: 2;
+}
+
+.growth-legend {
+  display: flex;
+  gap: 14px;
+  margin: 4px 0 14px;
+  color: #c9ccd8;
+  font-size: 12px;
+}
+
+.growth-legend-item i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 5px;
+}
+
 .mind-list {
   margin: 0 0 12px;
   padding-left: 20px;
   max-height: 30vh;
   overflow-y: auto;
+}
+
+#growth-top {
+  max-height: none;
 }
 
 .mind-list li {

@@ -13,9 +13,11 @@ Kept apart so a role-play soul can never overwrite her own. Either replaces llm.
 DEFAULT_PERSONALITY; the mood-tag instruction stays under whichever is active.
 """
 
+import difflib
 import re
 from pathlib import Path
 
+import metrics
 from store import Choice, NamedStore
 
 SOUL_MD_PATH = Path(__file__).parent / "soul.md"  # her main soul -- see the module docstring; written only by write_main_soul (his editor, or a reflection line he approved)
@@ -61,7 +63,11 @@ def read_soul(name: str) -> tuple[str, str]:
 
 def write_main_soul(content: str) -> None:
     """Overwrites soul.md -- the only writer of it, called by Settings' editor and a weekly-reflection line he approved (reflection.py)."""
+    old = SOUL_MD_PATH.read_text(encoding="utf-8") if SOUL_MD_PATH.exists() else ""
     SOUL_MD_PATH.write_text(content, encoding="utf-8")
+    changed = sum(1 for line in difflib.ndiff(old.splitlines(), content.splitlines()) if line[:1] in "+-")
+    if changed:
+        metrics.log("soul_edit", lines=changed)
 
 
 def read_main_soul() -> str:

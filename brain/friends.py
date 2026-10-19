@@ -23,6 +23,7 @@ import heartbeat
 import hub
 import journal
 import learning
+import metrics
 import library
 import memory
 import persona
@@ -226,6 +227,7 @@ async def visit(brain: Brain) -> None:
     order = [*friends, "Glitch"]
     kind, starter = await purpose()
     started = datetime.now()
+    metrics.log("activity", what="visit friends")
     LAST_VISIT_PATH.write_text(started.date().isoformat(), encoding="utf-8")
     conversation.log_visit(f"---\n\n*{started:%H:%M:%S} -- Visit from {', '.join(friends)}. {starter}*\n\n", now=started)
     lines: list[str] = []

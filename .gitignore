@@ -110,6 +110,7 @@ brain/roleplay_llm_engine.txt
 brain/chat_logs/
 brain/backups/
 brain/ratings_log.jsonl
+brain/metrics.jsonl
 
 # A restarted Brain's own output (brain/main.py's RESTART_LOG_PATH) -- latest run only.
 brain/restart.log

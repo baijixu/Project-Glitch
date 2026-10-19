@@ -18,6 +18,7 @@ import friends
 import heartbeat
 import hub
 import learning
+import metrics
 import lessons
 import library
 import memory
@@ -262,6 +263,9 @@ async def reply_to(
                 await hub.debug_log(websocket, "memory", f"recall failed: {exc!r}", (time.monotonic() - recall_start) * 1000)
             else:
                 brain.llm.set_memory(relevant)
+                metrics.log_recalled(relevant)
+                if metrics.snapshot_due():
+                    hub.spawn(learning.daily_snapshot())
                 found = sum(1 for line in relevant.splitlines() if line.startswith("- "))
                 await hub.debug_log(websocket, "memory", f"recall ok: {found} memories", (time.monotonic() - recall_start) * 1000)
         else:
