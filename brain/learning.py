@@ -328,8 +328,16 @@ def mind_message(brain: Brain) -> dict:
     text = soul.read_text(encoding="utf-8") if soul.exists() else ""
     edited = datetime.fromtimestamp(soul.stat().st_mtime).isoformat(timespec="minutes") if soul.exists() else ""
     waiting_lessons = [lessons.describe(p) for p in lessons.read_pending()]
-    own = [{"text": r["text"], "source": r.get("source", ""), "t": r["t"]} for r in metrics.read() if r["e"] == "approved" and r.get("by") == "her"]
-    return protocol.mind(recalled, training.read_pending(), waiting_lessons, own[-SHOWN_OWN:][::-1], len(text), len(text.splitlines()), edited, souls.SOUL_MAX_CHARS)
+    import heartbeat  # heartbeat imports learning
+
+    rows = metrics.read()
+    own = [{"text": r["text"], "source": r.get("source", ""), "t": r["t"]} for r in rows if r["e"] == "approved" and r.get("by") == "her"]
+    chose = [{"what": r["what"], "why": r.get("reason", ""), "t": r["t"]} for r in rows if r["e"] == "activity" and "reason" in r]
+    today = [r for r in rows if r["t"].startswith(datetime.now().date().isoformat()) and not r.get("backfill")]
+    most, budget = heartbeat.caps()
+    day = {"done": sum(1 for r in today if r["e"] == "activity" and r.get("what") != "rest"), "most": most,
+           "tokens": sum(r.get("tokens") or 0 for r in today if r["e"] == "llm"), "budget": budget}
+    return protocol.mind(recalled, training.read_pending(), waiting_lessons, own[-SHOWN_OWN:][::-1], chose[-SHOWN_OWN:][::-1], day, len(text), len(text.splitlines()), edited, souls.SOUL_MAX_CHARS)
 
 
 async def daily_snapshot() -> None:

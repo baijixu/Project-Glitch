@@ -12,7 +12,7 @@ import asyncio
 import random
 import re
 import time
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 import websockets
@@ -218,7 +218,7 @@ async def _set(**changes) -> None:
     await hub.broadcast(protocol.visit_state(**STATUS))
 
 
-async def visit(brain: Brain) -> None:
+async def visit(brain: Brain, why: str = "") -> None:
     """One visit: the friends and Glitch take turns until MAX_MESSAGES, then her journal."""
     friends = {name: read_friend(name) for name in names()}
     speakers = {name: _speaker(friend, brain) for name, friend in friends.items()}
@@ -227,7 +227,7 @@ async def visit(brain: Brain) -> None:
     order = [*friends, "Glitch"]
     kind, starter = await purpose()
     started = datetime.now()
-    metrics.log("activity", what="visit friends")
+    metrics.log("activity", what="visit friends", **({"reason": why} if why else {}))  # why: her own choice (heartbeat.beat)
     LAST_VISIT_PATH.write_text(started.date().isoformat(), encoding="utf-8")
     conversation.log_visit(f"---\n\n*{started:%H:%M:%S} -- Visit from {', '.join(friends)}. {starter}*\n\n", now=started)
     lines: list[str] = []
@@ -340,6 +340,14 @@ async def _start_visit(websocket: websockets.ServerConnection, data: dict, brain
         return await hub.send(websocket, protocol.visit_state(**{**STATUS, "note": problem}))
     STATUS["running"] = True  # before the task starts, so a second press can't start another
     hub.spawn(visit(brain))
+
+
+def visited(day: date) -> bool:
+    """Whether they've been over on `day` (the nightly visit, his button or her choice)."""
+    try:
+        return LAST_VISIT_PATH.read_text(encoding="utf-8").strip() == day.isoformat()
+    except OSError:
+        return False
 
 
 def visit_due(now: datetime, last_user_at: float | None) -> bool:

@@ -25,6 +25,7 @@ import json
 import random
 import re
 import time
+from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -42,8 +43,10 @@ import persona
 import pictures
 import profiles
 import protocol
+import sampling
 import souls
 import web_search
+from config import load_config
 from hub import Brain
 from names import sanitize_name
 from store import Toggle
@@ -61,19 +64,35 @@ KEEP_THOUGHTS = 5  # per topic, the newest
 # nothing else (8 of 8 in a test); a landed one doesn't -- she's had her think about it.
 RUMINATE_CHANCE = 1 / 3
 CHECK_SEC = 60  # how often the loop looks at the clock
-READ_CHANCE = 1 / 2  # with a book on her shelf unfinished, how often a tick is reading instead of wandering
 READ_RESULTS = 2  # of a landing topic's search results, how many pages she actually reads
 PAGE_EXCERPT_CHARS = 2500
 LATELY_DAYS = 7  # how long a landed topic counts as what she's been into
 READ_PULL = 5  # a sitting with a book weighs on her like a middling thought: four in two days and it lands
 # Asked about one thing at a time she likes nearly everything; made to pick between two, one loses.
-CHOOSE_CHANCE = 1 / 4  # of the turns she isn't reading
-GALLERY_CHANCE = 1 / 5  # of those left, how often she looks at a picture in her gallery
+CHOOSE_CHANCE = 1 / 4  # of the turns she spends thinking
+# Each turn she picks what to do (pick): her word -> what the Growth chart calls it. Resting is always one.
+ACTIVITIES = {"read": "read", "visit": "visit friends", "art": "look at art", "think": "think", "journal": "journal", "rest": "rest"}
+# Her day on her own, when config.yaml doesn't say (caps): about what she did with a die deciding (~100 a
+# day), and all the day's LLM tokens, his chats included. Past either she rests until tomorrow.
+MAX_ACTIVITIES = 100
+SAME_IN_A_ROW = 3  # this many of one thing running, and it sits out a turn (options)
+MAX_TOKENS = 2_000_000
+MAX_CHOICE_TOKENS = 60
+MAX_JOURNAL_TOKENS = 500
 # After each sitting she says how much she wants to read on (1-10). Asked KEEP or STOP she kept even a
 # software license; scored, the license got 2 and Moby-Dick's whale-classing chapters 7-8.
 DULL_AT = 3
 DULL_SITTINGS = 2  # in a row, and she puts the book down
 _WANT = re.compile(r"\n\W*(\d{1,2})\W*(?:/\s*10\W*)?$")
+_CHOICE_PROMPT = (
+    "It's {when}, and {name} isn't around -- your time is your own. {today}What do you want to do now?\n\n{options}\n\n"
+    "Pick one. Reply with one line: the word in capitals, then | and why, in a few words. For example:\n"
+    "REST | I've been going all day"
+)
+_JOURNAL_PROMPT = (
+    "Some of what's been going through your head:\n\n{fragments}\n\n"
+    "Write in your journal -- whatever you want to get down right now. First person, a paragraph or two, plain words."
+)
 _last_beat = time.time()  # her last thought (or Brain's start: the first comes TICK_SEC in)
 _last_timer: dict | None = None  # the heartbeat_timer last sent to everyone
 
@@ -263,24 +282,120 @@ async def broadcast_timer(brain: Brain, only_if_changed: bool = False) -> None:
     await hub.broadcast(message)
 
 
+def caps() -> tuple[int, int]:
+    """(activities, LLM tokens) she may use a day on her own -- his numbers, config.yaml's heartbeat section."""
+    cfg = load_config().get("heartbeat") or {}
+    return int(cfg.get("max_activities_per_day", MAX_ACTIVITIES)), int(cfg.get("max_tokens_per_day", MAX_TOKENS))
+
+
+def over_cap(now: datetime) -> str:
+    """Why she has to rest until tomorrow, or "": today's activities (resting aside) or all of today's
+    LLM tokens -- his chats included, it's one GPU -- past his caps."""
+    today = now.date().isoformat()
+    rows = [r for r in metrics.read() if r["t"].startswith(today) and not r.get("backfill")]
+    done = sum(1 for r in rows if r["e"] == "activity" and r.get("what") != "rest")
+    tokens = sum(r.get("tokens") or 0 for r in rows if r["e"] == "llm")
+    most, budget = caps()
+    if done >= most:
+        return f"that's {done} things today, her limit"
+    if tokens >= budget:
+        return f"{tokens:,} tokens used today, her limit"
+    return ""
+
+
+def _today(now: datetime) -> list[str]:
+    """What she did with her own time today, in order (the Growth chart's names)."""
+    day = now.date().isoformat()
+    return [r["what"] for r in metrics.read() if r["e"] == "activity" and r["t"].startswith(day) and not r.get("backfill")]
+
+
+def options(now: datetime, brain: Brain, shelf: dict) -> dict[str, str]:
+    """What she can do right now -- only what would actually happen -- as {word: what it is}. Not THINK's
+    topics: shown "on your mind lately: R.U.R." she picked THINK 8 of 8 even after seven in a row. And
+    whatever she's done SAME_IN_A_ROW times running sits out a turn -- she leans to thinking and journaling,
+    and without it her book, her pictures and her friends would only ever wait."""
+    import friends  # friends imports heartbeat
+
+    found = {}
+    if names := library.unread(shelf):
+        book = shelf["books"][shelf["reading"] if shelf["reading"] in names else names[0]]
+        found["read"] = f"read some of {book['title']} ({library.percent(book)}% in)"
+    if not friends._why_not(brain) and not friends.visited(now.date()):
+        found["visit"] = f"have your friends over -- {', '.join(friends.names())}"
+    if pictures.least_looked():
+        found["art"] = "look at a picture in your gallery"
+    found["think"] = "think something over"
+    found["journal"] = "write in your journal, whatever you want to get down"
+    found["rest"] = "rest -- do nothing for a while (always fine)"
+    recent = _today(now)[-SAME_IN_A_ROW:]
+    if len(recent) == SAME_IN_A_ROW and len(set(recent)) == 1:
+        found.pop(next((w for w, name in ACTIVITIES.items() if name == recent[0] and w != "rest"), ""), None)
+    return found
+
+
+def parse_choice(raw: str, found: dict[str, str]) -> tuple[str, str]:
+    """(word, why) from "READ | I want to know how it ends"; resting when it's not one she had."""
+    match = re.match(r"\W*([A-Za-z]+)[^\w|]*(?:\|\s*(.*))?", next((line for line in raw.splitlines() if line.strip()), ""))
+    word = match[1].lower() if match else ""
+    if word not in found:
+        return "rest", "couldn't make up her mind"
+    return word, " ".join((match[2] or "").split())[:160]
+
+
+def today_so_far(now: datetime) -> str:
+    """What she's done with her own time today, for her next choice: "Today so far: think x4, read x2 (last: read). "
+    Without it she's asked the same question with the same options and gives the same answer (6 of 6)."""
+    if not (today := _today(now)):
+        return ""
+    counts = ", ".join(f"{what} x{n}" for what, n in Counter(today).most_common())
+    return f"Today so far: {counts} (last: {today[-1]}). "
+
+
+async def pick(brain: Brain, found: dict[str, str], now: datetime) -> tuple[str, str]:
+    """She decides what to do with her time, and why (parse_choice). The options in a fresh order each
+    time, with her own sampling (not the server's), so a list's first line isn't the default."""
+    items = list(found.items())
+    random.shuffle(items)
+    prompt = _CHOICE_PROMPT.format(
+        when=f"{now:%A}, {now:%I:%M %p}".replace(" 0", " "), name=persona.user_name() or "he", today=today_so_far(now),
+        options="\n".join(f"- {word.upper()}: {what}" for word, what in items),
+    )
+    async with brain.busy("Deciding what to do..."):
+        raw = await asyncio.to_thread(brain.llm.under_soul, prompt, MAX_CHOICE_TOKENS, sampling.active_values())
+    return parse_choice(raw, found)
+
+
 async def beat(brain: Brain) -> str:
-    """One wander: fragments in, maybe a thought out -- and a page, if a topic lands.
-    Returns what happened, in a line (for Think now)."""
+    """One turn of her own time: she picks what to do (or rests), and does it. Returns what
+    happened, in a line (for Think now)."""
     global _last_beat
     _last_beat = time.time()
     now = datetime.now()
-    shelf = library.read_state()
-    if library.unread(shelf) and random.random() < READ_CHANCE:
-        metrics.log("activity", what="read")
+    if why := over_cap(now):
+        metrics.log("activity", what="rest", reason=why)
+        return f"She's resting until tomorrow: {why}."
+    shelf, interests = library.read_state(), read_interests()
+    word, why = await pick(brain, options(now, brain, shelf), now)
+    if word != "visit":  # a visit logs itself (friends.visit), with her reason
+        metrics.log("activity", what=ACTIVITIES[word], reason=why)
+    print(f"[heartbeat] she chose to {word}: {why}")
+    if word == "rest":
+        return f"She's resting: {why}" if why else "She's resting."
+    if word == "read":
         return await read_pages(brain, shelf)
-    interests = read_interests()
+    if word == "visit":
+        import friends
+
+        friends.STATUS["running"] = True  # as friends.visit_loop does
+        await friends.visit(brain, why)
+        return "She had her friends over."
+    if word == "art":
+        return await look_at(brain, interests, pictures.least_looked(), now)
+    if word == "journal":
+        return await write_journal(brain, interests, now)
+    # think: made to pick between two things of hers now and then, otherwise her mind wanders
     if random.random() < CHOOSE_CHANCE and len(pair := await _two_of_hers(interests)) == 2:
-        metrics.log("activity", what="choose")
         return await choose(brain, interests, *pair, now)
-    if random.random() < GALLERY_CHANCE and (name := pictures.least_looked()):
-        metrics.log("activity", what="look at art")
-        return await look_at(brain, interests, name, now)
-    metrics.log("activity", what="think")
     drifted = await fragments(now, interests)
     if not drifted:
         return "Nothing to think about yet -- no soul, diary, chats or memories to wander through."
@@ -290,6 +405,19 @@ async def beat(brain: Brain) -> str:
         print("[heartbeat] nothing pulled at her")
         return "Nothing pulled at her this time."
     return await _weigh(brain, interests, found, now)
+
+
+async def write_journal(brain: Brain, interests: dict, now: datetime) -> str:
+    """A page in her own journal, from what's drifting through her head -- in her Thoughts log."""
+    drifted = await fragments(now, interests)
+    async with brain.busy("Writing in her journal..."):
+        page = (await asyncio.to_thread(
+            brain.llm.under_soul, _JOURNAL_PROMPT.format(fragments="\n".join(f"- {d}" for d in drifted)), MAX_JOURNAL_TOKENS
+        )).strip()
+    if not page:
+        return "She sat down to write and nothing came."
+    conversation.log_thought(f"📓 {page}", now=now)
+    return f"She wrote in her journal: {page[:120]}"
 
 
 async def _weigh(brain: Brain, interests: dict, found: dict, now: datetime, mark: str = "", lost: bool = False) -> str:

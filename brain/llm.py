@@ -1333,10 +1333,11 @@ class LocalLLM(ChatBackend):
         system = soul or self._soul or DEFAULT_PERSONALITY
         return self._complete([{"role": "system", "content": system}, {"role": "user", "content": prompt}], MAX_GROUP_TOKENS, no_thinking=True)
 
-    def under_soul(self, prompt: str, max_tokens: int) -> str:
-        """One task outside the conversation, as herself: her soul, then `prompt`."""
+    def under_soul(self, prompt: str, max_tokens: int, sampling: dict | None = None) -> str:
+        """One task outside the conversation, as herself: her soul, then `prompt` -- at the server's sampling
+        unless `sampling` is given (heartbeat.pick gives her own, or her choice comes out the same each time)."""
         messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": prompt}]
-        return self._complete(messages, max_tokens, no_thinking=True)
+        return self._complete(messages, max_tokens, no_thinking=True, sampling=sampling)
 
     def write_visit_journal(self, transcript: str, names: list[str]) -> str:
         """Her journal entry about a visit (_VISIT_JOURNAL_PROMPT)."""

@@ -42,3 +42,9 @@ brain:
 # read this file directly, so it gets the same host/port (and auth_token,
 # as VITE_BRAIN_AUTH_TOKEN) via its own renderer/.env. Keep them in sync
 # by hand.
+
+# Her own time (Heartbeat, brain/heartbeat.py): each turn she picks what to do, or rests. Past either
+# number in a day she rests until tomorrow.
+heartbeat:
+  max_activities_per_day: 100  # reading, visits, art, thinking, journaling -- resting doesn't count
+  max_tokens_per_day: 2000000  # every LLM token that day, your chats included: it's one GPU
