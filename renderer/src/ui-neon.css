@@ -682,3 +682,35 @@ html[data-ui^="neon"] [data-icon="eye"] {
 html[data-ui^="neon"] [data-icon="warning"] {
   --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4l9 16H3zM12 10v4.5M12 17.5v.01'/%3E%3C/svg%3E");
 }
+
+/* The 🧠 window: its lists and charts in the theme's own ink instead of Classic's greys. */
+html[data-ui^="neon"] .mind-list,
+html[data-ui^="neon"] .growth-legend {
+  color: var(--text);
+}
+
+html[data-ui^="neon"] .mind-tab {
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+html[data-ui^="neon"] .mind-tab.active {
+  background: rgba(var(--neon-rgb), 0.18);
+  color: var(--text);
+}
+
+html[data-ui^="neon"] .growth-axis {
+  fill: var(--muted);
+}
+
+html[data-ui^="neon"] .growth-label {
+  fill: var(--text);
+}
+
+html[data-ui^="neon"] .growth-grid {
+  stroke: var(--line-soft);
+}
+
+html[data-ui^="neon"] .growth-dot {
+  stroke: var(--glass-strong);
+}
