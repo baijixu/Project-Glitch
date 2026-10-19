@@ -488,6 +488,27 @@ body.overlay-chat-active #overlay-edit-button {
   top: 70px;
 }
 
+/* Her mind: under the inbox, or in its place when there's nothing in it. */
+#mind-button {
+  left: 16px;
+  top: 124px;
+}
+
+#inbox-button:is(:not([data-count]), [data-count=""]) + #mind-button {
+  top: 70px;
+}
+
+.mind-list {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  max-height: 30vh;
+  overflow-y: auto;
+}
+
+.mind-list li {
+  margin-bottom: 6px;
+}
+
 #inbox-button:not([data-count]),
 #inbox-button[data-count=""] {
   display: none;

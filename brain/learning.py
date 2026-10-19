@@ -23,6 +23,7 @@ import persona
 import profiles
 import protocol
 import reflection
+import souls
 import training
 from hub import Brain
 
@@ -283,6 +284,19 @@ def training_state_message(error: str = "") -> dict:
 async def _set_training_active(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     training.set_active(bool(data.get("active")))
     await hub.broadcast(training_state_message())
+
+
+@hub.handles(protocol.GET_MIND)
+async def _get_mind(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    await hub.send(websocket, mind_message(brain))
+
+
+def mind_message(brain: Brain) -> dict:
+    recalled = [line[2:] for line in brain.llm.memory_block.splitlines() if line.startswith("- ")]
+    soul = souls.SOUL_MD_PATH
+    text = soul.read_text(encoding="utf-8") if soul.exists() else ""
+    edited = datetime.fromtimestamp(soul.stat().st_mtime).isoformat(timespec="minutes") if soul.exists() else ""
+    return protocol.mind(recalled, training.read_pending(), len(text), len(text.splitlines()), edited)
 
 
 # How far into a day her memory proposals have read: {"day": "YYYY-MM-DD", "through": "HH:MM:SS"}.

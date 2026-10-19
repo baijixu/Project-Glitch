@@ -16,7 +16,7 @@
 //   capture.js ........ camera/screen/file, push-to-talk and Always-On mic
 //   settings_ui.js .... on/off switches, memory, Notes and soul/user editors, context meter
 //   debug_ui.js ....... the debug log and Restart Brain
-//   (lessons, training, sampling, chat logs, memory profiles, friends, library, inbox, curiosity countdown: *_ui.js)
+//   (lessons, training, sampling, chat logs, memory profiles, friends, library, inbox, mind, curiosity countdown: *_ui.js)
 
 import { AvatarsUI } from "./avatars_ui.js";
 import { BackgroundsUI } from "./backgrounds_ui.js";
@@ -27,6 +27,7 @@ import { CuriosityTimerUI } from "./curiosity_timer_ui.js";
 import { DebugUI, describeSettingChange, deviceSummary } from "./debug_ui.js";
 import { FriendsUI } from "./friends_ui.js";
 import { InboxUI } from "./inbox_ui.js";
+import { MindUI } from "./mind_ui.js";
 import { LibraryUI } from "./library_ui.js";
 import { ArtworkUI } from "./artwork_ui.js";
 import { HarnessUI, LlmEnginesUI, SpeechEnginesUI } from "./engines_ui.js";
@@ -121,6 +122,7 @@ export class BrainClient {
     this.library = new LibraryUI(this);
     this.artwork = new ArtworkUI(this);
     this.inbox = new InboxUI(this);
+    this.mind = new MindUI(this);
     this.llmEngines = new LlmEnginesUI(this, { onEnginesChanged: (names) => this.characters.setEngineNames(names) });
     this.lessons = new LessonsUI({ send });
     this.training = new TrainingUI({ send, onNewProposals: (fact) => this._showToast(fact, "🧠 Memory proposed (review in Settings): ") });
@@ -191,6 +193,7 @@ export class BrainClient {
       ...this.library.handlers,
       ...this.artwork.handlers,
       ...this.inbox.handlers,
+      ...this.mind.handlers,
       ...this.settings.handlers,
       ...this.avatars.handlers,
       ...this.backgrounds.handlers,

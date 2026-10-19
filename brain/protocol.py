@@ -78,6 +78,7 @@ DELETE_SAMPLING_PROFILE = "delete_sampling_profile"
 SET_TRAINING_ACTIVE = "set_training_active"
 RESOLVE_MEMORY_PROPOSAL = "resolve_memory_proposal"
 ADD_MEMORY = "add_memory"
+GET_MIND = "get_mind"
 SET_MEMORY_ACTIVE = "set_memory_active"
 CLEAR_MEMORY = "clear_memory"
 GET_MEMORY_CONTENT = "get_memory_content"
@@ -230,6 +231,13 @@ def voice_state(active: bool) -> dict:
 def web_search_state(active: bool) -> dict:
     """Whether her own LLM path can search the web; always False with no SearXNG configured."""
     return {"type": "web_search_state", "active": active}
+
+
+def mind(recalled: list[str], pending: list, soul_chars: int, soul_lines: int, soul_edited: str) -> dict:
+    """The 🧠 panel: the memories put into her prompt for the last reply, the proposals waiting for his review
+    ({id, fact, source, created}), and her soul.md's size and when it last changed (ISO, "" with no soul.md)."""
+    return {"type": "mind", "recalled": recalled, "pending": pending,
+            "soul": {"chars": soul_chars, "lines": soul_lines, "edited": soul_edited}}
 
 
 def training_state(available: bool, active: bool, pending: list, error: str = "") -> dict:

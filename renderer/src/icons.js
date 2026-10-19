@@ -19,6 +19,7 @@ const ICONS = {
   "📎": "clip",
   "📦": "archive",
   "📥": "inbox",
+  "🧠": "memory",
   "■": "stop",
 };
 // In text, only the app's own markers -- not, say, a 🌸 she puts in a reply.

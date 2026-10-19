@@ -41,6 +41,7 @@
     <div id="memory-toast"></div>
     <button id="history-button" class="corner-button" title="Chat history">🌸</button>
     <button id="inbox-button" class="corner-button" title="Her questions for you">📥</button>
+    <button id="mind-button" class="corner-button" title="Her mind: memories, review list, soul">🧠</button>
     <aside id="history-panel" class="slide-panel">
       <h2>Chat History</h2>
       <div id="history-list"></div>
@@ -882,6 +883,22 @@
         <div id="inbox-list"></div>
         <div class="modal-actions">
           <button id="inbox-close-button" class="modal-button secondary">Close</button>
+        </div>
+      </div>
+    </div>
+    <div id="mind-modal-backdrop" class="modal-backdrop" hidden>
+      <div id="mind-modal" class="modal" role="dialog" aria-labelledby="mind-modal-title">
+        <h2 id="mind-modal-title">Her mind</h2>
+        <h3 class="lessons-subhead">Memories in her last reply</h3>
+        <ul id="mind-recalled" class="mind-list"></ul>
+        <h3 class="lessons-subhead">Waiting for your approval<span id="mind-pending-count"></span></h3>
+        <ul id="mind-pending" class="mind-list"></ul>
+        <button id="mind-review-button" class="settings-action-button" hidden>Review in Settings</button>
+        <h3 class="lessons-subhead">Her soul (soul.md)</h3>
+        <p id="mind-soul" class="settings-hint"></p>
+        <div class="modal-actions">
+          <button id="mind-refresh-button" class="modal-button secondary">Refresh</button>
+          <button id="mind-close-button" class="modal-button secondary">Close</button>
         </div>
       </div>
     </div>
