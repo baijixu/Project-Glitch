@@ -20,6 +20,7 @@ import websockets
 import conversation
 import curiosity
 import heartbeat
+import wonder
 import hub
 import journal
 import learning
@@ -166,8 +167,10 @@ async def a_challenge() -> str:
 
 
 def helping_her_think() -> str:
-    """One of her own open questions from Heartbeat, to work through together."""
-    questions = [q for item in heartbeat.read_interests().values() for q in item.get("questions", []) if persona.not_about_him(q)]
+    """One of her own open questions -- her list (wonder.py), else her topics' -- to work through together."""
+    questions = [i["text"] for i in wonder.read()] or [
+        q for item in heartbeat.read_interests().values() for q in item.get("questions", []) if persona.not_about_him(q)
+    ]
     return (f"Help Glitch think. She's been wondering: \"{random.choice(questions)}\" Help her work it out: your own "
             "honest take, real examples, and questions back.") if questions else ""
 

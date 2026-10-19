@@ -28,6 +28,14 @@ export class MindUI {
       });
     }
     $("mind-close-button")?.addEventListener("click", () => this.modal.close());
+    const addWonder = () => {
+      const input = $("mind-wonder-input");
+      if (!input?.value.trim()) return;
+      this._app.send({ type: "add_wonder", text: input.value.trim() });
+      input.value = "";
+    };
+    $("mind-wonder-add")?.addEventListener("click", addWonder);
+    $("mind-wonder-input")?.addEventListener("keydown", (e) => e.key === "Enter" && addWonder());
     $("mind-reflect-button")?.addEventListener("click", () => {
       this._app.send({ type: "reflect_now" });
       $("mind-reflect-note").hidden = false;
@@ -66,7 +74,8 @@ export class MindUI {
     for (const b of document.querySelectorAll(`#mind-modal ${selector}`)) b.classList.toggle("active", b.dataset[key] === value);
   }
 
-  _render({ recalled = [], pending = [], lessons = [], own = [], chose = [], day = {}, soul = {} }) {
+  _render({ recalled = [], pending = [], lessons = [], wondering = [], own = [], chose = [], day = {}, soul = {} }) {
+    this._wondering($("mind-wonder"), wondering);
     this._list($("mind-recalled"), recalled, "None -- send her a message and the memories she recalls for it show up here.");
     // Lessons from his thumbs wait in Behavior learning, not the memory list -- shown here so he sees it all.
     const waiting = [...pending.map((p) => (p.type ? `${p.type}: ${p.fact}` : p.fact)), ...lessons.map((l) => `lesson: ${l.replace(/^New lesson: /, "")}`)];
@@ -87,6 +96,19 @@ export class MindUI {
         (soul.chars > soul.max ? ` -- ${(soul.chars - soul.max).toLocaleString()} over the cap, so nothing can be added until it's shorter` : "") +
         `. Last changed ${edited}.`
       : "No soul.md -- she's on her default personality.";
+  }
+
+  // Her questions, each with an ✕ to take it off her list. Model-written: textContent only.
+  _wondering(el, items) {
+    if (!items.length) return this._list(el, [], "Nothing yet -- her questions land here as she thinks, writes and talks with you.");
+    el.replaceChildren(...items.map((item) => {
+      const li = Object.assign(document.createElement("li"), { textContent: `${item.text} ` });
+      li.title = item.source;
+      const off = Object.assign(document.createElement("button"), { className: "icon-button lesson-button", textContent: "✕", title: "Take it off her list" });
+      off.addEventListener("click", () => this._app.send({ type: "remove_wonder", id: item.id }));
+      li.appendChild(off);
+      return li;
+    }));
   }
 
   _list(el, items, empty) {

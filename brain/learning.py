@@ -26,6 +26,7 @@ import protocol
 import reflection
 import souls
 import training
+import wonder
 from hub import Brain
 
 LESSONS_STATE_TIMEOUT_SEC = 8
@@ -296,6 +297,16 @@ async def _get_mind(websocket: websockets.ServerConnection, data: dict, brain: B
     await hub.send(websocket, mind_message(brain))
 
 
+@hub.handles(protocol.ADD_WONDER, protocol.REMOVE_WONDER)
+async def _wonder(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    """The 🧠 window: something he adds to what she wants to find out, or takes off."""
+    if data["type"] == protocol.ADD_WONDER:
+        wonder.add(str(data.get("text") or ""), "Added by him")
+    else:
+        wonder.remove(str(data.get("id") or ""))
+    await hub.send(websocket, mind_message(brain))
+
+
 _reflecting = False
 
 
@@ -337,7 +348,7 @@ def mind_message(brain: Brain) -> dict:
     most, budget = heartbeat.caps()
     day = {"done": sum(1 for r in today if r["e"] == "activity" and r.get("what") != "rest"), "most": most,
            "tokens": sum(r.get("tokens") or 0 for r in today if r["e"] == "llm"), "budget": budget}
-    return protocol.mind(recalled, training.read_pending(), waiting_lessons, own[-SHOWN_OWN:][::-1], chose[-SHOWN_OWN:][::-1], day, len(text), len(text.splitlines()), edited, souls.SOUL_MAX_CHARS)
+    return protocol.mind(recalled, training.read_pending(), waiting_lessons, wonder.read()[::-1], own[-SHOWN_OWN:][::-1], chose[-SHOWN_OWN:][::-1], day, len(text), len(text.splitlines()), edited, souls.SOUL_MAX_CHARS)
 
 
 async def daily_snapshot() -> None:
@@ -431,19 +442,20 @@ _CONCLUSION_PROMPT = (
 
 
 MAX_DISTILL_TOKENS = 500
-DISTILL_TYPES = ("decision", "lesson", "opinion")
+DISTILL_TYPES = ("decision", "lesson", "opinion", "question")
 _DISTILL_PROMPT = (
     "Below is the conversation you and {name} just finished:\n\n{transcript}\n\n"
     "What from it do you want to keep? Only things on your side of it:\n"
     "- DECISION: something you decided, or promised to do\n"
     "- LESSON: something you learned about how to be, or how to treat {name}\n"
     "- OPINION: a view you formed or changed\n"
-    "Not facts about {name} -- those are remembered separately. At most three, and only ones that really came up. "
+    "- QUESTION: something it left you wanting to find out -- not about {name}\n"
+    "Not facts about {name} -- those are remembered separately. At most four, and only ones that really came up. "
     "One line each, exactly like this:\n"
     "TYPE | what, in the first person, under 40 words, in plain words -- no metaphors | why it matters to you, under 20 words\n"
     "If nothing like that came up, reply with just: nothing"
 )
-_DISTILL_LINE = re.compile(r"^\W*(DECISION|LESSON|OPINION)\W*\|(.+)\|(.+)$", re.IGNORECASE)
+_DISTILL_LINE = re.compile(r"^\W*(DECISION|LESSON|OPINION|QUESTION)\W*\|(.+)\|(.+)$", re.IGNORECASE)
 
 
 def parse_distilled(raw: str) -> list[tuple[str, str, str]]:
@@ -454,7 +466,7 @@ def parse_distilled(raw: str) -> list[tuple[str, str, str]]:
             kind, what, why = match.group(1).lower(), match.group(2).strip().strip('"'), match.group(3).strip()
             if what and len(what) <= training.MAX_FACT_CHARS:
                 found.append((kind, what, why))
-    return found[:3]
+    return found[:4]
 
 
 async def distill_chat(brain: Brain, transcript: str, name: str) -> None:
@@ -469,7 +481,10 @@ async def distill_chat(brain: Brain, transcript: str, name: str) -> None:
                 brain.llm.under_soul, _DISTILL_PROMPT.format(name=name, transcript=transcript), MAX_DISTILL_TOKENS
             )
         source = f"Your chat, {datetime.now():%A %d %B}"
-        added = sum(1 for kind, what, why in parse_distilled(raw) if training.add_pending(what, source, type=kind, why=why))
+        found = parse_distilled(raw)
+        for what in (what for kind, what, why in found if kind == "question" and persona.not_about_him(what)):
+            wonder.add(what, source)  # hers to find out: nothing to approve
+        added = sum(1 for kind, what, why in found if kind != "question" and training.add_pending(what, source, type=kind, why=why))
         print(f"[training] {added} decisions / lessons / opinions of hers from the cleared chat")
         if added:
             await hub.broadcast(training_state_message())

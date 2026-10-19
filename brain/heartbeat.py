@@ -46,6 +46,7 @@ import protocol
 import sampling
 import souls
 import web_search
+import wonder
 from config import load_config
 from hub import Brain
 from names import sanitize_name
@@ -71,10 +72,15 @@ READ_PULL = 5  # a sitting with a book weighs on her like a middling thought: fo
 # Asked about one thing at a time she likes nearly everything; made to pick between two, one loses.
 CHOOSE_CHANCE = 1 / 4  # of the turns she spends thinking
 # Each turn she picks what to do (pick): her word -> what the Growth chart calls it. Resting is always one.
-ACTIVITIES = {"read": "read", "visit": "visit friends", "art": "look at art", "think": "think", "journal": "journal", "rest": "rest"}
+ACTIVITIES = {
+    "read": "read", "look": "look into", "visit": "visit friends", "art": "look at art", "think": "think",
+    "journal": "journal", "rest": "rest",
+}
 # Her day on her own, when config.yaml doesn't say (caps): about what she did with a die deciding (~100 a
 # day), and all the day's LLM tokens, his chats included. Past either she rests until tomorrow.
 MAX_ACTIVITIES = 100
+MAX_PAGE_QUESTIONS = 3  # of the questions a landed page ends with, the last few go on her list
+MAX_LOOK_TOKENS = 500
 SAME_IN_A_ROW = 3  # this many of one thing running, and it sits out a turn (options)
 MAX_TOKENS = 2_000_000
 MAX_CHOICE_TOKENS = 60
@@ -88,6 +94,11 @@ _CHOICE_PROMPT = (
     "It's {when}, and {name} isn't around -- your time is your own. {today}What do you want to do now?\n\n{options}\n\n"
     "Pick one. Reply with one line: the word in capitals, then | and why, in a few words. For example:\n"
     "REST | I've been going all day"
+)
+_LOOK_PROMPT = (
+    "You've been wondering: {question}\n\nYou looked it up. What the search turned up:\n\n{found}\n\n"
+    "Write yourself a short note: what you found out, in plain words, what surprised you, and whether it answers "
+    "your question. Say where you read it, and don't take it as gospel. First person, a paragraph or two."
 )
 _JOURNAL_PROMPT = (
     "Some of what's been going through your head:\n\n{fragments}\n\n"
@@ -320,6 +331,8 @@ def options(now: datetime, brain: Brain, shelf: dict) -> dict[str, str]:
     if names := library.unread(shelf):
         book = shelf["books"][shelf["reading"] if shelf["reading"] in names else names[0]]
         found["read"] = f"read some of {book['title']} ({library.percent(book)}% in)"
+    if (wondering := wonder.read()) and web_search.read_active():
+        found["look"] = f"look into something you've wondered: \"{wondering[0]['text']}\""
     if not friends._why_not(brain) and not friends.visited(now.date()):
         found["visit"] = f"have your friends over -- {', '.join(friends.names())}"
     if pictures.least_looked():
@@ -391,6 +404,8 @@ async def beat(brain: Brain) -> str:
         return "She had her friends over."
     if word == "art":
         return await look_at(brain, interests, pictures.least_looked(), now)
+    if word == "look":
+        return await look_into(brain, wonder.read()[0], now)
     if word == "journal":
         return await write_journal(brain, interests, now)
     # think: made to pick between two things of hers now and then, otherwise her mind wanders
@@ -405,6 +420,24 @@ async def beat(brain: Brain) -> str:
         print("[heartbeat] nothing pulled at her")
         return "Nothing pulled at her this time."
     return await _weigh(brain, interests, found, now)
+
+
+async def look_into(brain: Brain, item: dict, now: datetime) -> str:
+    """One of her questions (wonder.py), looked up on the web: a note to herself in her Thoughts, the
+    question off her list, and what she found out kept like her other conclusions (own: low risk)."""
+    question = item["text"]
+    async with hub.doing("Looking something up..."):
+        found = await asyncio.to_thread(look_up, question)
+    if not found:
+        return f"She went to look up {question!r} and found nothing."
+    async with brain.busy("Reading up..."):
+        note = (await asyncio.to_thread(brain.llm.under_soul, _LOOK_PROMPT.format(question=question, found=found), MAX_LOOK_TOKENS)).strip()
+    if not note:
+        return f"She read up on {question!r} and had nothing to say."
+    conversation.log_thought(f"🔎 **{question}**\n\n{note}", now=now)
+    wonder.remove(item["id"])
+    await learning.propose_own(f"You wondered: {question}\nWhat you found out:\n{note}", f"Looked into: {question}", brain, own=True)
+    return f"She looked into {question!r}: {note[:120]}"
 
 
 async def write_journal(brain: Brain, interests: dict, now: datetime) -> str:
@@ -533,10 +566,13 @@ async def _land(brain: Brain, interests: dict, topic: str, now: datetime) -> boo
     (folder / f"{sanitize_name(topic, kind='topic')}.md").write_text(f"# {topic}\n\n*Landed {now:%A %d %B %Y}*\n\n{page}\n", encoding="utf-8")
     conversation.log_thought(f"💡 **{topic}** landed -- it kept pulling at her, so she wrote about it:\n\n{page}", now=datetime.now())
     print(f"[heartbeat] {topic!r} landed")
-    # Her newest question about it waits to be asked (Josh's "question inbox"): only on landing,
-    # so a passing thought doesn't fill the short list.
-    if interests[topic]["questions"] and curiosity.read_active():
-        curiosity.add_question(interests[topic]["questions"][-1])
+    # Her newest question about it, and the ones her page ends with: only on landing, so a passing thought
+    # doesn't fill the list. Hers to find out -- or, about him, his inbox (wonder.keep).
+    if interests[topic]["questions"]:
+        wonder.keep(interests[topic]["questions"][-1], f"Thinking about {topic}")
+    for question in re.findall(r"[^\n?]*\?", page)[-MAX_PAGE_QUESTIONS:]:
+        if persona.not_about_him(question):
+            wonder.add(question, f"Her page on {topic}")
     await learning.propose_own(page, f"Heartbeat: {topic} landed", brain, own=True)  # what she came to think stays with her
     return True
 

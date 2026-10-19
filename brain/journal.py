@@ -23,6 +23,7 @@ import metrics
 import persona
 import reflection
 import upkeep
+import wonder
 from hub import Brain
 
 JOURNAL_DIR = conversation.JOURNAL_LOG_DIR
@@ -91,8 +92,8 @@ async def journal_loop(brain: Brain) -> None:
                 path.write_text(f"# {path.stem} -- {day:%A %d %B}\n\n{text.strip()}\n", encoding="utf-8")
                 print(f"[journal] wrote {path.name}")
                 metrics.log("activity", what="journal")
-                if (question := curiosity.question_after("What I.m wondering", text)) and curiosity.read_active():
-                    curiosity.add_question(question)  # his inbox, and her next reach-out
+                if question := curiosity.question_after("What I.m wondering", text):
+                    wonder.keep(question, f"Her diary, {day:%d %B}")  # hers to find out -- or his inbox, if it's about him
                 await learning.lesson_from_diary(text, brain)  # after the lock, like her memory proposals
                 await learning.propose_unread(day, brain)  # after the lock: his replies first
                 if learning.can_propose(brain) and upkeep.due(datetime.now()):

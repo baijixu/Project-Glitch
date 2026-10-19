@@ -583,6 +583,24 @@ body:has(#history-panel.open) :is(#inbox-button, #mind-button) {
   overflow-y: auto;
 }
 
+#mind-wonder li button {
+  display: inline-flex;
+  margin: 0 0 0 6px;
+  padding: 0 6px;
+  min-height: 0;
+  vertical-align: middle;
+}
+
+.mind-add-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.mind-add-row input {
+  flex: 1;
+}
+
 #growth-top {
   max-height: none;
 }

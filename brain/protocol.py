@@ -81,6 +81,8 @@ ADD_MEMORY = "add_memory"
 GET_MIND = "get_mind"
 GET_GROWTH = "get_growth"
 REFLECT_NOW = "reflect_now"
+ADD_WONDER = "add_wonder"
+REMOVE_WONDER = "remove_wonder"
 SET_MEMORY_ACTIVE = "set_memory_active"
 CLEAR_MEMORY = "clear_memory"
 GET_MEMORY_CONTENT = "get_memory_content"
@@ -235,13 +237,14 @@ def web_search_state(active: bool) -> dict:
     return {"type": "web_search_state", "active": active}
 
 
-def mind(recalled: list[str], pending: list, lessons: list[str], own: list, chose: list, day: dict, soul_chars: int, soul_lines: int, soul_edited: str, soul_max: int) -> dict:
+def mind(recalled: list[str], pending: list, lessons: list[str], wondering: list, own: list, chose: list, day: dict, soul_chars: int, soul_lines: int, soul_edited: str, soul_max: int) -> dict:
     """The 🧠 panel: the memories put into her prompt for the last reply, the proposals waiting for his review
-    ({id, fact, source, created}), the lesson proposals waiting in Behavior learning (each described in a line),
+    ({id, fact, source, created}), the lesson proposals waiting in Behavior learning (each described in a line), what she wants to find out
+    (wonder.py: {id, text, source, added}, newest first),
     what she saved on her own lately, unverified ({text, source, t}, newest first), what she chose to do with her own
     time and why ({what, why, t}, newest first), today against her caps ({done, most, tokens, budget}), and her soul.md's size and when
     it last changed (ISO, "" with no soul.md)."""
-    return {"type": "mind", "recalled": recalled, "pending": pending, "lessons": lessons, "own": own, "chose": chose, "day": day,
+    return {"type": "mind", "recalled": recalled, "pending": pending, "lessons": lessons, "wondering": wondering, "own": own, "chose": chose, "day": day,
             "soul": {"chars": soul_chars, "lines": soul_lines, "edited": soul_edited, "max": soul_max}}
 
 
