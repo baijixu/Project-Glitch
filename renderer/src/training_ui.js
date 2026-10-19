@@ -89,7 +89,7 @@ export class TrainingUI {
   // kind "add" (a new memory), or from memory upkeep "update" (new wording for one she has,
   // `old` its current text) or "retire" (one that repeats another), or from her weekly
   // reflection "soul" (a line for her soul, `old` its section) or "soul_change" (`old`, words
-  // her soul says, rewritten).
+  // her soul says, rewritten). Her own decision / lesson / opinion from a cleared chat has a `type` and `why`.
   _row(proposal) {
     const row = document.createElement("div");
     row.className = "lesson-row pending";
@@ -99,6 +99,7 @@ export class TrainingUI {
     if (kind === "retire") note("Retire this memory?");
     if (kind === "soul") note(`Add this to her soul, under "${proposal.old}"? (Her weekly reflection; soul.md is backed up first.)`);
     if (kind === "soul_change") note(`Change this in her soul? Now: "${proposal.old}" (Her weekly reflection; soul.md is backed up first.)`);
+    if (proposal.type) note(`Her ${proposal.type}${proposal.why ? ` -- why it matters to her: ${proposal.why}` : ""}`);
 
     const box = document.createElement("textarea");
     box.className = "settings-text-input training-fact";

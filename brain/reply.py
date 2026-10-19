@@ -116,6 +116,7 @@ async def clear_conversation(websocket: websockets.ServerConnection, data: dict,
     await hub.broadcast(protocol.conversation_cleared())
     if any(line.startswith(f"{name}: ") for line in transcript.splitlines()):  # the user said something worth a note
         hub.spawn(_write_left_off(brain, transcript, name))
+        hub.spawn(learning.distill_chat(brain, transcript, name))
         learning.end_sitting(brain, quiet_sec=0)  # Clear Chat ends the sitting now
 
 

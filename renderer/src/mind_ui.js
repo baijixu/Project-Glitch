@@ -65,7 +65,7 @@ export class MindUI {
   _render({ recalled = [], pending = [], soul = {} }) {
     this._list($("mind-recalled"), recalled, "None -- send her a message and the memories she recalls for it show up here.");
     $("mind-pending-count").textContent = pending.length ? ` (${pending.length})` : "";
-    const facts = pending.slice(0, SHOWN_PENDING).map((p) => p.fact);
+    const facts = pending.slice(0, SHOWN_PENDING).map((p) => (p.type ? `${p.type}: ${p.fact}` : p.fact));
     if (pending.length > SHOWN_PENDING) facts.push(`...and ${pending.length - SHOWN_PENDING} more`);
     this._list($("mind-pending"), facts, "Nothing waiting for you.");
     $("mind-review-button").hidden = !pending.length;

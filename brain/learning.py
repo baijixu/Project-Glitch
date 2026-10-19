@@ -396,6 +396,51 @@ _CONCLUSION_PROMPT = (
 )
 
 
+MAX_DISTILL_TOKENS = 500
+DISTILL_TYPES = ("decision", "lesson", "opinion")
+_DISTILL_PROMPT = (
+    "Below is the conversation you and {name} just finished:\n\n{transcript}\n\n"
+    "What from it do you want to keep? Only things on your side of it:\n"
+    "- DECISION: something you decided, or promised to do\n"
+    "- LESSON: something you learned about how to be, or how to treat {name}\n"
+    "- OPINION: a view you formed or changed\n"
+    "Not facts about {name} -- those are remembered separately. At most three, and only ones that really came up. "
+    "One line each, exactly like this:\n"
+    "TYPE | what, in the first person, under 40 words, in plain words -- no metaphors | why it matters to you, under 20 words\n"
+    "If nothing like that came up, reply with just: nothing"
+)
+_DISTILL_LINE = re.compile(r"^\W*(DECISION|LESSON|OPINION)\W*\|(.+)\|(.+)$", re.IGNORECASE)
+
+
+def parse_distilled(raw: str) -> list[tuple[str, str, str]]:
+    """_DISTILL_PROMPT's lines as [(type, what, why)]; anything else (preamble, "nothing") is dropped."""
+    found = []
+    for line in raw.splitlines():
+        if match := _DISTILL_LINE.match(line.strip()):
+            kind, what, why = match.group(1).lower(), match.group(2).strip().strip('"'), match.group(3).strip()
+            if what and len(what) <= training.MAX_FACT_CHARS:
+                found.append((kind, what, why))
+    return found[:3]
+
+
+async def distill_chat(brain: Brain, transcript: str, name: str) -> None:
+    """Clear Chat, with memory training on: her decisions, lessons and opinions from the conversation that
+    just ended, each with why it matters to her, into his review list -- facts about him come from the
+    sitting's proposals (end_sitting). Without this, what she settled on in a chat was gone with it."""
+    if not can_propose(brain):
+        return
+    try:
+        async with brain.busy("Going over what she decided..."):
+            raw = await asyncio.to_thread(
+                brain.llm.under_soul, _DISTILL_PROMPT.format(name=name, transcript=transcript), MAX_DISTILL_TOKENS
+            )
+        source = f"Your chat, {datetime.now():%A %d %B}"
+        if sum(1 for kind, what, why in parse_distilled(raw) if training.add_pending(what, source, type=kind, why=why)):
+            await hub.broadcast(training_state_message())
+    except Exception as exc:
+        print(f"[training] couldn't go over what she decided: {exc!r}")
+
+
 async def propose_own(text: str, source: str, brain: Brain) -> None:
     """What she's come to think from her own thinking -- a landed page, a finished book -- as one
     memory: proposed for his review with memory training on, otherwise kept like any other.
