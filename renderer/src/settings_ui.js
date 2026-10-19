@@ -67,6 +67,7 @@ export class SettingsUI {
     // role-play souls and profiles.
     $("open-soul-user-editor-button")?.addEventListener("click", () => this._ask("get_soul_and_user"));
     $("soul-user-editor-cancel-button")?.addEventListener("click", () => this.soulUserModal.close());
+    $("soul-user-editor-soul")?.addEventListener("input", () => this._countSoul());
     $("soul-user-editor-save-button")?.addEventListener("click", () => {
       app.send({ type: "save_soul_and_user", soul: $("soul-user-editor-soul")?.value ?? "", user: $("soul-user-editor-user")?.value ?? "" });
       this.soulUserModal.close();
@@ -94,6 +95,8 @@ export class SettingsUI {
         if (!this._answered("get_soul_and_user") || !this.soulUserModal.el) return;
         if ($("soul-user-editor-soul")) $("soul-user-editor-soul").value = data.soul || "";
         if ($("soul-user-editor-user")) $("soul-user-editor-user").value = data.user || "";
+        this._soulMax = data.soul_max;
+        this._countSoul();
         this.soulUserModal.open();
       },
     };
@@ -133,6 +136,17 @@ export class SettingsUI {
     if (!note) return;
     note.textContent = text;
     note.hidden = !text;
+  }
+
+  // soul.md's live size against the Brain's cap: Save is off while it's over (the Brain would refuse it anyway).
+  _countSoul() {
+    const chars = ($("soul-user-editor-soul")?.value || "").length;
+    const over = chars - (this._soulMax || Infinity);
+    const count = $("soul-user-editor-count");
+    if (count) count.textContent = `${chars.toLocaleString()} / ${(this._soulMax || 0).toLocaleString()} characters` +
+      (over > 0 ? ` -- ${over.toLocaleString()} over. Shorten it to save (anything cut can become a memory).` : "");
+    const save = $("soul-user-editor-save-button");
+    if (save) save.disabled = over > 0;
   }
 
   _ask(type) {

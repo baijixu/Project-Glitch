@@ -163,7 +163,7 @@ async def _save_notes(websocket: websockets.ServerConnection, data: dict, brain:
 
 @hub.handles(protocol.GET_SOUL_AND_USER)
 async def _get_soul_and_user(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-    await hub.send(websocket, protocol.soul_and_user_content(souls.read_main_soul(), profiles.read_main_user()))
+    await hub.send(websocket, protocol.soul_and_user_content(souls.read_main_soul(), profiles.read_main_user(), souls.SOUL_MAX_CHARS))
 
 
 @hub.handles(protocol.SAVE_SOUL_AND_USER)
@@ -182,7 +182,11 @@ async def save_soul_and_user(websocket: websockets.ServerConnection, data: dict,
     user_content = data.get("user", "")
     if hub.fields_too_long(soul_content, user_content):
         return
-    souls.write_main_soul(soul_content)
+    try:
+        souls.write_main_soul(soul_content)
+    except ValueError as exc:  # the editor won't send one over the cap; this is the backstop
+        print(f"[brain] soul.md not saved: {exc}")
+        return
     profiles.write_main_user(user_content)
     brain.llm.update_soul(persona.effective_soul())  # an edit, not a new her: the conversation carries on
     print("[brain] soul.md/user.md updated via manual editor")

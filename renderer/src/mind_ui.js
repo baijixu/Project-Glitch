@@ -75,7 +75,9 @@ export class MindUI {
     const pages = (soul.chars / CHARS_PER_PAGE).toFixed(1);
     const edited = soul.edited ? new Date(soul.edited).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "";
     $("mind-soul").textContent = soul.edited
-      ? `${soul.chars.toLocaleString()} characters, ${soul.lines} lines (about ${pages} pages). Last changed ${edited}.`
+      ? `${soul.chars.toLocaleString()} of ${soul.max.toLocaleString()} characters, ${soul.lines} lines (about ${pages} pages)` +
+        (soul.chars > soul.max ? ` -- ${(soul.chars - soul.max).toLocaleString()} over the cap, so nothing can be added until it's shorter` : "") +
+        `. Last changed ${edited}.`
       : "No soul.md -- she's on her default personality.";
   }
 

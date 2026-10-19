@@ -308,7 +308,7 @@ def mind_message(brain: Brain) -> dict:
     edited = datetime.fromtimestamp(soul.stat().st_mtime).isoformat(timespec="minutes") if soul.exists() else ""
     waiting_lessons = [lessons.describe(p) for p in lessons.read_pending()]
     own = [{"text": r["text"], "source": r.get("source", ""), "t": r["t"]} for r in metrics.read() if r["e"] == "approved" and r.get("by") == "her"]
-    return protocol.mind(recalled, training.read_pending(), waiting_lessons, own[-SHOWN_OWN:][::-1], len(text), len(text.splitlines()), edited)
+    return protocol.mind(recalled, training.read_pending(), waiting_lessons, own[-SHOWN_OWN:][::-1], len(text), len(text.splitlines()), edited, souls.SOUL_MAX_CHARS)
 
 
 async def daily_snapshot() -> None:

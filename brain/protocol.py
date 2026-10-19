@@ -234,13 +234,13 @@ def web_search_state(active: bool) -> dict:
     return {"type": "web_search_state", "active": active}
 
 
-def mind(recalled: list[str], pending: list, lessons: list[str], own: list, soul_chars: int, soul_lines: int, soul_edited: str) -> dict:
+def mind(recalled: list[str], pending: list, lessons: list[str], own: list, soul_chars: int, soul_lines: int, soul_edited: str, soul_max: int) -> dict:
     """The 🧠 panel: the memories put into her prompt for the last reply, the proposals waiting for his review
     ({id, fact, source, created}), the lesson proposals waiting in Behavior learning (each described in a line),
     what she saved on her own lately, unverified ({text, source, t}, newest first), and her soul.md's size and when
     it last changed (ISO, "" with no soul.md)."""
     return {"type": "mind", "recalled": recalled, "pending": pending, "lessons": lessons, "own": own,
-            "soul": {"chars": soul_chars, "lines": soul_lines, "edited": soul_edited}}
+            "soul": {"chars": soul_chars, "lines": soul_lines, "edited": soul_edited, "max": soul_max}}
 
 
 def growth(series: dict) -> dict:
@@ -383,9 +383,9 @@ def no_reply() -> dict:
     return {"type": "no_reply"}
 
 
-def soul_and_user_content(soul: str, user: str) -> dict:
-    """Her main soul.md and user.md (not the role-play ones), for the manual-edit modal."""
-    return {"type": "soul_and_user_content", "soul": soul, "user": user}
+def soul_and_user_content(soul: str, user: str, soul_max: int) -> dict:
+    """Her main soul.md and user.md (not the role-play ones), for the manual-edit modal, and soul.md's size cap."""
+    return {"type": "soul_and_user_content", "soul": soul, "user": user, "soul_max": soul_max}
 
 
 def notes_content(content: str) -> dict:

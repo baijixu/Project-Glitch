@@ -15,6 +15,7 @@ DEFAULT_PERSONALITY; the mood-tag instruction stays under whichever is active.
 
 import difflib
 import re
+from datetime import datetime
 from pathlib import Path
 
 import metrics
@@ -24,6 +25,10 @@ SOUL_MD_PATH = Path(__file__).parent / "soul.md"  # her main soul -- see the mod
 RP_SOUL_PATH = Path(__file__).parent / "rp_soul.md"  # the selected role-play soul -- everything here that "loads" a soul writes this
 
 # Splits description from examples in a soul file -- and reads as a heading in her prompt.
+# His choice (10-19): about two pages, for her edits and his own. Past it a save is refused, so a soul can only
+# grow by something else in it getting shorter -- what doesn't fit belongs in her memories.
+SOUL_MAX_CHARS = 6000
+BACKUPS = Path(__file__).parent / "backups"  # soul_before_<why>_<when>.md, one per change
 EXAMPLES_HEADER = "## Example dialogue"
 
 # "No role-play soul" (her main soul then): not a file, always offered, can't be deleted.
@@ -61,9 +66,16 @@ def read_soul(name: str) -> tuple[str, str]:
     return _split(STORE.read_text(name))
 
 
-def write_main_soul(content: str) -> None:
-    """Overwrites soul.md -- the only writer of it, called by Settings' editor and a weekly-reflection line he approved (reflection.py)."""
+def write_main_soul(content: str, why: str = "edit") -> None:
+    """Overwrites soul.md -- the only writer of it, called by Settings' editor and a weekly-reflection line he approved
+    (reflection.py). ValueError past SOUL_MAX_CHARS, and nothing written; otherwise the old one is backed up first
+    (BACKUPS/soul_before_<why>_<when>.md) whenever it changes."""
+    if len(content) > SOUL_MAX_CHARS:
+        raise ValueError(f"soul.md would be {len(content):,} characters, {len(content) - SOUL_MAX_CHARS:,} over the {SOUL_MAX_CHARS:,} cap")
     old = SOUL_MD_PATH.read_text(encoding="utf-8") if SOUL_MD_PATH.exists() else ""
+    if old and old != content:
+        BACKUPS.mkdir(exist_ok=True)
+        (BACKUPS / f"soul_before_{why}_{datetime.now():%Y%m%d_%H%M%S}.md").write_text(old, encoding="utf-8")
     SOUL_MD_PATH.write_text(content, encoding="utf-8")
     changed = sum(1 for line in difflib.ndiff(old.splitlines(), content.splitlines()) if line[:1] in "+-")
     if changed:

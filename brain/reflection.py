@@ -25,7 +25,6 @@ from hub import Brain
 
 EVERY_DAYS = 7
 LAST_PATH = Path(__file__).parent / "reflection_last.txt"  # the date of the last one
-BACKUPS = Path(__file__).parent / "backups"
 # Who she is -- not how she works, what she does when someone's in danger, or after dark.
 SECTIONS = ("Who you are", "What you love", "What you can't stand", "How you talk", "Your own mind")
 MAX_LINE_CHARS = 300
@@ -87,9 +86,7 @@ def parse_proposal(raw: str, soul: str) -> tuple[str, str, str] | None:
 
 
 def _rewrite_soul(soul: str, brain: Brain, today: date | None) -> None:
-    BACKUPS.mkdir(exist_ok=True)
-    (BACKUPS / f"soul_before_reflection_{today or date.today():%Y%m%d}.md").write_text(souls.read_main_soul(), encoding="utf-8")
-    souls.write_main_soul(soul)
+    souls.write_main_soul(soul, why="reflection")  # backed up first, and refused past the cap (ValueError)
     brain.llm.update_soul(persona.effective_soul())  # an edit, not a new her: the conversation carries on
 
 
