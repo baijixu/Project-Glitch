@@ -215,11 +215,11 @@ async def _hindsight_retain_exchange(user_text: str, reply_text: str, asked: str
     await _client.aretain(_bank_id, content=content)
 
 
-async def _hindsight_retain_fact(text: str, importance: str) -> None:
-    """Word for word (see APPROVED_STRATEGY), tagged with its importance."""
+async def _hindsight_retain_fact(text: str, importance: str, unverified: bool = False) -> None:
+    """Word for word (see APPROVED_STRATEGY), tagged with its importance (and unverified: training.UNVERIFIED_TAG)."""
     if _client is None:
         raise RuntimeError("no Hindsight server configured")
-    tags = [training.importance_tag(importance)]
+    tags = [training.importance_tag(importance)] + ([training.UNVERIFIED_TAG] if unverified else [])
     try:
         await _ensure_approved_strategy()
         await _client.aretain_batch(
@@ -432,11 +432,11 @@ async def retain_exchange(user_text: str, reply_text: str, asked: str = "") -> N
         await _hindsight_retain_exchange(user_text, reply_text, asked)
 
 
-async def retain_fact(text: str, importance: str) -> None:
-    """One fact he approved (brain/training.py), word for word, tagged with its importance.
-    Raises if it couldn't be saved, so the proposal stays queued."""
+async def retain_fact(text: str, importance: str, unverified: bool = False) -> None:
+    """One fact he approved (brain/training.py), word for word, tagged with its importance -- or, `unverified`,
+    one of hers saved without him (learning.propose_own). Raises if it couldn't be saved, so a proposal stays queued."""
     if read_provider() == HINDSIGHT_PROVIDER:
-        await _hindsight_retain_fact(text, importance)
+        await _hindsight_retain_fact(text, importance, unverified)
     else:
         raise RuntimeError("no memory server connected")
 

@@ -43,6 +43,10 @@ set_active = ACTIVE.write
 read_active = ACTIVE.read
 
 
+# On a memory she saved herself, without his review (learning.propose_own, `own`): low risk, but not checked by him.
+UNVERIFIED_TAG = "unverified"
+
+
 def importance_tag(level: str) -> str:
     return f"importance:{level if level in IMPORTANCE_LEVELS else DEFAULT_IMPORTANCE}"
 

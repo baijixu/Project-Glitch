@@ -288,6 +288,9 @@ async def _set_training_active(websocket: websockets.ServerConnection, data: dic
     await hub.broadcast(training_state_message())
 
 
+SHOWN_OWN = 8  # her latest saves without him, newest first
+
+
 @hub.handles(protocol.GET_MIND)
 async def _get_mind(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     await hub.send(websocket, mind_message(brain))
@@ -304,7 +307,8 @@ def mind_message(brain: Brain) -> dict:
     text = soul.read_text(encoding="utf-8") if soul.exists() else ""
     edited = datetime.fromtimestamp(soul.stat().st_mtime).isoformat(timespec="minutes") if soul.exists() else ""
     waiting_lessons = [lessons.describe(p) for p in lessons.read_pending()]
-    return protocol.mind(recalled, training.read_pending(), waiting_lessons, len(text), len(text.splitlines()), edited)
+    own = [{"text": r["text"], "source": r.get("source", ""), "t": r["t"]} for r in metrics.read() if r["e"] == "approved" and r.get("by") == "her"]
+    return protocol.mind(recalled, training.read_pending(), waiting_lessons, own[-SHOWN_OWN:][::-1], len(text), len(text.splitlines()), edited)
 
 
 async def daily_snapshot() -> None:
@@ -444,10 +448,13 @@ async def distill_chat(brain: Brain, transcript: str, name: str) -> None:
         print(f"[training] couldn't go over what she decided: {exc!r}")
 
 
-async def propose_own(text: str, source: str, brain: Brain) -> None:
+async def propose_own(text: str, source: str, brain: Brain, own: bool = False) -> None:
     """What she's come to think from her own thinking -- a landed page, a finished book -- as one
     memory: proposed for his review with memory training on, otherwise kept like any other.
-    Without this, what she works out alone never reaches what she remembers."""
+    Without this, what she works out alone never reaches what she remembers.
+
+    `own`: low risk -- her take on a book, a picture, a topic of hers -- so with training on it's saved
+    without asking, tagged unverified and listed in the 🧠 window; one that names him still waits."""
     if not (brain.llm.owns_conversation and memory.read_memory_active() and memory.server_backed()):
         return
     try:
@@ -455,9 +462,15 @@ async def propose_own(text: str, source: str, brain: Brain) -> None:
             fact = (await asyncio.to_thread(brain.llm.under_soul, _CONCLUSION_PROMPT.format(text=text), MAX_CONCLUSION_TOKENS)).strip().strip('"')
         if not fact or fact.lower().rstrip(".") == "nothing" or len(fact) > training.MAX_FACT_CHARS:
             return
-        if training.read_active():
+        name = persona.user_name()
+        about_him = bool(name) and re.search(rf"\b{re.escape(name)}\b", fact, re.IGNORECASE)
+        if training.read_active() and (not own or about_him):
             if training.add_pending(fact, source):
                 await hub.broadcast(training_state_message())
+        elif training.read_active():
+            await memory.retain_fact(fact, training.DEFAULT_IMPORTANCE, unverified=True)
+            metrics.log("approved", type="opinion", by="her", text=fact, source=source)
+            print(f"[training] she kept a view of her own (unverified): {fact[:80]!r}")
         else:
             await memory.retain_fact(fact, training.DEFAULT_IMPORTANCE)
     except Exception as exc:

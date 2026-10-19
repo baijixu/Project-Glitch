@@ -311,7 +311,7 @@ async def _sour(brain: Brain, interests: dict, topic: str) -> None:
     if not persona.not_about_him(topic):  # a hard thought about his life isn't a dislike to keep
         return
     thoughts = "\n".join(f"- {t}" for t in interests[topic]["thoughts"])
-    await learning.propose_own(f"{topic} keeps coming back to you, and it doesn't sit well. What you've thought about it lately:\n{thoughts}", f"Soured on {topic}", brain)
+    await learning.propose_own(f"{topic} keeps coming back to you, and it doesn't sit well. What you've thought about it lately:\n{thoughts}", f"Soured on {topic}", brain, own=True)
 
 
 async def _two_of_hers(interests: dict) -> list[str]:
@@ -409,7 +409,7 @@ async def _land(brain: Brain, interests: dict, topic: str, now: datetime) -> boo
     # so a passing thought doesn't fill the short list.
     if interests[topic]["questions"] and curiosity.read_active():
         curiosity.add_question(interests[topic]["questions"][-1])
-    await learning.propose_own(page, f"Heartbeat: {topic} landed", brain)  # what she came to think stays with her
+    await learning.propose_own(page, f"Heartbeat: {topic} landed", brain, own=True)  # what she came to think stays with her
     return True
 
 
@@ -448,10 +448,10 @@ async def read_pages(brain: Brain, shelf: dict) -> str:
     if change == "landed":
         await _land(brain, interests, topic, now)
     if book["finished"]:
-        await learning.propose_own(f"You just finished {book['title']}. Your note on its last pages: {note}", f"Finished reading {book['title']}", brain)
+        await learning.propose_own(f"You just finished {book['title']}. Your note on its last pages: {note}", f"Finished reading {book['title']}", brain, own=True)
     if book["dropped"]:
         conversation.log_thought(f"📕 She put {book['title']} down, {library.percent(book)}% in -- it lost her.", now=now)
-        await learning.propose_own(f"You put {book['title']} down {library.percent(book)}% in -- it lost you. Your note on the last pages you read: {note}", f"Put down {book['title']}", brain)
+        await learning.propose_own(f"You put {book['title']} down {library.percent(book)}% in -- it lost you. Your note on the last pages you read: {note}", f"Put down {book['title']}", brain, own=True)
         return f"She put {book['title']} down ({library.percent(book)}%): {note}"
     return f"She read some of {book['title']} ({library.percent(book)}%): {note}"
 

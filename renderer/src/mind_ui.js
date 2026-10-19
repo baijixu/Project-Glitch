@@ -62,7 +62,7 @@ export class MindUI {
     for (const b of document.querySelectorAll(`#mind-modal ${selector}`)) b.classList.toggle("active", b.dataset[key] === value);
   }
 
-  _render({ recalled = [], pending = [], lessons = [], soul = {} }) {
+  _render({ recalled = [], pending = [], lessons = [], own = [], soul = {} }) {
     this._list($("mind-recalled"), recalled, "None -- send her a message and the memories she recalls for it show up here.");
     // Lessons from his thumbs wait in Behavior learning, not the memory list -- shown here so he sees it all.
     const waiting = [...pending.map((p) => (p.type ? `${p.type}: ${p.fact}` : p.fact)), ...lessons.map((l) => `lesson: ${l.replace(/^New lesson: /, "")}`)];
@@ -71,6 +71,7 @@ export class MindUI {
     if (waiting.length > SHOWN_PENDING) facts.push(`...and ${waiting.length - SHOWN_PENDING} more`);
     this._list($("mind-pending"), facts, "Nothing waiting for you.");
     $("mind-review-button").hidden = !waiting.length;
+    this._list($("mind-own"), own.map((o) => `${o.text} (${o.source})`), "Nothing yet.");
     const pages = (soul.chars / CHARS_PER_PAGE).toFixed(1);
     const edited = soul.edited ? new Date(soul.edited).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "";
     $("mind-soul").textContent = soul.edited
