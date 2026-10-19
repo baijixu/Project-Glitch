@@ -435,7 +435,9 @@ async def distill_chat(brain: Brain, transcript: str, name: str) -> None:
                 brain.llm.under_soul, _DISTILL_PROMPT.format(name=name, transcript=transcript), MAX_DISTILL_TOKENS
             )
         source = f"Your chat, {datetime.now():%A %d %B}"
-        if sum(1 for kind, what, why in parse_distilled(raw) if training.add_pending(what, source, type=kind, why=why)):
+        added = sum(1 for kind, what, why in parse_distilled(raw) if training.add_pending(what, source, type=kind, why=why))
+        print(f"[training] {added} decisions / lessons / opinions of hers from the cleared chat")
+        if added:
             await hub.broadcast(training_state_message())
     except Exception as exc:
         print(f"[training] couldn't go over what she decided: {exc!r}")

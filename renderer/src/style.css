@@ -494,6 +494,11 @@ body.overlay-chat-active #overlay-edit-button {
   top: 124px;
 }
 
+/* Chat History slides over the top-left corner: its own button stays, these two would sit on its title. */
+body:has(#history-panel.open) :is(#inbox-button, #mind-button) {
+  display: none;
+}
+
 #inbox-button:is(:not([data-count]), [data-count=""]) + #mind-button {
   top: 70px;
 }
