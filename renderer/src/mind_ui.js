@@ -88,7 +88,8 @@ export class MindUI {
     const at = (t) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     this._list($("mind-chose"), chose.map((c) => `${at(c.t)} -- ${c.what}${c.why ? `: ${c.why}` : ""}`), "Nothing yet -- her next quiet turn.");
     $("mind-day").textContent = `Today: ${day.done ?? 0} of ${day.most ?? "?"} things, ${(day.tokens ?? 0).toLocaleString()} of ` +
-      `${(day.budget ?? 0).toLocaleString()} tokens (config.yaml's heartbeat section). Past either, she rests until tomorrow.`;
+      `${(day.budget ?? 0).toLocaleString()} tokens (config.yaml's heartbeat section). Past either, she rests until tomorrow.` +
+      (day.reflect?.length ? ` Next, she'll think over: ${day.reflect.join("; ").replace(/\.$/, "")}.` : "");
     const pages = (soul.chars / CHARS_PER_PAGE).toFixed(1);
     const edited = soul.edited ? new Date(soul.edited).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "";
     $("mind-soul").textContent = soul.edited

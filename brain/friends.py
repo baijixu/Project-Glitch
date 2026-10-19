@@ -20,6 +20,7 @@ import websockets
 import conversation
 import curiosity
 import heartbeat
+import notable
 import wonder
 import hub
 import journal
@@ -274,6 +275,7 @@ async def visit(brain: Brain, why: str = "") -> None:
                     if (question := curiosity.question_after("What I want to ask", entry)) and curiosity.read_active():
                         curiosity.add_question(question)  # waits to be asked, like her Heartbeat ones
                     await learning.propose_own(entry, f"Friends' visit ({kind}), {started:%d %B}", brain)  # what it changed in her
+                    notable.notice(f"{', '.join(friends)} came over", entry)
                     conversation.log_visit(f"*{datetime.now():%H:%M:%S} -- Her journal*\n\n**{datetime.now():%H:%M:%S}** Glitch (journal): {entry}\n\n")
             if len(lines) >= 4:
                 await show("Her friends are saying goodbye...")

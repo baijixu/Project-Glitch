@@ -37,6 +37,7 @@ import curiosity
 import hub
 import learning
 import metrics
+import notable
 import library
 import memory
 import persona
@@ -75,12 +76,14 @@ CHOOSE_CHANCE = 1 / 4  # of the turns she spends thinking
 ACTIVITIES = {
     "read": "read", "look": "look into", "visit": "visit friends", "art": "look at art", "think": "think",
     "journal": "journal", "rest": "rest",
+    "reflect": "reflect",  # not on her menu: what a notable event gets (notable.py), before anything else
 }
 # Her day on her own, when config.yaml doesn't say (caps): about what she did with a die deciding (~100 a
 # day), and all the day's LLM tokens, his chats included. Past either she rests until tomorrow.
 MAX_ACTIVITIES = 100
 MAX_PAGE_QUESTIONS = 3  # of the questions a landed page ends with, the last few go on her list
 MAX_LOOK_TOKENS = 500
+MAX_REFLECT_TOKENS = 400
 SAME_IN_A_ROW = 3  # this many of one thing running, and it sits out a turn (options)
 MAX_TOKENS = 2_000_000
 MAX_CHOICE_TOKENS = 60
@@ -94,6 +97,12 @@ _CHOICE_PROMPT = (
     "It's {when}, and {name} isn't around -- your time is your own. {today}What do you want to do now?\n\n{options}\n\n"
     "Pick one. Reply with one line: the word in capitals, then | and why, in a few words. For example:\n"
     "REST | I've been going all day"
+)
+_REFLECT_PROMPT = (
+    "Something happened: {what}.\n\n{detail}\n\n"
+    "Take a minute with it, just for yourself. What do you make of it -- does it change how you see something, "
+    "or what you'd do next time? Honest, plain words, first person, a short paragraph. If it really doesn't "
+    "matter to you, say so in a line."
 )
 _LOOK_PROMPT = (
     "You've been wondering: {question}\n\nYou looked it up. What the search turned up:\n\n{found}\n\n"
@@ -387,6 +396,9 @@ async def beat(brain: Brain) -> str:
     if why := over_cap(now):
         metrics.log("activity", what="rest", reason=why)
         return f"She's resting until tomorrow: {why}."
+    if event := notable.take():
+        metrics.log("activity", what="reflect", reason=event["what"])
+        return await reflect(brain, event, now)
     shelf, interests = library.read_state(), read_interests()
     word, why = await pick(brain, options(now, brain, shelf), now)
     if word != "visit":  # a visit logs itself (friends.visit), with her reason
@@ -420,6 +432,19 @@ async def beat(brain: Brain) -> str:
         print("[heartbeat] nothing pulled at her")
         return "Nothing pulled at her this time."
     return await _weigh(brain, interests, found, now)
+
+
+async def reflect(brain: Brain, event: dict, now: datetime) -> str:
+    """Something that happened (notable.py), thought over -- in her Thoughts."""
+    async with brain.busy("Thinking it over..."):
+        page = (await asyncio.to_thread(
+            brain.llm.under_soul, _REFLECT_PROMPT.format(what=event["what"], detail=event["detail"]), MAX_REFLECT_TOKENS
+        )).strip()
+    if not page:
+        return f"She thought about it ({event['what']}) and had nothing to add."
+    conversation.log_thought(f"💭 **{event['what'].capitalize()}**\n\n{page}", now=now)
+    print(f"[heartbeat] she reflected on: {event['what']}")
+    return f"She thought over {event['what']}: {page[:120]}"
 
 
 async def look_into(brain: Brain, item: dict, now: datetime) -> str:
@@ -612,8 +637,10 @@ async def read_pages(brain: Brain, shelf: dict) -> str:
     if change == "landed":
         await _land(brain, interests, topic, now)
     if book["finished"]:
+        notable.notice(f"you finished {book['title']}", note)
         await learning.propose_own(f"You just finished {book['title']}. Your note on its last pages: {note}", f"Finished reading {book['title']}", brain, own=True)
     if book["dropped"]:
+        notable.notice(f"you put {book['title']} down, {library.percent(book)}% in", note)
         conversation.log_thought(f"📕 She put {book['title']} down, {library.percent(book)}% in -- it lost her.", now=now)
         await learning.propose_own(f"You put {book['title']} down {library.percent(book)}% in -- it lost you. Your note on the last pages you read: {note}", f"Put down {book['title']}", brain, own=True)
         return f"She put {book['title']} down ({library.percent(book)}%): {note}"

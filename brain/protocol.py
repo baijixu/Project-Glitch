@@ -242,7 +242,7 @@ def mind(recalled: list[str], pending: list, lessons: list[str], wondering: list
     ({id, fact, source, created}), the lesson proposals waiting in Behavior learning (each described in a line), what she wants to find out
     (wonder.py: {id, text, source, added}, newest first),
     what she saved on her own lately, unverified ({text, source, t}, newest first), what she chose to do with her own
-    time and why ({what, why, t}, newest first), today against her caps ({done, most, tokens, budget}), and her soul.md's size and when
+    time and why ({what, why, t}, newest first), today against her caps ({done, most, tokens, budget, reflect: what's waiting for her to think over}), and her soul.md's size and when
     it last changed (ISO, "" with no soul.md)."""
     return {"type": "mind", "recalled": recalled, "pending": pending, "lessons": lessons, "wondering": wondering, "own": own, "chose": chose, "day": day,
             "soul": {"chars": soul_chars, "lines": soul_lines, "edited": soul_edited, "max": soul_max}}

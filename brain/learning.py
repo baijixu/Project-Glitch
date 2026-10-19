@@ -20,6 +20,7 @@ import lessons
 import memory
 import memory_profiles
 import metrics
+import notable
 import persona
 import profiles
 import protocol
@@ -152,6 +153,10 @@ async def _rate_reply(websocket: websockets.ServerConnection, data: dict, brain:
         return await hub.debug_log(websocket, "lessons", "rating not kept (private chat)")
     roleplay = profiles.read_roleplay_active()
     lessons.log_rating(user_text, reply_text, rating, note, roleplay)
+    if rating == "down" and not roleplay:
+        name = persona.user_name() or "He"
+        notable.notice(f"{name} gave one of your replies a thumbs-down",
+                       f"{name}: {user_text}\nYou: {reply_text}" + (f"\nHis note: {note}" if note else ""))
     await hub.debug_log(websocket, "lessons", f"rating logged ({rating})")
     if roleplay or not lessons.read_active() or not brain.llm.owns_conversation:
         return
@@ -347,7 +352,8 @@ def mind_message(brain: Brain) -> dict:
     today = [r for r in rows if r["t"].startswith(datetime.now().date().isoformat()) and not r.get("backfill")]
     most, budget = heartbeat.caps()
     day = {"done": sum(1 for r in today if r["e"] == "activity" and r.get("what") != "rest"), "most": most,
-           "tokens": sum(r.get("tokens") or 0 for r in today if r["e"] == "llm"), "budget": budget}
+           "tokens": sum(r.get("tokens") or 0 for r in today if r["e"] == "llm"), "budget": budget,
+           "reflect": [e["what"] for e in notable.waiting()]}
     return protocol.mind(recalled, training.read_pending(), waiting_lessons, wonder.read()[::-1], own[-SHOWN_OWN:][::-1], chose[-SHOWN_OWN:][::-1], day, len(text), len(text.splitlines()), edited, souls.SOUL_MAX_CHARS)
 
 
@@ -365,6 +371,7 @@ async def daily_snapshot() -> None:
 # Each sitting is proposed from when it ends, and the nightly run only reads what's left.
 PROPOSED_PATH = Path(__file__).parent / "proposed_through.json"
 SITTING_QUIET_SEC = 60 * 60  # this long after his last message, a sitting is over
+LONG_TALK_MESSAGES = 10  # of his, in a sitting that ended: worth her reflecting on (notable.py)
 _ENTRY = re.compile(r"(?=^\*\*\d\d:\d\d:\d\d\*\* )", re.MULTILINE)
 _STAMP = re.compile(r"\*\*(\d\d:\d\d:\d\d)\*\*")
 
@@ -424,6 +431,8 @@ async def propose_unread(day: date, brain: Brain) -> None:
     log = journal.day_log(day, name)
     unread = unproposed(day, log)
     mark_proposed(day, log)
+    if unread.count(f"** {name}: ") >= LONG_TALK_MESSAGES:
+        notable.notice(f"a long talk with {name} just ended", unread)
     if f" {name}: " in unread:
         async with hub.doing("Going over your chat for memories..."):
             await propose_from_log(unread, day, name, brain)
@@ -482,6 +491,8 @@ async def distill_chat(brain: Brain, transcript: str, name: str) -> None:
             )
         source = f"Your chat, {datetime.now():%A %d %B}"
         found = parse_distilled(raw)
+        for what in (what for kind, what, why in found if kind == "decision"):
+            notable.notice("you made a decision", what)
         for what in (what for kind, what, why in found if kind == "question" and persona.not_about_him(what)):
             wonder.add(what, source)  # hers to find out: nothing to approve
         added = sum(1 for kind, what, why in found if kind != "question" and training.add_pending(what, source, type=kind, why=why))
