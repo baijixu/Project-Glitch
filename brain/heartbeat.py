@@ -563,7 +563,7 @@ async def look_at(brain: Brain, interests: dict, name: str, now: datetime) -> st
     """A picture from her gallery, looked at again on her own: her thought on it, weighed like any."""
     pictures.looked(name)
     mime, data_b64 = pictures.read(name) or ("", "")
-    about = next((e["about"] for e in pictures.entries() if e["name"] == name), "")
+    about = pictures.seen_as(name)
     if not data_b64:
         return "The picture she went to look at is gone."
     async with brain.busy("Looking at a picture..."):

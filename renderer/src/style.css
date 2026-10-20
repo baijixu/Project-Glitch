@@ -1326,6 +1326,12 @@ body:has(#history-panel.open) :is(#inbox-button, #mind-button) {
   cursor: zoom-out;
 }
 
+.artwork-tile .artwork-label {
+  width: 100%;
+  padding: 3px 6px;
+  font-size: 1em;
+}
+
 .artwork-about {
   display: none;
   margin: 0;

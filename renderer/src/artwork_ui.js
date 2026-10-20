@@ -63,6 +63,16 @@ export class ArtworkUI {
         className: "artwork-about",
         textContent: `${picture.by === "him" ? "From you" : "She made it"}${picture.about ? ` -- ${picture.about}` : picture.by === "him" ? " -- she hasn't described it yet" : ""}`,
       });
+      // His label: who or what it is, so she doesn't take every picture for herself. Changing it has her
+      // describe the picture again, going by it.
+      const label = Object.assign(document.createElement("input"), {
+        className: "settings-text-input artwork-label",
+        value: picture.label || "",
+        placeholder: "Who is it?",
+        maxLength: 80,
+        title: "Who or what this is, in a few words -- she goes by it",
+      });
+      label.addEventListener("change", () => this._app.send({ type: "label_picture", name, label: label.value.trim() }));
       this._app.loadPicture(name).then((url) => (url ? (img.src = url) : tile.remove()));
       const meta = document.createElement("div");
       meta.className = "artwork-tile-meta";
@@ -78,7 +88,7 @@ export class ArtworkUI {
         }
       });
       meta.appendChild(remove);
-      tile.append(img, about, meta);
+      tile.append(img, label, about, meta);
       this.listEl.appendChild(tile);
     }
   }

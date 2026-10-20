@@ -194,11 +194,28 @@ async def keep_his_picture(data_b64: str, mime: str, label: str, said: str, brai
         print(f"[brain] couldn't keep the picture {label!r} -- not a usable image")
         return
     await hub.broadcast(protocol.artwork(pictures.entries()))
-    if not brain.llm.owns_conversation:  # a harness in control describes nothing for her
+    if brain.llm.owns_conversation:  # a harness in control describes nothing for her
+        await _describe(name, mime, data_b64, said, "", brain)
+
+
+@hub.handles(protocol.LABEL_PICTURE)
+async def label_picture(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    """Settings -> Gallery: his label for a picture -- who or what it is. She describes it again going by it,
+    since what she said before may have taken someone else for her."""
+    name = str(data.get("name") or "")
+    if name not in pictures.listing():
         return
+    label = pictures.label(name, str(data.get("label") or ""))
+    await hub.broadcast(protocol.artwork(pictures.entries()))
+    if label and brain.llm.owns_conversation and (picture := pictures.read(name)):
+        hub.spawn(_describe(name, *picture, "", label, brain))
+
+
+async def _describe(name: str, mime: str, data_b64: str, said: str, label: str, brain: Brain) -> None:
+    """Her description of a picture of his, in the background, so she knows what's in it later without opening it."""
     try:
         async with brain.busy("Looking at your picture..."):
-            about = (await asyncio.to_thread(brain.llm.describe_picture, data_b64, mime, said)).strip()
+            about = (await asyncio.to_thread(brain.llm.describe_picture, data_b64, mime, said, label)).strip()
     except Exception as exc:
         print(f"[brain] couldn't describe {name}: {exc!r}")
         return

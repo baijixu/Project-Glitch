@@ -407,6 +407,14 @@ _DESCRIBE_PROMPT = (
     "or what is in it, what they're wearing or doing, the setting, the colors and the mood -- what you'd need to "
     "recognize it later. He often gives you art of you: if it's you, say so (\"me on a beach in ...\")."
 )
+# With his label: unlabeled, 3 of 3 descriptions of a pink-haired model claimed her ("Me ... with pink hair instead
+# of green"); labeled "Not you -- a model with pink hair", 0 of 3, while one labeled as her still said "me" 3 of 3.
+_DESCRIBE_LABELED_PROMPT = (
+    "He gave you this picture for your gallery.{said} He labeled it \"{label}\" -- that's who or what it is: go by his "
+    "label, not by who it looks like. Describe it for yourself in two to four plain sentences: who or what is in it, "
+    "what they're wearing or doing, the setting, the colors and the mood -- what you'd need to recognize it later. "
+    "Only if the label says it's you, describe it as you (\"me on a beach in ...\")."
+)
 _LOOK_PROMPT = (
     "You're looking through your gallery on your own, at this picture{about}. Let your mind go where it goes: what "
     "do you find yourself thinking, in a sentence or two, in your own words? How does it sit with you, from -10 "
@@ -712,7 +720,7 @@ def _open_picture(arguments: dict) -> tuple[str, str | None]:
     if not name or not pictures.read(name):
         return "Nothing in your gallery matches that -- say you can't find it, or ask him which one.", None
     pictures.looked(name)
-    about = next((e["about"] for e in pictures.entries() if e["name"] == name), "")
+    about = pictures.seen_as(name)
     return f"Opened it{': ' + about if about else '.'} It's right below, and it shows under your reply.", name
 
 
@@ -1373,10 +1381,11 @@ class LocalLLM(ChatBackend):
         (_DAYDREAM_PROMPT) for heartbeat.parse_daydream. `name`: the user's."""
         return self.under_soul(_DAYDREAM_PROMPT.format(fragments=fragments, name=name), MAX_DAYDREAM_TOKENS)
 
-    def describe_picture(self, data_b64: str, mime: str, said: str = "") -> str:
+    def describe_picture(self, data_b64: str, mime: str, said: str = "", label: str = "") -> str:
         """Her gallery: what's in a picture he gave her, in her words (_DESCRIBE_PROMPT); `said`, what
-        he wrote with it."""
-        prompt = _DESCRIBE_PROMPT.format(said=f' He said: "{said}"' if said else "")
+        he wrote with it; `label`, his label for it (_DESCRIBE_LABELED_PROMPT)."""
+        said = f' He said: "{said}"' if said else ""
+        prompt = _DESCRIBE_LABELED_PROMPT.format(said=said, label=label) if label else _DESCRIBE_PROMPT.format(said=said)
         messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": _image_content(prompt, data_b64, mime)}]
         return self._complete(messages, MAX_DESCRIBE_TOKENS, no_thinking=True)
 

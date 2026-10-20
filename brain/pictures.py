@@ -1,7 +1,7 @@
 """Her gallery (Settings -> Gallery): pictures her agent made for her (llm._agent_tool), copied into
 pictures/ (gitignored) as its report names it so they outlast the agent tidying its own folder, and
 pictures he gives her -- uploaded there, or sent in chat. Each has a short description (INDEX) so she
-knows what's in it without opening it; she can open one in conversation (llm.GALLERY_TOOL) or look at
+knows what's in it without opening it, and the label he gave it, if any, so she knows who it is; she can open one in conversation (llm.GALLERY_TOOL) or look at
 one in her quiet time (heartbeat.look_at). A picture reaches a device only as a get_picture answer over
 the authenticated socket -- never as a plain web link that would skip the auth token.
 """
@@ -17,7 +17,8 @@ from pathlib import Path
 from store import read_json, write_json
 
 DIR = Path(__file__).parent / "pictures"
-INDEX = Path(__file__).parent / "pictures.json"  # {name: {"by": "him" (absent: hers), "about": ..., "looked": time}}
+INDEX = Path(__file__).parent / "pictures.json"  # {name: {"by": "him" (absent: hers), "label": his, "about": hers, "looked": time}}
+MAX_LABEL_CHARS = 80
 MAX_BYTES = 20 * 1024 * 1024
 _EXTENSIONS = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}
 # An absolute Windows or POSIX path to an image, as an agent writes it in a report.
@@ -74,20 +75,35 @@ def describe(name: str, about: str) -> None:
     _update(name, about=about)
 
 
+def label(name: str, text: str) -> str:
+    """His short label for a picture (who or what it is); what was kept."""
+    text = " ".join(text.split())[:MAX_LABEL_CHARS]
+    _update(name, label=text)
+    return text
+
+
+def seen_as(name: str) -> str:
+    """How she knows a picture without opening it: his label first (who it is), then her description."""
+    entry = _read_index().get(name, {})
+    label, about = entry.get("label"), entry.get("about")
+    return " -- ".join(([f'"{label}"'] if label else []) + ([about] if about else []))
+
+
 def looked(name: str) -> None:
     _update(name, looked=time.time())
 
 
 def entries() -> list[dict]:
-    """Settings -> Gallery: [{name, by ("her" or "him"), about}], newest first."""
+    """Settings -> Gallery: [{name, by ("her" or "him"), label, about}], newest first."""
     index = _read_index()
-    return [{"name": n, "by": index.get(n, {}).get("by", "her"), "about": index.get(n, {}).get("about", "")} for n in listing()]
+    return [{"name": n, "by": index.get(n, {}).get("by", "her"), "label": index.get(n, {}).get("label", ""), "about": index.get(n, {}).get("about", "")}
+            for n in listing()]
 
 
 def find(about: str) -> str | None:
-    """The picture whose description shares the most words with `about`, or None if none does."""
-    index, words = _read_index(), _words(about)
-    scored = [(len(words & _words(f"{n} {index.get(n, {}).get('about', '')}")), n) for n in listing()]
+    """The picture whose label and description share the most words with `about`, or None if none does."""
+    words = _words(about)
+    scored = [(len(words & _words(f"{n} {seen_as(n)}")), n) for n in listing()]
     best = max(scored, default=(0, None))
     return best[1] if best[0] else None
 

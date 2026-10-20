@@ -52,6 +52,7 @@ SET_WEB_SEARCH_ACTIVE = "set_web_search_active"
 GET_PICTURE = "get_picture"
 ADD_PICTURE = "add_picture"
 DELETE_PICTURE = "delete_picture"
+LABEL_PICTURE = "label_picture"
 RATE_REPLY = "rate_reply"
 SET_LESSONS_ACTIVE = "set_lessons_active"
 SET_LESSONS_AUTONOMY = "set_lessons_autonomy"
@@ -133,7 +134,7 @@ def speak_text(text: str, reach_out: bool = False, partial: bool = False, pictur
 
 
 def artwork(pictures: list[dict]) -> dict:
-    """Settings -> Gallery: her pictures ({name, by, about}, pictures.entries), newest first, each
+    """Settings -> Gallery: her pictures ({name, by, label, about}, pictures.entries), newest first, each
     fetched with get_picture; `names` alone for every device's picture cache."""
     return {"type": "artwork", "names": [p["name"] for p in pictures], "pictures": pictures}
 
