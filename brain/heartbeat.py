@@ -445,7 +445,7 @@ async def beat(brain: Brain) -> str:
         metrics.log("activity", what="rest", reason=why)
         return f"She's resting until tomorrow: {why}."
     if event := notable.take():
-        metrics.log("activity", what="reflect", reason=event["what"])
+        metrics.log("activity", what="reflect", reason=notable.for_him(event["what"]))
         return await reflect(brain, event, now)
     turn = Turn(brain, now, library.read_state(), read_interests())
     word, turn.why = await pick(brain, options(turn), now)
@@ -481,10 +481,10 @@ async def reflect(brain: Brain, event: dict, now: datetime) -> str:
     """Something that happened (notable.py), thought over -- in her Thoughts."""
     page = await _write(brain, "Thinking it over...", _REFLECT_PROMPT.format(what=event["what"], detail=event["detail"]), MAX_REFLECT_TOKENS)
     if not page:
-        return f"She thought about it ({event['what']}) and had nothing to add."
+        return f"She thought about it ({notable.for_him(event['what'])}) and had nothing to add."
     conversation.log_thought(f"💭 **{event['what'].capitalize()}**\n\n{page}", now=now)
     print(f"[heartbeat] she reflected on: {event['what']}")
-    return f"She thought over {event['what']}: {page[:120]}"
+    return f"She thought over this: {notable.for_him(event['what'])}. {page[:120]}"
 
 
 async def look_into(brain: Brain, item: dict, now: datetime) -> str:

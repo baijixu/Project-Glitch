@@ -79,7 +79,7 @@ def mind_message(brain: Brain) -> dict:
         "wondering": wonder.read()[::-1],
         "own": own[-SHOWN_OWN:][::-1],
         "chose": chose[-SHOWN_OWN:][::-1],
-        "day": {**day, "reflect": [e["what"] for e in notable.waiting()]},
+        "day": {**day, "reflect": [notable.for_him(e["what"]) for e in notable.waiting()]},
         "soul": {
             "chars": len(text), "lines": len(text.splitlines()), "max": souls.SOUL_MAX_CHARS,
             "edited": datetime.fromtimestamp(soul.stat().st_mtime).isoformat(timespec="minutes") if soul.exists() else "",

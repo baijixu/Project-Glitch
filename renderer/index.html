@@ -262,10 +262,12 @@
               </span>
             </label>
             <p class="settings-hint">
-              Lets her mind wander while you're away: after 20 minutes of quiet, every 10 minutes, bits of her soul,
-              her diary, what you've said lately and her memories drift past, and whatever keeps pulling at her builds
-              up until it lands and she writes about it. With a book in her library, half the time she reads instead.
-              Read along in Chat Logs -> Thoughts. Paused in role-play.
+              Her own time while you're away: after 20 minutes of quiet, every 10 minutes she thinks over anything
+              that happened first, then picks what to do, and why -- read, look something up, have her friends over,
+              look at a picture, think, write in her journal, or rest (daily caps in config.yaml). When she thinks,
+              bits of her soul, her diary, what you've said lately and her memories drift past, and whatever keeps
+              pulling at her builds up until it lands and she writes about it. Read along in Chat Logs -> Thoughts,
+              and see her choices in the 🧠 window. Paused in role-play.
             </p>
             <p id="heartbeat-timer" class="settings-hint curiosity-timer"></p>
             <button id="think-now-button" class="settings-action-button">Think now</button>
@@ -319,8 +321,9 @@
               the chat and proposes a few short facts, and what she's come to think on her own; they wait here for you
               to edit, rate (core / normal / minor) and save -- or reject. Core facts are always in her prompt. Once a
               week she also checks her memories, and ones gone out of date or repeating another come here to update or
-              retire; and she looks back on her week and may propose one line for her soul, written in only if you add
-              it. Something about you she can't find in the chat becomes a question she asks you instead. Needs a
+              retire; and she looks back on her week and proposes a revised soul (the parts about who she is), shown
+              as a diff and written in only if you replace it. Her decisions, lessons and opinions from a cleared chat
+              come here too; her own low-risk views she keeps herself, unverified (see the 🧠 window). Something about you she can't find in the chat becomes a question she asks you instead. Needs a
               Hindsight memory server.
             </p>
             <p id="training-unavailable" class="settings-hint" hidden>
@@ -933,7 +936,7 @@
           <h3 class="lessons-subhead">What she did with her time</h3>
           <div id="growth-activities" class="growth-chart"></div>
           <h3 class="lessons-subhead">Waiting for your approval</h3>
-          <p class="settings-hint">At the end of each day: memories and soul lines in Memory training, lessons in Behavior learning.</p>
+          <p class="settings-hint">At the end of each day: memories and a revised soul in Memory training, lessons in Behavior learning.</p>
           <div id="growth-waiting" class="growth-chart"></div>
           <div id="growth-waiting-legend" class="growth-legend"></div>
           <h3 class="lessons-subhead">Her most recalled memories</h3>

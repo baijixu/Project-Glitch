@@ -3,6 +3,7 @@ decision she made, a book finished or put down, a friends' visit. Each is notice
 and waits in brain/self/notable.json; her next turn of her own time reflects on the oldest
 (heartbeat.reflect) before anything else -- and with nothing waiting there's nothing to reflect on."""
 
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -16,6 +17,12 @@ STORE = JsonList(Path(__file__).parent / "self" / "notable.json", MAX_ITEMS, ("w
 def waiting() -> list[dict]:
     """[{what, detail, at}], oldest first."""
     return STORE.read()
+
+
+def for_him(what: str) -> str:
+    """`what` as he reads it (the 🧠 window, Think now): it's worded to her -- "you finished R.U.R.", "Josh gave
+    one of your replies a thumbs-down" -- so read by him, "you" would be him."""
+    return re.sub(r"\byou(rs?)?\b", lambda m: {"": "she", "r": "her", "rs": "hers"}[m[1] or ""], what)
 
 
 def notice(what: str, detail: str) -> None:

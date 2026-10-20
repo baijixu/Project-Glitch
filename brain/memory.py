@@ -189,8 +189,8 @@ async def ensure_bank() -> None:
 
 
 async def _apply_default_retain_mission() -> None:
-    """Sets RETAIN_MISSION and OBSERVATIONS_MISSION where the bank has none, leaving any
-    set by hand. Best-effort: a server with bank-config writes disabled keeps its own."""
+    """Sets RETAIN_MISSION and OBSERVATIONS_MISSION where the bank has none, and turns observations
+    off unless they were set by hand. Best-effort: a server with bank-config writes disabled keeps its own."""
     try:
         config = await _client.aget_bank_config(_bank_id)
         overrides = config.get("overrides") or {}
@@ -198,6 +198,10 @@ async def _apply_default_retain_mission() -> None:
             await _client.aupdate_bank_config(_bank_id, retain_mission=RETAIN_MISSION)
         if not overrides.get("observations_mission"):
             await _client.aupdate_bank_config(_bank_id, observations_mission=OBSERVATIONS_MISSION)
+        # On, every memory gets a summary of itself beside it: each one recalled twice into her prompt, counted
+        # twice in her bank, and a repeat for upkeep to retire. Her approved facts are already word for word.
+        if "enable_observations" not in overrides:
+            await _client.aupdate_bank_config(_bank_id, enable_observations=False)
     except Exception as exc:
         print(f"[memory] couldn't set the default retain mission on bank {_bank_id!r}: {exc!r}")
 

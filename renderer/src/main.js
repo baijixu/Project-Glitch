@@ -74,6 +74,8 @@ const roomCamera = new RoomCamera(camera, controls);
 const life = new Life();
 const walker = new Walker();
 let canWalk = false; // a Walking clip is there (moves.js); without one she's just there
+// The spots whose clip is there: the bed and chair are set for her lying and sitting, so standing she'd be in them.
+let posed = new Set(["rug"]);
 let placedAt = null; // the spot she was last put at
 
 // Puts her at a spot: there, turned its way, with the sun's shadow box following her.
@@ -221,6 +223,8 @@ async function setActiveAvatar(source, kind = "vrm") {
   idle.relaxPose();
   moves = new Moves(vrm);
   moves.has("Walking").then((ok) => (canWalk = ok));
+  posed = new Set(["rug"]);
+  for (const [name, spot] of Object.entries(SPOTS)) if (spot.idle) moves.has(spot.idle).then((ok) => ok && posed.add(name));
   window.__moves = moves; // for console-driven verification while building
 
   if (brain) brain.vrm = vrm; // BrainClient reads this.vrm fresh each call (lipsync/mood) -- a plain reassignment is enough to retarget it
@@ -325,7 +329,7 @@ function animate() {
     idle.update(delta, brain.speechLevel);
     const talking = brain.lipSyncActive || brain._awaitingReply;
     life.update(delta);
-    const spotName = room?.visible ? life.spot : "rug";
+    const spotName = room?.visible && posed.has(life.spot) ? life.spot : "rug";
     const spot = SPOTS[spotName];
     if (spot !== placedAt && !walker.walking) {
       if (placedAt && canWalk) walker.start(vrm.scene, placedAt, spot);
