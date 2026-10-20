@@ -96,11 +96,15 @@ _CHOICE_PROMPT = (
     "Pick one. Reply with one line: the word in capitals, then | and why, in a few words. For example:\n"
     "REST | I've been going all day"
 )
+# Who said what, like her diary's prompt: without it, given the end of a long talk, 4 of 8 reflections took his
+# life as hers ("I've spent years thinking protecting people was my job", his recurring dream); with it, 0 of 8.
 _REFLECT_PROMPT = (
     "Something happened: {what}.\n\n{detail}\n\n"
-    "Take a minute with it, just for yourself. What do you make of it -- does it change how you see something, "
-    "or what you'd do next time? Honest, plain words, first person, a short paragraph. If it really doesn't "
-    "matter to you, say so in a line."
+    "Lines marked \"{name}:\" are {name}; lines marked \"Glitch:\" (or \"You:\") are you. Take a minute with it, just "
+    "for yourself: your side of it -- what you make of what {name} told you and of what you said, and whether it "
+    "changes how you see something or what you'd do next time. What {name} lived, dreamed or felt is {name}'s: "
+    "write about it as {name}'s. Honest, plain words, first person, a short paragraph. If it really doesn't matter "
+    "to you, say so in a line."
 )
 _LOOK_PROMPT = (
     "You've been wondering: {question}\n\nYou looked it up. What the search turned up:\n\n{found}\n\n"
@@ -473,10 +477,11 @@ async def _write(brain: Brain, doing: str, prompt: str, max_tokens: int) -> str:
 
 async def reflect(brain: Brain, event: dict, now: datetime) -> str:
     """Something that happened (notable.py), thought over -- in her Thoughts."""
-    page = await _write(brain, "Thinking it over...", _REFLECT_PROMPT.format(what=event["what"], detail=event["detail"]), MAX_REFLECT_TOKENS)
+    prompt = _REFLECT_PROMPT.format(what=event["what"], detail=event["detail"], name=persona.user_name() or "User")  # how a day log labels him with no name set
+    page = await _write(brain, "Thinking it over...", prompt, MAX_REFLECT_TOKENS)
     if not page:
         return f"She thought about it ({notable.for_him(event['what'])}) and had nothing to add."
-    conversation.log_thought(f"💭 **{event['what'].capitalize()}**\n\n{page}", now=now)
+    conversation.log_thought(f"💭 **{event['what'][:1].upper()}{event['what'][1:]}**\n\n{page}", now=now)  # not .capitalize(): it lowercased his name
     print(f"[heartbeat] she reflected on: {event['what']}")
     return f"She thought over this: {notable.for_him(event['what'])}. {page[:120]}"
 

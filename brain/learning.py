@@ -293,30 +293,35 @@ async def _set_training_active(websocket: websockets.ServerConnection, data: dic
     await hub.broadcast(training_state_message())
 
 
-# How far into a day her memory proposals have read: {"day": "YYYY-MM-DD", "through": "HH:MM:SS"}.
-# Each sitting is proposed from when it ends, and the nightly run only reads what's left.
+# How far into each day her memory proposals have read: {"YYYY-MM-DD": "HH:MM:SS"}, the last few days. Each sitting
+# is proposed from when it ends, and the nightly run only reads what's left of yesterday. One mark for all days lost
+# yesterday's the moment a sitting after midnight ended, and the nightly run read all of yesterday again: the same
+# long talk noticed twice, and her second reflection on it took his dream as hers.
 PROPOSED_PATH = Path(__file__).parent / "proposed_through.json"
+MARKED_DAYS = 3
 SITTING_QUIET_SEC = 60 * 60  # this long after his last message, a sitting is over
 LONG_TALK_MESSAGES = 10  # of his, in a sitting that ended: worth her reflecting on (notable.py)
 _ENTRY = re.compile(r"(?=^\*\*\d\d:\d\d:\d\d\*\* )", re.MULTILINE)
 _STAMP = re.compile(r"\*\*(\d\d:\d\d:\d\d)\*\*")
 
 
-def _proposed_through() -> dict:
-    return read_json(PROPOSED_PATH, {})
+def _proposed_through() -> dict[str, str]:
+    """{day: through}. The old one-day file ({"day", "through"}) reads as its one day."""
+    marks = read_json(PROPOSED_PATH, {})
+    return {marks["day"]: marks.get("through", "")} if "day" in marks else marks
 
 
 def unproposed(day: date, log: str) -> str:
     """The entries of a day's log her memory proposals haven't read yet."""
-    mark = _proposed_through()
-    through = mark.get("through", "") if mark.get("day") == day.isoformat() else ""
+    through = _proposed_through().get(day.isoformat(), "")
     return "".join(e for e in _ENTRY.split(log) if (stamp := _STAMP.match(e)) and stamp[1] > through)
 
 
 def mark_proposed(day: date, log: str) -> None:
     stamps = _STAMP.findall(log)
     if stamps:
-        write_json(PROPOSED_PATH, {"day": day.isoformat(), "through": stamps[-1]})
+        marks = {**_proposed_through(), day.isoformat(): stamps[-1]}
+        write_json(PROPOSED_PATH, dict(sorted(marks.items())[-MARKED_DAYS:]))
 
 
 def can_propose(brain: Brain) -> bool:
@@ -331,8 +336,7 @@ def sitting_over(now: float, quiet_sec: float = SITTING_QUIET_SEC) -> date | Non
     if not last or now - last < quiet_sec:
         return None
     said = datetime.fromtimestamp(last)
-    mark = _proposed_through()
-    if mark.get("day") == said.date().isoformat() and mark.get("through", "") >= f"{said:%H:%M:%S}":
+    if _proposed_through().get(said.date().isoformat(), "") >= f"{said:%H:%M:%S}":
         return None
     return said.date()
 
