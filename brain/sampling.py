@@ -17,11 +17,11 @@ DEFAULT_NAME is built in, not stored there, so it can't be lost or changed --
 tune it by saving the boxes under a new name.
 """
 
-import json
 import math
 from pathlib import Path
 
 from names import sanitize_name
+from store import read_json, write_json
 
 PROFILES_PATH = Path(__file__).parent / "sampling_profiles.json"
 
@@ -55,17 +55,7 @@ KEYS = tuple(LIMITS)
 
 
 def _read_file() -> dict:
-    try:
-        data = json.loads(PROFILES_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
-def _write_file(data: dict) -> None:
-    tmp = PROFILES_PATH.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    tmp.replace(PROFILES_PATH)
+    return read_json(PROFILES_PATH, {})
 
 
 def clean_values(values: dict) -> dict:
@@ -123,7 +113,7 @@ def set_active(name: str) -> None:
         raise ValueError(f"there's no sampling profile called {name!r}")
     data = _read_file()
     data["active"] = name
-    _write_file(data)
+    write_json(PROFILES_PATH, data)
 
 
 def save_profile(name: str, values: dict) -> str:
@@ -142,7 +132,7 @@ def save_profile(name: str, values: dict) -> str:
     profiles[sanitized] = cleaned
     data["profiles"] = profiles
     data["active"] = sanitized
-    _write_file(data)
+    write_json(PROFILES_PATH, data)
     return sanitized
 
 
@@ -158,4 +148,4 @@ def delete_profile(name: str) -> None:
     data["profiles"] = profiles
     if data.get("active") == name:
         data["active"] = DEFAULT_NAME
-    _write_file(data)
+    write_json(PROFILES_PATH, data)

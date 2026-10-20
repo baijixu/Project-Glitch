@@ -12,12 +12,32 @@
   when it was never set.
 * JsonList -- a short list of items (dicts) in one JSON file, oldest first, the
   oldest dropped past `max_items` (what she wants to find out, what she'll think over).
+
+And read_json / write_json for any other JSON file of hers.
 """
 
 import json
 from pathlib import Path
 
 from names import sanitize_name
+
+
+def read_json(path: Path, default):
+    """The JSON at `path` -- or `default` when it's missing, unreadable, or not the same kind (a list
+    where a dict belongs, from a hand edit)."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return default
+    return data if isinstance(data, type(default)) else default
+
+
+def write_json(path: Path, data) -> None:
+    """Written whole, through a temporary file: a crash mid-write can't leave half of one."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp.replace(path)
 
 
 class NamedStore:
@@ -100,12 +120,7 @@ class JsonList:
         self.required = required  # an item missing any of these (a hand-edited file) is skipped
 
     def read(self) -> list[dict]:
-        try:
-            items = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return []
-        return [i for i in items if isinstance(i, dict) and all(i.get(k) for k in self.required)] if isinstance(items, list) else []
+        return [i for i in read_json(self.path, []) if isinstance(i, dict) and all(i.get(k) for k in self.required)]
 
     def write(self, items: list[dict]) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(items[-self.max_items:], ensure_ascii=False, indent=1), encoding="utf-8")
+        write_json(self.path, items[-self.max_items:])

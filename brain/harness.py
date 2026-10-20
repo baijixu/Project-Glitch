@@ -9,11 +9,10 @@ does she say" changes, to a relay through llm.py's HarnessLLM. Which
 one is active is kept here, so the connection survives a Brain restart.
 """
 
-import json
 import uuid
 from pathlib import Path
 
-from store import Choice, NamedStore
+from store import Choice, NamedStore, read_json, write_json
 
 NONE_NAME = "None"
 
@@ -49,18 +48,14 @@ def save_harness(name: str, endpoint: str, model: str, api_key: str) -> None:
 
 
 def _read_sessions() -> dict:
-    try:
-        data = json.loads(SESSIONS_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
+    return read_json(SESSIONS_PATH, {})
 
 
 def new_session_id(name: str) -> str:
     """Starts a fresh conversation with the named harness and returns its id."""
     sessions = _read_sessions()
     sessions[name] = f"glitch-{uuid.uuid4().hex}"
-    SESSIONS_PATH.write_text(json.dumps(sessions), encoding="utf-8")
+    write_json(SESSIONS_PATH, sessions)
     return sessions[name]
 
 

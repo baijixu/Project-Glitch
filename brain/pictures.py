@@ -7,13 +7,14 @@ the authenticated socket -- never as a plain web link that would skip the auth t
 """
 
 import base64
-import json
 import mimetypes
 import re
 import shutil
 import time
 from datetime import datetime
 from pathlib import Path
+
+from store import read_json, write_json
 
 DIR = Path(__file__).parent / "pictures"
 INDEX = Path(__file__).parent / "pictures.json"  # {name: {"by": "him" (absent: hers), "about": ..., "looked": time}}
@@ -60,17 +61,13 @@ def add(data_b64: str, mime: str, label: str = "") -> str | None:
 
 
 def _read_index() -> dict:
-    try:
-        index = json.loads(INDEX.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return index if isinstance(index, dict) else {}
+    return read_json(INDEX, {})
 
 
 def _update(name: str, **fields) -> None:
     index = _read_index()
     index[name] = {**index.get(name, {}), **fields}
-    INDEX.write_text(json.dumps(index, indent=1, ensure_ascii=False), encoding="utf-8")
+    write_json(INDEX, index)
 
 
 def describe(name: str, about: str) -> None:
@@ -129,7 +126,7 @@ def delete(name: str) -> bool:
         return False
     index = _read_index()
     if index.pop(name, None) is not None:
-        INDEX.write_text(json.dumps(index, indent=1, ensure_ascii=False), encoding="utf-8")
+        write_json(INDEX, index)
     return True
 
 

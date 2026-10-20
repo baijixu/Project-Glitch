@@ -5,7 +5,6 @@ server profiles.
 
 import asyncio
 import re
-import json
 import time
 from datetime import date, datetime
 from pathlib import Path
@@ -28,6 +27,7 @@ import reflection
 import training
 import wonder
 from hub import Brain
+from store import read_json, write_json
 
 LESSONS_STATE_TIMEOUT_SEC = 8
 
@@ -303,10 +303,7 @@ _STAMP = re.compile(r"\*\*(\d\d:\d\d:\d\d)\*\*")
 
 
 def _proposed_through() -> dict:
-    try:
-        return json.loads(PROPOSED_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
+    return read_json(PROPOSED_PATH, {})
 
 
 def unproposed(day: date, log: str) -> str:
@@ -319,7 +316,7 @@ def unproposed(day: date, log: str) -> str:
 def mark_proposed(day: date, log: str) -> None:
     stamps = _STAMP.findall(log)
     if stamps:
-        PROPOSED_PATH.write_text(json.dumps({"day": day.isoformat(), "through": stamps[-1]}), encoding="utf-8")
+        write_json(PROPOSED_PATH, {"day": day.isoformat(), "through": stamps[-1]})
 
 
 def can_propose(brain: Brain) -> bool:
@@ -377,7 +374,6 @@ _CONCLUSION_PROMPT = (
 
 
 MAX_DISTILL_TOKENS = 500
-DISTILL_TYPES = ("decision", "lesson", "opinion", "question")
 _DISTILL_PROMPT = (
     "Below is the conversation you and {name} just finished:\n\n{transcript}\n\n"
     "What from it do you want to keep? Only things on your side of it:\n"

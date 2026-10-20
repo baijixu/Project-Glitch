@@ -110,7 +110,9 @@ async def clear_conversation(websocket: websockets.ServerConnection, data: dict,
     if brain.llm.owns_conversation:  # a harness's conversations stay out of her chat log -- see reply_to
         conversation.log_marker("New conversation (chat cleared)", mode=persona.conversation_mode())
     LAST_CONTEXT_USAGE = None
-    curiosity.restart_quiet_hour(time.time())  # she may reach out again after a new random wait
+    # Whatever she said to reach out is gone with the conversation, so she's no longer waiting on a reply
+    # to it: a new random wait starts now.
+    curiosity.note_user_message(time.time())
     await reach_out.broadcast_curiosity_timer()
     print("[brain] conversation cleared")
     await hub.broadcast(protocol.conversation_cleared())

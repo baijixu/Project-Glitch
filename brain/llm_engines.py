@@ -6,10 +6,9 @@ has loaded), an optional `api_key`, and for Ollama `provider`/`think`.
 NONE_NAME is reserved: no LLM at all -- see llm.py's NoneLLM for what runs then.
 """
 
-import json
 from pathlib import Path
 
-from store import Choice, NamedStore
+from store import Choice, NamedStore, read_json, write_json
 
 NONE_NAME = "None"
 
@@ -73,15 +72,12 @@ ROLEPLAY_SESSION_PATH = Path(__file__).parent / "roleplay_session.json"
 
 
 def start_roleplay_session(previous: str, engine: str, think: bool) -> None:
-    ROLEPLAY_SESSION_PATH.write_text(json.dumps({"previous": previous, "engine": engine, "think": think}), encoding="utf-8")
+    write_json(ROLEPLAY_SESSION_PATH, {"previous": previous, "engine": engine, "think": think})
 
 
 def read_roleplay_session() -> dict:
     """The current role-play session, or {} if role-play didn't switch engines."""
-    try:
-        return json.loads(ROLEPLAY_SESSION_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
+    return read_json(ROLEPLAY_SESSION_PATH, {})
 
 
 def end_roleplay_session() -> dict:

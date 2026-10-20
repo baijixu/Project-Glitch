@@ -27,7 +27,7 @@ import uuid
 from pathlib import Path
 
 import memory
-from store import Toggle
+from store import Toggle, read_json, write_json
 
 _DIR = Path(__file__).parent
 ACTIVE = Toggle(_DIR / "lessons_active.txt", default=False)
@@ -199,18 +199,6 @@ async def update_lesson(lesson_id: str, name: str | None = None, content: str | 
     return _lesson(updated)
 
 
-def _read_json_list(path: Path) -> list:
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return []
-    return data if isinstance(data, list) else []
-
-
-def _write_json(path: Path, data) -> None:
-    path.write_text(json.dumps(data, indent=1), encoding="utf-8")
-
-
 async def retire_lesson(lesson_id: str, reason: str = "") -> None:
     """Turns a lesson off (is_active=false) and records it locally first --
     Hindsight stops listing a retired directive, so this record is the only
@@ -220,9 +208,9 @@ async def retire_lesson(lesson_id: str, reason: str = "") -> None:
     client, bank = await _client()
     await client.aupdate_directive(bank, lesson_id, is_active=False)
     if lesson:
-        retired = _read_json_list(RETIRED_PATH)
+        retired = read_json(RETIRED_PATH, [])
         retired.append({**lesson, "retired_at": time.time(), "reason": reason})
-        _write_json(RETIRED_PATH, retired)
+        write_json(RETIRED_PATH, retired)
     invalidate()
 
 
@@ -333,7 +321,7 @@ def parse_distillation(raw: str, lessons: list[dict], candidates: list[dict], ha
 
 
 def read_candidates() -> list[dict]:
-    return _read_json_list(CANDIDATES_PATH)
+    return read_json(CANDIDATES_PATH, [])
 
 
 def _add_candidate(content: str) -> None:
@@ -341,18 +329,18 @@ def _add_candidate(content: str) -> None:
     if any(c["content"] == content for c in candidates):
         return
     candidates.append({"content": content, "created": time.time()})
-    _write_json(CANDIDATES_PATH, candidates[-MAX_CANDIDATES:])
+    write_json(CANDIDATES_PATH, candidates[-MAX_CANDIDATES:])
 
 
 def _drop_candidate(content: str) -> None:
-    _write_json(CANDIDATES_PATH, [c for c in read_candidates() if c["content"] != content])
+    write_json(CANDIDATES_PATH, [c for c in read_candidates() if c["content"] != content])
 
 
 # -- Pending proposals (awaiting the user's approval) --------------------------
 
 
 def read_pending() -> list[dict]:
-    return _read_json_list(PENDING_PATH)
+    return read_json(PENDING_PATH, [])
 
 
 def _add_pending(action: dict) -> dict:
@@ -364,7 +352,7 @@ def _add_pending(action: dict) -> dict:
     )
     if not duplicate:
         pending.append(proposal)
-        _write_json(PENDING_PATH, pending[-MAX_PENDING:])
+        write_json(PENDING_PATH, pending[-MAX_PENDING:])
     return proposal
 
 
@@ -460,7 +448,7 @@ async def resolve_pending(proposal_id: str, approve: bool) -> str | None:
 
 
 def _drop_pending(proposal_id: str) -> None:
-    _write_json(PENDING_PATH, [p for p in read_pending() if p["id"] != proposal_id])
+    write_json(PENDING_PATH, [p for p in read_pending() if p["id"] != proposal_id])
 
 
 # -- State for the Settings panel ---------------------------------------------

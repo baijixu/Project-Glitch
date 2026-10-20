@@ -36,7 +36,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from store import Toggle
+from store import Toggle, read_json, write_json
 
 _DIR = Path(__file__).parent
 ACTIVE = Toggle(_DIR / "curiosity_active.txt", default=True)  # on by default, like memory: it's the point of the feature
@@ -102,11 +102,7 @@ def _pacing() -> dict:
     """{turns_since_offer, turns_since_propose, last_user_at, reached_out, wait_sec} -- kept on
     disk so a Brain restart doesn't reset them. A fresh start is ready to offer a
     question right away (the first one needn't wait)."""
-    try:
-        data = json.loads(PACING_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        data = {}
-    data = data if isinstance(data, dict) else {}
+    data = read_json(PACING_PATH, {})
     data.setdefault("turns_since_offer", OFFER_EVERY_TURNS)
     data.setdefault("turns_since_propose", 0)
     data.setdefault("last_user_at", None)
@@ -117,7 +113,7 @@ def _pacing() -> dict:
 
 def _save_pacing(data: dict) -> None:
     try:
-        PACING_PATH.write_text(json.dumps(data), encoding="utf-8")
+        write_json(PACING_PATH, data)
     except OSError as exc:
         print(f"[curiosity] couldn't save pacing: {exc!r}")
 
@@ -127,11 +123,7 @@ read_active = ACTIVE.read
 
 
 def _read() -> list[dict]:
-    try:
-        data = json.loads(QUESTIONS_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return []
-    return [q for q in data if isinstance(q, dict) and q.get("id") and q.get("text")] if isinstance(data, list) else []
+    return [q for q in read_json(QUESTIONS_PATH, []) if isinstance(q, dict) and q.get("id") and q.get("text")]
 
 
 def _write(questions: list[dict]) -> None:
@@ -140,7 +132,7 @@ def _write(questions: list[dict]) -> None:
     # older closed ones, and slicing the list itself dropped the newest -- she forgot what
     # she'd just asked and proposed it again.
     closed = sorted((q for q in questions if q["status"] != OPEN), key=lambda q: q.get("created", ""))[-MAX_CLOSED_KEPT:]
-    QUESTIONS_PATH.write_text(json.dumps(open_ones + closed, indent=2), encoding="utf-8")
+    write_json(QUESTIONS_PATH, open_ones + closed)
 
 
 def _norm(text: str) -> str:
@@ -337,12 +329,6 @@ def note_user_message(now: float) -> None:
     pacing["reached_out"] = False
     pacing["wait_sec"] = random.randint(*REACH_OUT_AFTER_SEC)
     _save_pacing(pacing)
-
-
-def restart_quiet_hour(now: float) -> None:
-    """Clear Chat: whatever she said to reach out is gone from the conversation,
-    so she's no longer waiting on a reply to it -- a new wait starts now."""
-    note_user_message(now)
 
 
 def last_user_at() -> float | None:

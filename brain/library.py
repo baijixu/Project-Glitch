@@ -9,7 +9,6 @@ current book and that note reach her when a conversation opens, like her diary.
 import base64
 import html.parser
 import io
-import json
 import posixpath
 import re
 import xml.etree.ElementTree as ET
@@ -21,7 +20,7 @@ import websockets
 import hub
 import protocol
 from hub import Brain
-from store import NamedStore
+from store import NamedStore, read_json, write_json
 
 STORE = NamedStore(Path(__file__).parent / "library", kind="book", suffix=".txt")
 STATE_PATH = Path(__file__).parent / "library.json"
@@ -99,10 +98,7 @@ def _epub_text(data: bytes) -> str:
 def read_state() -> dict:
     """{"reading": name | None, "last": name | None, "books": {name: {"title", "pos", "chars", "note", "finished",
     "dull" (sittings in a row she barely wanted to go on), "dropped" (she put it down)}}}"""
-    try:
-        state = json.loads(STATE_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        state = {}
+    state = read_json(STATE_PATH, {})
     state.setdefault("reading", None)
     state.setdefault("last", None)
     state.setdefault("books", {})
@@ -110,7 +106,7 @@ def read_state() -> dict:
 
 
 def save_state(state: dict) -> None:
-    STATE_PATH.write_text(json.dumps(state, indent=1, ensure_ascii=False), encoding="utf-8")
+    write_json(STATE_PATH, state)
 
 
 def add_book(filename: str, data: bytes) -> str:

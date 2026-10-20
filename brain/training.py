@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import metrics
-from store import Toggle
+from store import Toggle, read_json, write_json
 
 _DIR = Path(__file__).parent
 ACTIVE = Toggle(_DIR / "training_active.txt", default=False)  # opt-in: nothing is saved until someone reviews it
@@ -51,15 +51,11 @@ def importance_tag(level: str) -> str:
 
 
 def _read() -> list[dict]:
-    try:
-        data = json.loads(QUEUE_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return []
-    return [p for p in data if isinstance(p, dict) and p.get("id") and p.get("fact")] if isinstance(data, list) else []
+    return [p for p in read_json(QUEUE_PATH, []) if isinstance(p, dict) and p.get("id") and p.get("fact")]
 
 
 def _write(pending: list[dict]) -> None:
-    QUEUE_PATH.write_text(json.dumps(pending[-MAX_PENDING:], indent=2), encoding="utf-8")
+    write_json(QUEUE_PATH, pending[-MAX_PENDING:])
 
 
 def read_pending() -> list[dict]:

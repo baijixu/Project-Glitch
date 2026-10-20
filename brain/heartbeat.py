@@ -55,7 +55,7 @@ import wonder
 from config import load_config
 from hub import Brain
 from names import sanitize_name
-from store import Toggle
+from store import Toggle, read_json, write_json
 
 ACTIVE = Toggle(Path(__file__).parent / "heartbeat_active.txt", default=False)
 
@@ -128,17 +128,11 @@ def _interests_path() -> Path:
 
 def read_interests() -> dict:
     """{topic: {weight, at (time.time()), thoughts, questions, landed}}."""
-    try:
-        data = json.loads(_interests_path().read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
+    return read_json(_interests_path(), {})
 
 
 def _save_interests(interests: dict) -> None:
-    path = _interests_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(interests, indent=1, ensure_ascii=False), encoding="utf-8")
+    write_json(_interests_path(), interests)
 
 
 def weight_now(item: dict, now: float) -> float:

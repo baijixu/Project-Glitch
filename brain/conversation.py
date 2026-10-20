@@ -14,12 +14,11 @@
 Both live beside this file and are gitignored (they're the user's conversations).
 """
 
-import json
 import re
 from datetime import datetime
 from pathlib import Path
 
-from store import Toggle
+from store import Toggle, read_json, write_json
 
 _DIR = Path(__file__).parent
 STATE_PATH = _DIR / "conversation.json"  # normal chat (the original file name, kept)
@@ -82,21 +81,15 @@ def save_state(history: list[dict], mode: str) -> None:
     """Best-effort: a disk problem must never break a reply."""
     try:
         data = {"mode": mode, "saved": datetime.now().isoformat(timespec="seconds"), "messages": _marked([_storable(m) for m in history])}
-        path = _path(mode)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-        tmp.replace(path)  # atomic: a crash mid-write can't leave a half-written file
+        write_json(_path(mode), data)
     except OSError as exc:
         print(f"[conversation] couldn't save the conversation: {exc!r}")
 
 
 def load_state(mode: str) -> list[dict]:
     """The saved conversation if it belongs to `mode`, else []. Anything unreadable is []."""
-    try:
-        data = json.loads(_path(mode).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return []
-    if not isinstance(data, dict) or data.get("mode") != mode or not isinstance(data.get("messages"), list):
+    data = read_json(_path(mode), {})
+    if data.get("mode") != mode or not isinstance(data.get("messages"), list):
         return []
     return [
         {"role": m["role"], "content": m["content"], **({"at": m["at"]} if isinstance(m.get("at"), str) else {}),
