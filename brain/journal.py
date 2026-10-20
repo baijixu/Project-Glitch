@@ -79,6 +79,8 @@ async def journal_loop(brain: Brain) -> None:
         await asyncio.sleep(delay)
         delay = CHECK_SEC
         try:
+            if hub.PAUSED.read():
+                continue
             if metrics.snapshot_due():  # this loop always runs; once a day, for her Growth charts
                 await mind.daily_snapshot()
             path = due_path(datetime.now())

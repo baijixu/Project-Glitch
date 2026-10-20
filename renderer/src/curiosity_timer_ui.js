@@ -6,6 +6,7 @@
 
 const PAUSED = {
   off: "Curiosity is off.",
+  paused: "Paused: she's paused (Settings -> Pause Her).",
   roleplay: "Paused during role-play.",
   harness: "Paused while a harness is in control.",
   waiting: "She reached out -- waiting for your reply before she does again.",

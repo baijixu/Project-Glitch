@@ -70,6 +70,8 @@ async def reach_out_loop(brain: Brain) -> None:
         try:
             await broadcast_curiosity_timer(only_if_changed=True)  # catches role-play / harness switches
             await broadcast_inbox(only_if_changed=True)  # Heartbeat, a visit or her diary may have added one
+            if hub.PAUSED.read():
+                continue
             learning.end_sitting(brain)
             if (
                 brain.llm.owns_conversation
@@ -92,6 +94,8 @@ _LAST_CURIOSITY_TIMER: dict | None = None
 def curiosity_timer_message(error: str = "") -> dict:
     if not curiosity.read_active():
         return protocol.curiosity_timer("off", None, error)
+    if hub.PAUSED.read():
+        return protocol.curiosity_timer("paused", None, error)
     if profiles.read_roleplay_active():
         return protocol.curiosity_timer("roleplay", None, error)
     if harness.read_active_harness():

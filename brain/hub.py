@@ -8,12 +8,19 @@ import contextlib
 import ipaddress
 import json
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 
 import websockets
 
 import protocol
 from llm import ChatBackend
+from store import Toggle
 from voice import FasterWhisperSTT, NoneTTS, RemoteTTS
+
+# Settings -> Pause her: nothing she does on her own -- her own time (Heartbeat), reaching out, the end-of-sitting
+# memory proposals, her nightly diary (and the upkeep and weekly look-back after it), her friends' nightly visits.
+# Each loop checks it every time round; talking to her, and the buttons he presses himself, still work.
+PAUSED = Toggle(Path(__file__).parent / "paused.txt", default=False)
 
 # Cap on the free-text fields saved to disk (profiles, souls, engine settings -- not
 # avatar files, which have their own limit): a buggy or hostile client can't fill the

@@ -9,6 +9,7 @@ import { _clock } from "./curiosity_timer_ui.js";
 // Heartbeat's countdown when it isn't counting.
 const HEARTBEAT_PAUSED = {
   off: "Heartbeat is off.",
+  paused: "Paused: she's paused (Settings -> Pause Her).",
   roleplay: "Paused during role-play.",
   harness: "Paused while a harness is in control.",
 };
@@ -24,6 +25,7 @@ const CHATTINESS = [
 
 // Brain-side switches: message it sends -> the state message Brain answers with.
 const SWITCHES = [
+  { id: "paused-toggle", set: "set_paused_active", state: "paused_state" },
   { id: "private-toggle", set: "set_private_active", state: "private_state" },
   { id: "voice-toggle", set: "set_voice_active", state: "voice_state" },
   { id: "web-search-toggle", set: "set_web_search_active", state: "web_search_state" },

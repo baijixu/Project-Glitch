@@ -276,7 +276,7 @@ The ⚙️ panel, top to bottom:
 | --- | --- |
 | **Notes** | A private scratchpad (`brain/notes.md`). She never reads it. |
 | **Your journal** | What's going on with you, in your own words: she reads that day's entries in her nightly diary and your last two days' when she reaches out -- nothing else sees them. Hide or delete any entry. |
-| **Quick toggles** | Voice, camera, screen capture, microphone, always-on mic, chat bubbles over the avatar. |
+| **Quick toggles** | **Pause Her** (nothing she does on her own runs -- her own time, reaching out, diary, memory proposals, friends' visits -- while talking to her still works), private chat, voice, camera, screen capture, microphone, always-on mic, chat bubbles over the avatar. |
 | **Background** | The picture behind her: add, pick or delete; the same on every device. |
 | **UI Style** | *Classic*, or *Neon* (dark glass and glowing lines) in cyan, purple or a season's colors (Spring, Summer, Autumn, Winter), per device. |
 | **Her room** (under UI Style) | A cel-shaded bedroom around her (`renderer/room.blend` → `assets/room.glb`), watched from the corner; the camera moves in to her face while she talks. She goes where her Brain's work takes her: the desk to read or write, the bed to daydream, back to the rug after a few quiet minutes. With Mixamo animations (FBX, *Without Skin*) in `renderer/assets/animations/` she sits and lies properly -- *Sitting*, *Sitting Talking*, *Laying Idle*, *Laying Hand Gesture* -- otherwise she stays on her rug. The folder is gitignored: Mixamo's files can't be passed on. Per device, on by default. |

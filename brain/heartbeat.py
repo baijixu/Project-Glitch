@@ -271,6 +271,7 @@ def due_at() -> float:
 def _free(brain: Brain, now: float) -> bool:
     return (
         ACTIVE.read()
+        and not hub.PAUSED.read()
         and brain.llm.owns_conversation
         and not profiles.read_roleplay_active()
         and not brain.reply_lock.locked()
@@ -282,6 +283,8 @@ def timer_message(brain: Brain) -> dict:
     """Settings -> Heartbeat's countdown."""
     if not ACTIVE.read():
         return protocol.heartbeat_timer("off", None)
+    if hub.PAUSED.read():
+        return protocol.heartbeat_timer("paused", None)
     if profiles.read_roleplay_active():
         return protocol.heartbeat_timer("roleplay", None)
     if not brain.llm.owns_conversation:

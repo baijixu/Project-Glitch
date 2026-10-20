@@ -48,6 +48,7 @@ GET_HARNESS = "get_harness"
 DELETE_HARNESS = "delete_harness"
 SET_VOICE_ACTIVE = "set_voice_active"
 SET_PRIVATE_ACTIVE = "set_private_active"
+SET_PAUSED_ACTIVE = "set_paused_active"
 SET_WEB_SEARCH_ACTIVE = "set_web_search_active"
 GET_PICTURE = "get_picture"
 ADD_PICTURE = "add_picture"
@@ -226,6 +227,11 @@ def roleplay_state(active: bool) -> dict:
 def roleplay_engine(name: str) -> dict:
     """The engine role-play switches to, or "" to stay on the current one."""
     return {"type": "roleplay_engine", "name": name}
+
+
+def paused_state(active: bool) -> dict:
+    """Whether she's paused (hub.PAUSED): nothing she does on her own runs."""
+    return {"type": "paused_state", "active": active}
 
 
 def private_state(active: bool) -> dict:

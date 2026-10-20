@@ -60,6 +60,14 @@ async def _set_private_active(websocket: websockets.ServerConnection, data: dict
     await hub.broadcast(protocol.private_state(conversation.PRIVATE.read()))
 
 
+@hub.handles(protocol.SET_PAUSED_ACTIVE)
+async def _set_paused_active(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    hub.PAUSED.write(bool(data.get("active")))
+    await hub.broadcast(protocol.paused_state(hub.PAUSED.read()))
+    await heartbeat.broadcast_timer(brain)
+    await reach_out.broadcast_curiosity_timer()
+
+
 @hub.handles(protocol.SET_WEB_SEARCH_ACTIVE)
 async def _set_web_search_active(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
     web_search.set_active(bool(data.get("active")))

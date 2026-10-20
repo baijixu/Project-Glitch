@@ -373,7 +373,7 @@ async def visit_loop(brain: Brain) -> None:
     while True:
         await asyncio.sleep(VISIT_CHECK_SEC)
         try:
-            if visit_due(datetime.now(), curiosity.last_user_at()) and not start_visit(brain):
+            if not hub.PAUSED.read() and visit_due(datetime.now(), curiosity.last_user_at()) and not start_visit(brain):
                 await visit(brain)
         except Exception as exc:  # never let one bad night stop the loop
             print(f"[friends] tonight's visit failed: {exc!r}")
