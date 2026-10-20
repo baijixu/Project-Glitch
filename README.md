@@ -6,7 +6,7 @@ against whatever LLM you point it at (LM Studio, llama.cpp, Ollama, or any OpenA
 talk to her from your PC, or from your phone over your home network or [Tailscale](https://tailscale.com).
 
 - **Fully local.** Your LLM, your speech, your memory server, with no cloud AI service involved. Built and used day to day
-  with a 9B model (Qwen3.5 9B) on a 12 GB GPU.
+  with a 27B model (Qwen3.8 27B, Q4) on a 24 GB GPU, and a 9B on a 12 GB one before that.
 - **A memory you control.** Long-term recall through your own [Hindsight server](#memory), and with
   [memory training](#memory-training) on, she proposes each memory and you edit, approve or reject it before she keeps it.
 - **She learns from your 👍/👎.** Rate a reply, say why, and she turns it into a short behavior rule, which can wait for
@@ -159,18 +159,19 @@ Two independent programs and one small protocol between them:
 
 | Machine | Hardware | Runs |
 | --- | --- | --- |
-| Main PC | AMD Ryzen 9 5950X, 64 GB RAM, NVIDIA RTX 3060 (12 GB), Windows 11 Pro | The Brain, the Renderer's dev server, and LM Studio with her model: Qwen3.5 9B (uncensored, Q8_0, 65k context, every layer on the GPU) |
-| A second PC on the same network | NVIDIA RTX 3060 (12 GB) | Her voice (Qwen3-TTS) and Hindsight with its own 9B model |
+| Main PC | AMD Ryzen 9 5950X, 64 GB RAM, NVIDIA RTX 3090 (24 GB), Windows 11 Pro | The Brain, the Renderer's dev server, and LM Studio with her model: Qwen3.8 27B (uncensored, Q4_K_P, 64k context with a q4_0 cache, every layer on the GPU, thinking on). Her friends talk through it too. |
+| A second PC on the same network | Two NVIDIA RTX 3060s (12 GB each) | Her voice (Qwen3-TTS) and Hindsight with its own 9B model on one; pictures for her agent on the other |
 | Phone | a current phone browser | Talking to her, at home or over Tailscale |
 
-Measured on the 3060: her model fills 11.9 of its 12 GB and writes about 34 tokens a second, with her 3D view open in a
-browser on the same PC (drawn at 30 frames a second, to leave the GPU to her model).
+Measured on the 3090: her model takes about 22 of its 24 GB and writes about 46 tokens a second, with her 3D view open in a
+browser on the same PC (drawn at 30 frames a second, to leave the GPU to her model); a reply that thinks first takes about
+7 seconds. Before it she ran a 9B (Qwen3.5 9B, Q8_0) on a 12 GB RTX 3060 at about 34 tokens a second.
 
 **Recommended hardware.** What you need is set mostly by the LLM:
 
-- **For her model:** an NVIDIA GPU with **12 GB** runs a 9B model at Q8 entirely on the GPU, as above. With less, use a
-  smaller quantization or a smaller model. A **24 GB** card (RTX 3090 or 4090) leaves room for a bigger model, a longer
-  conversation, or her voice on the same card.
+- **For her model:** a **24 GB** NVIDIA card (RTX 3090 or 4090) runs a 27B at Q4 entirely on the GPU, as above -- she
+  reads her soul as a character and holds her ground far better than on a 9B. With **12 GB**, a 9B at Q8 fits, as she
+  started; with less, use a smaller quantization or a smaller model.
 - **For her voice:** the bundled Kokoro server runs on the CPU, no GPU needed. Qwen3-TTS, the more expressive one, needs an
   NVIDIA GPU with about 4.5 GB free.
 - **For memory:** Hindsight needs an LLM of its own, ideally 7-9B (see [Memory](#memory)). Put it on a second machine, or a
