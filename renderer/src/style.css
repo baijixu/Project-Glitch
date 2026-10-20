@@ -509,6 +509,12 @@ body:has(#history-panel.open) :is(#inbox-button, #mind-button) {
   overflow-y: auto;
 }
 
+/* Refresh / Close sat right under "Ask her to revise her soul now", and in Neon's wide capitals ran together. */
+#mind-modal .modal-actions {
+  margin-top: 16px;
+  gap: 12px;
+}
+
 .mind-tabs {
   display: flex;
   gap: 6px;
