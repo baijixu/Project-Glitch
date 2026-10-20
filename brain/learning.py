@@ -478,6 +478,19 @@ def parse_distilled(raw: str) -> list[tuple[str, str, str]]:
     return found[:4]
 
 
+REPEAT_COMPARE_WITH = 2  # her closest memories a new one of hers is checked against
+
+
+async def repeat_of(text: str, brain: Brain) -> str:
+    """The memory of hers `text` only repeats, or "". Her distilled views reach his review list without
+    the known-memories check his facts get, so about half of the 99 from her old chats were ones she had."""
+    for old in (await memory.similar_memories(text))[:REPEAT_COMPARE_WITH]:
+        if await asyncio.to_thread(brain.llm.already_remembered, text, old["text"]):
+            print(f"[training] already remembered, not proposed: {text[:60]!r} ~ {old['text'][:60]!r}")
+            return old["text"]
+    return ""
+
+
 async def distill_chat(brain: Brain, transcript: str, name: str) -> None:
     """Clear Chat, with memory training on: her decisions, lessons and opinions from the conversation that
     just ended, each with why it matters to her, into his review list -- facts about him come from the
@@ -495,7 +508,10 @@ async def distill_chat(brain: Brain, transcript: str, name: str) -> None:
             notable.notice("you made a decision", what)
         for what in (what for kind, what, why in found if kind == "question" and persona.not_about_him(what)):
             wonder.add(what, source)  # hers to find out: nothing to approve
-        added = sum(1 for kind, what, why in found if kind != "question" and training.add_pending(what, source, type=kind, why=why))
+        added = 0
+        for kind, what, why in found:
+            if kind != "question" and not await repeat_of(what, brain) and training.add_pending(what, source, type=kind, why=why):
+                added += 1
         print(f"[training] {added} decisions / lessons / opinions of hers from the cleared chat")
         if added:
             await hub.broadcast(training_state_message())
@@ -515,7 +531,7 @@ async def propose_own(text: str, source: str, brain: Brain, own: bool = False) -
     try:
         async with brain.busy("Working out what she thinks..."):
             fact = (await asyncio.to_thread(brain.llm.under_soul, _CONCLUSION_PROMPT.format(text=text), MAX_CONCLUSION_TOKENS)).strip().strip('"')
-        if not fact or fact.lower().rstrip(".") == "nothing" or len(fact) > training.MAX_FACT_CHARS:
+        if not fact or fact.lower().rstrip(".") == "nothing" or len(fact) > training.MAX_FACT_CHARS or await repeat_of(fact, brain):
             return
         name = persona.user_name()
         about_him = bool(name) and re.search(rf"\b{re.escape(name)}\b", fact, re.IGNORECASE)

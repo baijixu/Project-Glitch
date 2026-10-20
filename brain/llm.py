@@ -481,6 +481,22 @@ _MEMORY_PAIR_SYSTEM_PROMPT = (
     "doesn't are not the same; OPPOSITE if they answer the same question differently, for example two different "
     "favorites; DIFFERENT otherwise."
 )
+# A new memory of hers against one she already has (learning.repeat_of) -- looser than the pair check above:
+# the same view with another reason is still a repeat. The rules alone caught 4 of 9 real repeats from her
+# old chats; with the examples 7 of 9, and 9 of 9 near-misses (a new favorite, his view not hers) still new.
+_ALREADY_REMEMBERED_PROMPT = (
+    "A new memory is waiting to be saved. Does the old memory already say what it says? The same view, choice or "
+    "fact counts even in other words or with another reason given. A different subject, a different answer or "
+    "favorite, a change of mind, or someone else's view instead of the same person's does not. Reply with exactly "
+    "one word, YES or NO.\n\n"
+    "Examples:\n"
+    "New: I like tea more than coffee because it's calmer. | Old: I'm a tea person; coffee is jittershit. -> YES\n"
+    "New: I'd pick a dog over a cat because dogs are loyal. | Old: I'm a dog person, not a cat person. -> YES\n"
+    "New: I prefer nights because they're quiet and clear. | Old: I prefer nights to mornings: mornings are loud. -> YES\n"
+    "New: My favorite color is blue now. | Old: My favorite color is green. -> NO\n"
+    "New: I love autumn. | Old: Josh loves autumn. -> NO\n"
+    "New: I want to visit Japan someday. | Old: I'm drawn to Japanese culture. -> NO"
+)
 
 # Her nightly diary (brain/journal.py), from the previous day's chat log -- so it shows him
 # something new (4 of 4 test entries did, nothing invented).
@@ -1299,6 +1315,14 @@ class LocalLLM(ChatBackend):
             {"role": "user", "content": f"Memory A: {new}\nMemory B: {old}"},
         ]
         return self._complete(messages, MAX_MEMORY_PROPOSAL_TOKENS, no_thinking=True)
+
+    def already_remembered(self, new: str, old: str) -> bool:
+        """Whether `old` already says what `new` does -- see _ALREADY_REMEMBERED_PROMPT."""
+        messages = [
+            {"role": "system", "content": _ALREADY_REMEMBERED_PROMPT},
+            {"role": "user", "content": f"New: {new} | Old: {old} ->"},
+        ]
+        return self._complete(messages, MAX_MEMORY_PROPOSAL_TOKENS, no_thinking=True).strip().upper().startswith("YES")
 
     def screen_messages(self) -> list[dict] | None:
         return [_for_screen(m) for m in self._history if m.get("role") in ("user", "assistant")][-SCREEN_MESSAGES:]

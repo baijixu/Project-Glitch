@@ -42,7 +42,6 @@ RECALL_MAX_TOKENS = 800
 RECALL_LIMIT = 3
 RECALL_FLOOR = 0.0001
 RECALL_RELATIVE = 0.25
-SIMILAR_MIN = 0.1  # memory upkeep's duplicate check: only real matches (see above) are compared
 CORE_RECALL_MAX_TOKENS = 300  # the always-shown "core" facts (retain_fact / brain/training.py)
 
 # What Hindsight's extraction keeps from each exchange (its per-bank retain_mission) --
@@ -361,10 +360,12 @@ async def similar_memories(text: str) -> list[dict]:
     if _client is None:
         return []
     response = await _client.arecall(_bank_id, query=text, max_tokens=RECALL_MAX_TOKENS)
+    # Recall's own rule, not a fixed score: her real repeats scored as low as 0.0009 (best match, still a repeat).
+    best = max((_relevance(r) for r in response.results), default=0.0)
     return [
         {"id": r.id, "text": r.text, "mentioned_at": getattr(r, "mentioned_at", None), "tags": getattr(r, "tags", None) or []}
         for r in response.results
-        if _relevance(r) >= SIMILAR_MIN
+        if _relevance(r) >= max(RECALL_FLOOR, best * RECALL_RELATIVE)
     ]
 
 
