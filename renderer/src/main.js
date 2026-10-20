@@ -9,6 +9,12 @@ import { IdleController, pickGesture } from "./idle.js";
 import { BrainClient } from "./brain_client.js";
 import "./icons.js";
 
+// On a phone, opening the file picker (or the screen locking) puts the browser in the background and drops Vite's
+// dev connection; when it came back, Vite reloaded the page and the picked file was lost. Her own connection to the
+// Brain reconnects by itself, so Vite's reload is held off: its client awaits this listener before reloading, and the
+// promise never settles. After restarting the Renderer's server, refresh by hand.
+import.meta.hot?.on("vite:ws:disconnect", () => new Promise(() => {}));
+
 const statusEl = document.getElementById("status");
 const historyButtonEl = document.getElementById("history-button");
 const historyPanelEl = document.getElementById("history-panel");

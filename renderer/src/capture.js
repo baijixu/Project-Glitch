@@ -288,7 +288,9 @@ export class Capture {
   // into the message so she can read it. Anything else is refused rather than
   // sent as garbage.
   async _attachFile(file) {
-    if (!file || !this._app.canSendReply()) return;
+    // Not "can send now": on a phone her connection is still coming back from the file picker when the file arrives,
+    // and it was dropped without a word. It only waits here; Send stays off until she's connected.
+    if (!file) return;
     if (file.type.startsWith("image/")) {
       let dataUrl;
       try {
