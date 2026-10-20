@@ -30,6 +30,7 @@ import { InboxUI } from "./inbox_ui.js";
 import { MindUI } from "./mind_ui.js";
 import { LibraryUI } from "./library_ui.js";
 import { ArtworkUI } from "./artwork_ui.js";
+import { HisJournalUI } from "./his_journal_ui.js";
 import { HarnessUI, LlmEnginesUI, SpeechEnginesUI } from "./engines_ui.js";
 import { HistoryUI } from "./history_ui.js";
 import { LessonsUI } from "./lessons_ui.js";
@@ -121,6 +122,7 @@ export class BrainClient {
     this.friends = new FriendsUI(this);
     this.library = new LibraryUI(this);
     this.artwork = new ArtworkUI(this);
+    this.hisJournal = new HisJournalUI(this);
     this.inbox = new InboxUI(this);
     this.mind = new MindUI(this);
     this.llmEngines = new LlmEnginesUI(this, { onEnginesChanged: (names) => this.characters.setEngineNames(names) });
@@ -192,6 +194,7 @@ export class BrainClient {
       ...this.friends.handlers,
       ...this.library.handlers,
       ...this.artwork.handlers,
+      ...this.hisJournal.handlers,
       ...this.inbox.handlers,
       ...this.mind.handlers,
       ...this.settings.handlers,

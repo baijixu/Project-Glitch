@@ -55,6 +55,7 @@ import engines
 import friends
 import harness
 import health
+import his_journal  # noqa: F401 -- registers Settings -> Your journal's handlers
 import heartbeat
 import hub
 import journal

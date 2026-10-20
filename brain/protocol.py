@@ -53,6 +53,10 @@ GET_PICTURE = "get_picture"
 ADD_PICTURE = "add_picture"
 DELETE_PICTURE = "delete_picture"
 LABEL_PICTURE = "label_picture"
+GET_HIS_JOURNAL = "get_his_journal"
+ADD_JOURNAL_ENTRY = "add_journal_entry"
+HIDE_JOURNAL_ENTRY = "hide_journal_entry"
+DELETE_JOURNAL_ENTRY = "delete_journal_entry"
 RATE_REPLY = "rate_reply"
 SET_LESSONS_ACTIVE = "set_lessons_active"
 SET_LESSONS_AUTONOMY = "set_lessons_autonomy"
@@ -248,6 +252,11 @@ def mind(state: dict) -> dict:
     newest first); day -- today against her caps ({done, most, tokens, budget, reflect: what's waiting for her
     to think over}); soul -- soul.md's {chars, lines, max, edited: ISO, "" with no soul.md}."""
     return {"type": "mind", **state}
+
+
+def his_journal(entries: list[dict]) -> dict:
+    """Settings -> Your journal: his entries ({id, text, written (ISO), hidden}), newest first."""
+    return {"type": "his_journal", "entries": entries}
 
 
 def growth(series: dict) -> dict:

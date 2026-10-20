@@ -63,6 +63,20 @@
           </p>
           <button id="open-notes-button" class="settings-action-button">Notes</button>
         </section>
+        <section id="his-journal-section" class="settings-section">
+          <h3>Your journal</h3>
+          <p class="settings-hint">
+            What's going on with you, in your own words. She reads what you wrote each day in that night's diary,
+            and your last two days' entries when she reaches out -- nothing else sees them: not her memory, her
+            Thoughts, her friends or a web search. Hide one and she never uses it.
+          </p>
+          <textarea id="his-journal-input" class="settings-text-input" rows="3" maxlength="2000" placeholder="What's going on with you?"></textarea>
+          <button id="his-journal-add" class="settings-action-button">Add entry</button>
+          <details id="his-journal-details">
+            <summary class="lessons-subhead">Entries<span id="his-journal-count"></span></summary>
+            <div id="his-journal-list"></div>
+          </details>
+        </section>
         <section id="quick-toggles-section" class="settings-section">
           <label class="settings-toggle-row" title="Nothing you two say is kept: no chat log, memories or diary">
             <span>Private Chat</span>

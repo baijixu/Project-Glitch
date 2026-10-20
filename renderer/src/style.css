@@ -1758,3 +1758,27 @@ body.overlay-chat-active #side-actions .overlay-rate-button {
   width: 100%;
   accent-color: #4a7bd8;
 }
+
+/* Settings -> Your journal: his entries, newest first; one hidden from her is dimmed. */
+#his-journal-input {
+  width: 100%;
+  resize: vertical;
+  margin-bottom: 8px;
+}
+
+.his-journal-entry {
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.his-journal-entry.hidden-from-her {
+  opacity: 0.5;
+}
+
+.his-journal-text {
+  margin: 0 0 4px;
+  white-space: pre-wrap;
+  line-height: 1.4;
+}

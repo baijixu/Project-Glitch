@@ -17,6 +17,7 @@ from pathlib import Path
 
 import conversation
 import curiosity
+import his_journal
 import hub
 import learning
 import metrics
@@ -89,7 +90,7 @@ async def journal_loop(brain: Brain) -> None:
             if not log:
                 continue
             async with brain.busy("Writing her diary..."):  # one model, one job at a time
-                text = await asyncio.to_thread(brain.llm.write_diary, log, name, day_thoughts(day))
+                text = await asyncio.to_thread(brain.llm.write_diary, log, name, day_thoughts(day), his_journal.of_day(day, name))
             if text.strip():
                 JOURNAL_DIR.mkdir(exist_ok=True)
                 path.write_text(f"# {path.stem} -- {day:%A %d %B}\n\n{text.strip()}\n", encoding="utf-8")

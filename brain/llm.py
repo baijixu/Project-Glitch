@@ -975,7 +975,7 @@ class ChatBackend:
     def cut_last_reply(self, heard: float) -> None:
         pass
 
-    def write_diary(self, log: str, name: str, thoughts: str = "") -> str:
+    def write_diary(self, log: str, name: str, thoughts: str = "", his: str = "") -> str:
         return ""
 
     def transcript(self, name: str) -> str:
@@ -1416,13 +1416,14 @@ class LocalLLM(ChatBackend):
         previous = f" Your note from last time: {previous_note}" if previous_note else ""
         return self.under_soul(_READING_PROMPT.format(title=title, percent=percent, previous=previous, pages=pages), MAX_READING_TOKENS)
 
-    def write_diary(self, log: str, name: str, thoughts: str = "") -> str:
-        """Her nightly diary entry (brain/journal.py) about one day's chat log, and what went
-        through her head that day on her own (Heartbeat's thoughts and reading notes)."""
+    def write_diary(self, log: str, name: str, thoughts: str = "", his: str = "") -> str:
+        """Her nightly diary entry (brain/journal.py) about one day's chat log, what went through her head
+        that day on her own (Heartbeat's thoughts and reading notes), and what he wrote in his own journal
+        that day (his_journal.of_day, already framed as his)."""
         alone = f"\n\nWhat went through your own head that day, while nobody was talking to you:\n\n{thoughts}" if thoughts else ""
         messages = [
             {"role": "system", "content": _DIARY_SYSTEM_PROMPT.format(name=name, count="four" if thoughts else "three", alone=_DIARY_ALONE_HEADING if thoughts else "")},
-            {"role": "user", "content": "Yesterday's chat log:\n\n" + log + alone},
+            {"role": "user", "content": "Yesterday's chat log:\n\n" + log + alone + (f"\n\n{his}" if his else "")},
         ]
         return self._complete(messages, MAX_DIARY_TOKENS, no_thinking=True)
 
@@ -1694,8 +1695,8 @@ class LocalLLM(ChatBackend):
         except Exception:
             return "unknown"
 
-    def reach_out(self, question: str | None = None) -> Reply:
-        """She speaks first after a quiet spell (reach_out.py)."""
+    def reach_out(self, question: str | None = None, his: str = "") -> Reply:
+        """She speaks first after a quiet spell (reach_out.py); `his`, his latest journal entries (his_journal.recent)."""
         hint = (
             f'If it fits, bring up something you\'ve wondered about: "{question}" -- in your own words. '
             if question
@@ -1705,6 +1706,7 @@ class LocalLLM(ChatBackend):
             "They haven't said anything for a while. Reach out to them first -- once, briefly, in your own "
             f"voice, the way a friend might text. {hint}Don't mention these notes or that an app told you to."
             + (f"\n\n{JOURNAL_HEADER}\n{self._journal}" if self._journal else "")
+            + (f"\n\n{his}\nIf something he wrote is worth asking about, you could bring it up -- as his." if his else "")
         )
 
     def agent_reported(self, report: str, shown: list[str]) -> Reply:

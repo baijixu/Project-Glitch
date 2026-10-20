@@ -275,6 +275,7 @@ The ⚙️ panel, top to bottom:
 | Section | What it's for |
 | --- | --- |
 | **Notes** | A private scratchpad (`brain/notes.md`). She never reads it. |
+| **Your journal** | What's going on with you, in your own words: she reads that day's entries in her nightly diary and your last two days' when she reaches out -- nothing else sees them. Hide or delete any entry. |
 | **Quick toggles** | Voice, camera, screen capture, microphone, always-on mic, chat bubbles over the avatar. |
 | **Background** | The picture behind her: add, pick or delete; the same on every device. |
 | **UI Style** | *Classic*, or *Neon* (dark glass and glowing lines) in cyan, purple or a season's colors (Spring, Summer, Autumn, Winter), per device. |
@@ -432,6 +433,11 @@ fourth, *On my own*, covers what she thought about and read while you were away.
 day they're about. Her newest entry reaches her when a conversation opens (your first message, or the first after an hour's
 break) and when she reaches out, so she can pick up where her thoughts left off. Read them in *Settings → Chat Logs → Journal*.
 Days you didn't talk get no entry, and she leaves your health out of it.
+
+**Your journal** (*Settings → Your journal*) is the other way round: entries you write about your own life. She reads the
+ones you wrote that day when she writes her diary that night, and your last two days' entries when she reaches out, so
+she can ask how the thing you wrote about went -- always as yours ("I" in them is you, never her). Nothing else sees them:
+not her memory, her Thoughts, her friends or a web search. Hide an entry and she never uses it.
 
 ### Her weekly reflection
 
@@ -693,6 +699,7 @@ Your conversations:
   weekly pages (`becoming/`), what she wants to find out (`wonder.json`) and what she'll think over (`notable.json`), her
   friends' visits (`visits/`) and her check-ups (`checkups/`).
 - **`brain/metrics.jsonl`**: the events behind the 🧠 window's Growth charts.
+- **`brain/his_journal.json`**: your own journal entries (*Settings → Your journal*).
 - **`brain/library/`** and **`brain/library.json`**: the books you gave her, and where she is in each.
 - **`brain/backups/`**: memory exports and copies made before Glitch changes something of yours (every change to `soul.md`,
   and for example the one-time split of older chat logs that had role-play mixed in).
@@ -722,6 +729,7 @@ brain/                 Python backend (WebSocket server)
   journal.py           her nightly diary
   heartbeat.py         her own time: what she chooses to do, her mind wandering, reading
   notable.py wonder.py what she'll think over; what she wants to find out
+  his_journal.py       your journal: what she may read of it, and only there
   mind.py metrics.py   the 🧠 window, and the log its Growth charts come from
   library.py           her bookshelf: the books you upload, as plain text
   friends.py           her friends' visits
