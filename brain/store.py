@@ -1,4 +1,4 @@
-"""The three kinds of saved setting Brain keeps next to its code:
+"""The kinds of saved state Brain keeps next to its code:
 
 * NamedStore -- saved items of one kind, one file per name: JSON (LLM engines,
   speech engines, harnesses, memory profiles) or plain text with a `suffix` like
@@ -10,6 +10,8 @@
   harness...), read back as `default` when nothing has been picked.
 * Toggle -- an on/off switch, "1" or "0" in a text file, read back as `default`
   when it was never set.
+* JsonList -- a short list of items (dicts) in one JSON file, oldest first, the
+  oldest dropped past `max_items` (what she wants to find out, what she'll think over).
 """
 
 import json
@@ -89,3 +91,21 @@ class Toggle:
 
     def write(self, on: bool) -> None:
         self.path.write_text("1" if on else "0", encoding="utf-8")
+
+
+class JsonList:
+    def __init__(self, path: Path, max_items: int, required: tuple[str, ...]) -> None:
+        self.path = path
+        self.max_items = max_items
+        self.required = required  # an item missing any of these (a hand-edited file) is skipped
+
+    def read(self) -> list[dict]:
+        try:
+            items = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return []
+        return [i for i in items if isinstance(i, dict) and all(i.get(k) for k in self.required)] if isinstance(items, list) else []
+
+    def write(self, items: list[dict]) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(json.dumps(items[-self.max_items:], ensure_ascii=False, indent=1), encoding="utf-8")

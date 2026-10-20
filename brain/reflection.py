@@ -53,7 +53,7 @@ _REWRITE_PROMPT = (
     "Reply with the rewritten parts, each under its heading as above, and then one last line:\n"
     "CHANGED: in one sentence, what you changed and why"
 )
-_HEADING = re.compile(r"^#+[ \t]*(.+?)[ \t]*$", re.MULTILINE)
+_HEADING = re.compile(r"^(#+[ \t]*(.+?)[ \t]*)$", re.MULTILINE)  # (the whole line, the heading)
 
 
 def due(now: datetime) -> bool:
@@ -76,10 +76,16 @@ def week(now: datetime) -> str:
     return "\n\n".join(p for p in (*parts, landed, library.reading_line()) if p)
 
 
+def _split(text: str) -> tuple[str, list[tuple[str, str, str]]]:
+    """(what comes before the first heading, [(heading line, heading, body)]) -- each body everything up to
+    the next heading, so joining them back gives `text` exactly."""
+    parts = _HEADING.split(text)  # [before, line, heading, body, line, heading, body...]
+    return parts[0], list(zip(parts[1::3], parts[2::3], parts[3::3]))
+
+
 def sections_of(soul: str) -> dict[str, str]:
     """{heading: body} for the SECTIONS her soul has, in its order."""
-    parts = _HEADING.split(soul)  # [before, heading, body, heading, body...]
-    return {heading: body.strip() for heading, body in zip(parts[1::2], parts[2::2]) if heading in SECTIONS}
+    return {heading: body.strip() for _, heading, body in _split(soul)[1] if heading in SECTIONS}
 
 
 def parse_rewrite(raw: str, headings: list[str]) -> tuple[dict[str, str], str] | None:
@@ -87,8 +93,7 @@ def parse_rewrite(raw: str, headings: list[str]) -> tuple[dict[str, str], str] |
     `headings`, each with something under it."""
     changed = re.search(r"^\W*CHANGED:\s*(.+)$", raw, re.MULTILINE | re.IGNORECASE)
     body = raw[: changed.start()] if changed else raw
-    parts = _HEADING.split(body)
-    found = {heading: text.strip() for heading, text in zip(parts[1::2], parts[2::2])}
+    found = {heading: text.strip() for _, heading, text in _split(body)[1]}
     if list(found) != headings or not all(found.values()):
         return None
     return found, (changed[1].strip() if changed else "She rewrote the parts of her soul about who she is.")
@@ -96,10 +101,9 @@ def parse_rewrite(raw: str, headings: list[str]) -> tuple[dict[str, str], str] |
 
 def apply_rewrite(soul: str, rewritten: dict[str, str]) -> str:
     """`soul` with each rewritten section's body replaced -- headings and every other section untouched."""
-    for heading, body in rewritten.items():
-        pattern = re.compile(rf"(^#+[ \t]*{re.escape(heading)}[ \t]*\n)(.*?)(?=^#+[ \t]|\Z)", re.MULTILINE | re.DOTALL)
-        soul = pattern.sub(lambda m: f"{m[1]}\n{body}\n\n", soul, count=1)
-    return soul.rstrip() + "\n"
+    before, sections = _split(soul)
+    kept = "".join(line + (f"\n\n{rewritten[heading]}\n\n" if heading in rewritten else body) for line, heading, body in sections)
+    return (before + kept).rstrip() + "\n"
 
 
 def diff(old: str, new: str) -> list[list[str]]:

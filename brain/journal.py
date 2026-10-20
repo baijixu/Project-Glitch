@@ -20,6 +20,7 @@ import curiosity
 import hub
 import learning
 import metrics
+import mind
 import persona
 import reflection
 import upkeep
@@ -77,6 +78,8 @@ async def journal_loop(brain: Brain) -> None:
         await asyncio.sleep(delay)
         delay = CHECK_SEC
         try:
+            if metrics.snapshot_due():  # this loop always runs; once a day, for her Growth charts
+                await mind.daily_snapshot()
             path = due_path(datetime.now())
             if not path or not brain.llm.owns_conversation or brain.reply_lock.locked():
                 continue

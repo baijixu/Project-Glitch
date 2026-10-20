@@ -90,7 +90,7 @@ def mind_message(brain: Brain) -> dict:
 async def daily_snapshot() -> None:
     """Once a day (metrics.snapshot_due): how big her memory bank and his review list are, for Growth."""
     try:
-        size = len(await memory.list_memories()) if memory.server_backed() else None
+        size = len(await memory.list_memories()) if memory.hindsight_client() else None  # not connected: no count, not 0
     except Exception as exc:
         print(f"[metrics] counting her memories failed: {exc!r}")
         size = None
