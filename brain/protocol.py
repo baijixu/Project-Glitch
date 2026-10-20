@@ -60,6 +60,7 @@ RETIRE_LESSON = "retire_lesson"
 DELETE_LESSON = "delete_lesson"
 RESOLVE_LESSON_PROPOSAL = "resolve_lesson_proposal"
 SET_CURIOSITY_ACTIVE = "set_curiosity_active"
+SET_CHATTINESS = "set_chattiness"
 SET_HEARTBEAT_ACTIVE = "set_heartbeat_active"
 THINK_NOW = "think_now"
 SET_FRIENDS_ACTIVE = "set_friends_active"
@@ -332,9 +333,9 @@ def heartbeat_note(text: str) -> dict:
     return {"type": "heartbeat_note", "text": text}
 
 
-def curiosity_state(active: bool) -> dict:
-    """Whether curiosity (curiosity.py) is on."""
-    return {"type": "curiosity_state", "active": active}
+def curiosity_state(active: bool, chattiness: str) -> dict:
+    """Whether curiosity (curiosity.py) is on, and how chatty she is (a curiosity.LEVELS name)."""
+    return {"type": "curiosity_state", "active": active, "chattiness": chattiness}
 
 
 def sampling_state(active: str, profiles: dict, builtin: list[str], error: str = "") -> dict:

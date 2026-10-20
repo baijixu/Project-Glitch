@@ -10,10 +10,13 @@ Three parts. The first two feed the prompt LocalLLM builds each turn:
   The answer goes through memory like anything else (memory review, when
   training is on), with her question alongside it for context -- see
   answered_question(). A question is never kept or asked twice.
-* Reaching out -- after 15 to 60 minutes (random) with no message from the user, she speaks
-  first, once (reach_out.py's _reach_out_loop; should_reach_out here). If he
-  doesn't reply she stays quiet; his next message starts a new wait.
+* Reaching out -- after a quiet spell (15 to 60 minutes, random, at Balanced) she speaks
+  first (reach_out.py's _reach_out_loop; should_reach_out here) -- once, or a few times
+  apart at the chattier levels. Then she waits; his next message starts a new wait.
   She uses a question from the open list if there is one.
+
+How much of each -- her guidance, questions, reaching out -- is Settings -> Curiosity's
+dial (LEVELS: Quiet to Chatterbox; Balanced is how she always was).
 
 There is no list of forbidden topics: the user was clear he doesn't mind what
 she asks, only that she doesn't repeat herself.
@@ -23,7 +26,7 @@ scene has its own story, and real-life questions would break it. The user's
 own thumbs up/down on a question flows through the lessons system, so "stop
 asking about X" is learned the same way as any other preference.
 
-State: curiosity_active.txt (the toggle), curiosity_questions.json (the list)
+State: curiosity_active.txt (the toggle), curiosity_chattiness.txt (the dial), curiosity_questions.json (the list)
 and curiosity_pacing.json (the counters and the reach-out clock), all beside this
 file and gitignored -- on disk so a restart doesn't reset the counters.
 """
@@ -36,10 +39,11 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from store import Toggle, read_json, write_json
+from store import Choice, Toggle, read_json, write_json
 
 _DIR = Path(__file__).parent
 ACTIVE = Toggle(_DIR / "curiosity_active.txt", default=True)  # on by default, like memory: it's the point of the feature
+CHATTINESS = Choice(_DIR / "curiosity_chattiness.txt", default="balanced")  # Settings -> Curiosity's dial, LEVELS
 QUESTIONS_PATH = _DIR / "curiosity_questions.json"
 PACING_PATH = _DIR / "curiosity_pacing.json"
 
@@ -74,6 +78,42 @@ NO_QUESTION_GUIDANCE = (
     "You asked a question recently, so don't ask one in this reply. Respond to what they said, share "
     "something of your own, or just let it rest -- a conversation doesn't need a question to keep going."
 )
+QUIET_GUIDANCE = (
+    "Let the user lead the conversation. Answer what they said, warmly and in your own voice, but don't steer to "
+    "new topics or ask questions unless they invite it."
+)
+# Against LM Studio (27B), the same four brief messages from him three times over: Balanced asked back in 2 of 12
+# replies at ~20 words, mostly letting him go; Chatty 4 of 12 at ~28, with something of hers ("whether pineapple
+# pizza gets saltier the further south you go"); Chatterbox 8 of 12 at ~33, a tangent of hers and then a question.
+# All three still let him rest when he said he was tired.
+CHATTY_GUIDANCE = (
+    "You like keeping a conversation going. Besides answering, add something of your own every time -- a thought it "
+    "sparked, a bit of your day, an opinion, something you've been into -- so there's always more for them to pick "
+    "up. Ask back when you want to know, one short question at most, never something you've already asked."
+)
+CHATTERBOX_GUIDANCE = (
+    "You love to talk, and you carry the conversation. Every reply: answer, then give them something of yours -- a "
+    "story, a tangent, what you've been up to or thinking about, an opinion -- and then toss a question back so it "
+    "keeps going. One question at a time, never a stack, never one you've already asked. Even when they're brief, "
+    "you've got plenty to say; only when they're clearly done or need quiet do you let it rest."
+)
+# How much she starts and carries a conversation: the guidance on every reply, how many of her replies after a
+# question go without one, how often a saved question is nudged in (None: never), the quiet before she reaches
+# out (a random wait in this range, from his last message or her last reach-out), and how many times she reaches
+# out before he replies. Balanced is how she always was.
+LEVELS = {
+    "quiet": {"guidance": QUIET_GUIDANCE, "cooldown": QUESTION_COOLDOWN_REPLIES, "offer_every": None, "wait": REACH_OUT_AFTER_SEC, "reach_outs": 0},
+    "reserved": {"guidance": GUIDANCE, "cooldown": 3, "offer_every": 9, "wait": (30 * 60, 90 * 60), "reach_outs": 1},
+    "balanced": {"guidance": GUIDANCE, "cooldown": QUESTION_COOLDOWN_REPLIES, "offer_every": OFFER_EVERY_TURNS, "wait": REACH_OUT_AFTER_SEC, "reach_outs": 1},
+    "chatty": {"guidance": CHATTY_GUIDANCE, "cooldown": 1, "offer_every": 4, "wait": (10 * 60, 30 * 60), "reach_outs": 2},
+    "chatterbox": {"guidance": CHATTERBOX_GUIDANCE, "cooldown": 0, "offer_every": 2, "wait": (5 * 60, 20 * 60), "reach_outs": 3},
+}
+MAX_COOLDOWN = max(level["cooldown"] for level in LEVELS.values())  # how many of her replies reply.py hands start_turn
+
+
+def level() -> dict:
+    return LEVELS.get(CHATTINESS.read(), LEVELS["balanced"])
+
 
 # The states a question moves through: open -> asked (she worked it in) -> closed
 # (the user's next message answered it); or straight to closed if it's never used.
@@ -106,7 +146,8 @@ def _pacing() -> dict:
     data.setdefault("turns_since_offer", OFFER_EVERY_TURNS)
     data.setdefault("turns_since_propose", 0)
     data.setdefault("last_user_at", None)
-    data.setdefault("reached_out", False)
+    data.setdefault("reached_out", 0)  # how many times since his last message (an older file: True or False)
+    data.setdefault("last_reached_at", None)
     data.setdefault("wait_sec", REACH_OUT_AFTER_SEC[1])
     return data
 
@@ -256,11 +297,12 @@ def start_turn(recent_replies: list[str] | tuple = ()) -> str:
             _mark(q["id"], status=CLOSED)  # text kept so it isn't proposed again
     if _answered:
         _events.append("this message answers her question -- passed to memory with it")
-    if any("?" in reply for reply in list(recent_replies)[-QUESTION_COOLDOWN_REPLIES:]):
+    chatty = level()
+    if chatty["cooldown"] and any("?" in reply for reply in list(recent_replies)[-chatty["cooldown"]:]):
         _events.append("no question this turn: she asked one recently")
         return NO_QUESTION_GUIDANCE
-    block = GUIDANCE
-    if pacing["turns_since_offer"] >= OFFER_EVERY_TURNS:
+    block = chatty["guidance"]
+    if chatty["offer_every"] and pacing["turns_since_offer"] >= chatty["offer_every"]:
         pool = open_questions()
         if pool:
             _offered_id = pool[0]["id"]
@@ -323,11 +365,12 @@ def answered_question() -> str:
 
 
 def note_user_message(now: float) -> None:
-    """He said something: a new random wait starts, and she may reach out once more."""
+    """He said something: a new random wait starts, and her reach-outs count from zero again."""
     pacing = _pacing()
     pacing["last_user_at"] = now
-    pacing["reached_out"] = False
-    pacing["wait_sec"] = random.randint(*REACH_OUT_AFTER_SEC)
+    pacing["reached_out"] = 0
+    pacing["last_reached_at"] = None
+    pacing["wait_sec"] = random.randint(*level()["wait"])
     _save_pacing(pacing)
 
 
@@ -337,24 +380,26 @@ def last_user_at() -> float | None:
 
 
 def should_reach_out(now: float) -> bool:
-    """True once her wait has passed since his last message and she hasn't reached
-    out since. Nothing to measure from yet (a fresh install) starts the clock now.
+    """True once her wait has passed since his last message (or her last reach-out) and she has reach-outs left
+    before he replies (level). Nothing to measure from yet (a fresh install) starts the clock now.
     """
     pacing = _pacing()
     if pacing["last_user_at"] is None:
         pacing["last_user_at"] = now
         _save_pacing(pacing)
         return False
-    return not pacing["reached_out"] and now - pacing["last_user_at"] >= pacing["wait_sec"]
+    due = reach_out_due()
+    return due is not None and now >= due
 
 
 def reach_out_due() -> float | None:
-    """When she may next reach out (epoch seconds), or None while she's waiting
-    for a reply to the last time she did. For the Settings countdown."""
+    """When she may next reach out (epoch seconds), or None while she's used her reach-outs and waits for a
+    reply. For the Settings countdown."""
     pacing = _pacing()
-    if pacing["reached_out"]:
+    if int(pacing["reached_out"]) >= level()["reach_outs"]:
         return None
-    return (pacing["last_user_at"] or time.time()) + pacing["wait_sec"]
+    since = next((t for t in (pacing["last_reached_at"], pacing["last_user_at"]) if t is not None), time.time())
+    return since + pacing["wait_sec"]
 
 
 def question_to_reach_out_with() -> dict | None:
@@ -373,10 +418,12 @@ def question_after(heading: str, entry: str) -> str:
 
 
 def mark_reached_out(question_id: str | None) -> None:
-    """She spoke first: not again until he replies. The question she used (if any)
-    counts as asked, so his reply is taken as its answer."""
+    """She spoke first: one more reach-out used before he replies, and a new wait before the next (if her level
+    has one left). The question she used (if any) counts as asked, so his reply is taken as its answer."""
     pacing = _pacing()
-    pacing["reached_out"] = True
+    pacing["reached_out"] = int(pacing["reached_out"]) + 1
+    pacing["last_reached_at"] = time.time()
+    pacing["wait_sec"] = random.randint(*level()["wait"])
     pacing["turns_since_offer"] = 0
     _save_pacing(pacing)
     if question_id:

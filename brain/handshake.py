@@ -46,7 +46,7 @@ async def handle_ready(websocket: websockets.ServerConnection, data: dict, brain
         protocol.voice_state(VOICE_ACTIVE.read()),
         protocol.private_state(conversation.PRIVATE.read()),
         protocol.web_search_state(web_search.read_active()),
-        protocol.curiosity_state(curiosity.read_active()),
+        protocol.curiosity_state(curiosity.read_active(), curiosity.CHATTINESS.read()),
         protocol.heartbeat_state(heartbeat.ACTIVE.read()),
         heartbeat.timer_message(brain),
         protocol.friends_state(friends.ACTIVE.read()),

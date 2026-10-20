@@ -1739,3 +1739,16 @@ body.overlay-chat-active #side-actions .overlay-rate-button {
   font-variant-numeric: tabular-nums;
   color: #b8bccb;
 }
+
+/* Settings -> Curiosity's dial: its name over a full-width slider (a direct <label> of the section, so it says how it lays out). */
+.settings-section > .chattiness-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0 2px;
+}
+
+.chattiness-row input {
+  width: 100%;
+  accent-color: #4a7bd8;
+}

@@ -13,6 +13,15 @@ const HEARTBEAT_PAUSED = {
   harness: "Paused while a harness is in control.",
 };
 
+// Settings -> Curiosity's dial, in order (brain/curiosity.py's LEVELS): its name, and what it does in a line.
+const CHATTINESS = [
+  ["quiet", "Quiet", "She lets you lead: answers, doesn't steer or ask, and never reaches out first."],
+  ["reserved", "Reserved", "Asks now and then, and reaches out once after 30-90 minutes of quiet."],
+  ["balanced", "Balanced", "The odd question, a bit of herself, and one reach-out after 15-60 minutes of quiet."],
+  ["chatty", "Chatty", "Adds something of her own to every reply, asks more, and reaches out up to twice (10-30 minutes apart)."],
+  ["chatterbox", "Chatterbox", "Carries the conversation: stories, tangents, a question back -- and up to three reach-outs, 5-20 minutes apart."],
+];
+
 // Brain-side switches: message it sends -> the state message Brain answers with.
 const SWITCHES = [
   { id: "private-toggle", set: "set_private_active", state: "private_state" },
@@ -33,6 +42,9 @@ export class SettingsUI {
     this._waitingFor = new Set();
 
     for (const { id, set } of SWITCHES) $(id)?.addEventListener("change", (e) => app.send({ type: set, active: e.target.checked }));
+    $("chattiness-slider")?.addEventListener("input", (e) => this._showChattiness(Number(e.target.value)));
+    $("chattiness-slider")?.addEventListener("change", (e) => app.send({ type: "set_chattiness", chattiness: CHATTINESS[e.target.value][0] }));
+    this._showChattiness(2);
     // Heartbeat's countdown (heartbeat_timer): Brain sends when her next thought is due, the ticking is here.
     this._heartbeatTimer = null;
     setInterval(() => this._renderHeartbeatTimer(), 1000);
@@ -105,12 +117,25 @@ export class SettingsUI {
         if ($(id)) $(id).checked = !!data.active;
       };
     }
+    const showCuriosity = handlers.curiosity_state;
+    handlers.curiosity_state = (data) => {
+      showCuriosity(data);
+      const index = CHATTINESS.findIndex(([name]) => name === data.chattiness);
+      if (index >= 0) this._showChattiness(index);
+    };
     const showPrivate = handlers.private_state;
     handlers.private_state = (data) => {
       showPrivate(data);
       $("roleplay-badge")?.classList.toggle("private", !!data.active); // the PM badge
     };
     return handlers;
+  }
+
+  _showChattiness(index) {
+    const [, label, hint] = CHATTINESS[index];
+    if ($("chattiness-slider")) $("chattiness-slider").value = String(index);
+    if ($("chattiness-name")) $("chattiness-name").textContent = label;
+    if ($("chattiness-hint")) $("chattiness-hint").textContent = hint;
   }
 
   // The context meter goes back to empty with the conversation.

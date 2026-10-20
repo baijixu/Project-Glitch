@@ -293,7 +293,7 @@ async def reply_to(
 
     # Curiosity (brain/curiosity.py): the same.
     curious = brain.llm.owns_conversation and curiosity.read_active() and not profiles.read_roleplay_active()
-    recent = brain.llm.recent_replies(curiosity.QUESTION_COOLDOWN_REPLIES)
+    recent = brain.llm.recent_replies(curiosity.MAX_COOLDOWN)
     brain.llm.set_curiosity(curiosity.start_turn(recent) if curious else "")
     answered = curiosity.answered_question() if curious else ""  # her question this message answers, for memory
     for event in curiosity.take_events():

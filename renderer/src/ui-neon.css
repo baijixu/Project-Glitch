@@ -714,3 +714,7 @@ html[data-ui^="neon"] .growth-grid {
 html[data-ui^="neon"] .growth-dot {
   stroke: var(--glass-strong);
 }
+
+html[data-ui^="neon"] .chattiness-row input {
+  accent-color: var(--neon);
+}

@@ -59,8 +59,8 @@ REACH_OUT_CHECK_SEC = 60  # how often the reach-out loop looks at the clock
 
 
 async def reach_out_loop(brain: Brain) -> None:
-    """Curiosity's third part: after a random 15-60 minutes with no message from him, she speaks
-    first -- once, until he replies (brain/curiosity.py's should_reach_out). Only
+    """Curiosity's third part: after a quiet spell, she speaks first -- as often before he replies as her
+    chattiness allows (brain/curiosity.py's should_reach_out). Only
     for her own LLM (not a harness), with curiosity on, role-play off, a device
     connected to hear it, and no reply already in progress.
     """
@@ -142,10 +142,14 @@ async def _inbox(websocket: websockets.ServerConnection, data: dict, brain: Brai
         hub.spawn(learning.maybe_retain_memory(websocket, answer, "", brain, asked=question))
 
 
-@hub.handles(protocol.SET_CURIOSITY_ACTIVE)
+@hub.handles(protocol.SET_CURIOSITY_ACTIVE, protocol.SET_CHATTINESS)
 async def _set_curiosity_active(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-    curiosity.set_active(bool(data.get("active")))
-    await hub.broadcast(protocol.curiosity_state(curiosity.read_active()))
+    if data["type"] == protocol.SET_CHATTINESS:
+        if data.get("chattiness") in curiosity.LEVELS:
+            curiosity.CHATTINESS.write(data["chattiness"])
+    else:
+        curiosity.set_active(bool(data.get("active")))
+    await hub.broadcast(protocol.curiosity_state(curiosity.read_active(), curiosity.CHATTINESS.read()))
     await broadcast_curiosity_timer()
 
 

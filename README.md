@@ -81,7 +81,8 @@ The shipped default avatar in the Neon UI style (Settings → UI Style), with th
 - **She learns how you like her to behave.** Rate replies 👍/👎 with a reason and she distills short behavior
   rules from your feedback. You choose how much she may change on her own, and you can edit or retire any rule.
 - **Curiosity.** She asks the occasional follow-up question about what you said, or something she's wondered about you, paced so
-  it never turns into an interrogation and never repeats. After 15-60 minutes of quiet (random) she reaches out first, once, until you reply.
+  it never turns into an interrogation and never repeats. After a quiet spell she reaches out first. A dial sets how chatty she is,
+  from letting you lead to carrying the conversation.
 - **Her diary.** Each night she writes about the day you had together, and brings it with her when you next talk.
 - **Heartbeat.** While you're away she chooses what to do with her own time, and says why. When she thinks, bits of her
   soul, her diary, your chats and her memories drift through her mind; what keeps coming back lands, she looks it up and
@@ -413,7 +414,11 @@ Three parts, all toggled by *Curiosity* in Settings and paused during role-play 
   right away as a memory to review).
 - **Speaking first.** After 15-60 minutes (random) with no message from you, she reaches out once (with a question she's been
   saving, or just checking in), on every connected device. If you don't reply she stays quiet; your next message, or Clear
-  Chat, starts a new wait. *Settings → Curiosity* shows a live countdown to when she may reach out (or why she's waiting), and a **Test reach-out** button makes her do it right away.
+  Chat, starts a new wait.
+- **How chatty she is.** A dial in *Settings → Curiosity*: **Quiet** (she lets you lead and never reaches out first),
+  **Reserved**, **Balanced** (all of the above, the default), **Chatty** (something of her own in every reply, more questions,
+  up to two reach-outs 10-30 minutes apart) or **Chatterbox** (she carries the conversation: stories, tangents, a question back,
+  and up to three reach-outs 5-20 minutes apart). It applies from her next reply. *Settings → Curiosity* shows a live countdown to when she may reach out (or why she's waiting), and a **Test reach-out** button makes her do it right away.
 
 Your answer is remembered like anything else you tell her, together with the question it answers, so with memory training on it
 shows up in the review list.
