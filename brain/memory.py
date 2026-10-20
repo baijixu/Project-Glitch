@@ -316,13 +316,16 @@ async def recall_relevant(query: str) -> str:
     )
     core_texts = {text for text, _ in core}
     lines = [_dated(text, when) for text, when in core]
-    best = max((_relevance(result) for result in response.results), default=0.0)
     lines += [
-        _dated(result.text, getattr(result, "mentioned_at", None))
-        for result in response.results
-        if result.text not in core_texts and _relevance(result) >= max(RECALL_FLOOR, best * RECALL_RELATIVE)
+        _dated(result.text, getattr(result, "mentioned_at", None)) for result in _matches(response.results) if result.text not in core_texts
     ][:RECALL_LIMIT]
     return "\n".join(f"- {line}" for line in lines)
+
+
+def _matches(results: list) -> list:
+    """The real matches among recall's results (RECALL_RELATIVE of the best, over RECALL_FLOOR), in their order."""
+    best = max((_relevance(result) for result in results), default=0.0)
+    return [result for result in results if _relevance(result) >= max(RECALL_FLOOR, best * RECALL_RELATIVE)]
 
 
 def _relevance(result) -> float:
@@ -361,11 +364,9 @@ async def similar_memories(text: str) -> list[dict]:
         return []
     response = await _client.arecall(_bank_id, query=text, max_tokens=RECALL_MAX_TOKENS)
     # Recall's own rule, not a fixed score: her real repeats scored as low as 0.0009 (best match, still a repeat).
-    best = max((_relevance(r) for r in response.results), default=0.0)
     return [
         {"id": r.id, "text": r.text, "mentioned_at": getattr(r, "mentioned_at", None), "tags": getattr(r, "tags", None) or []}
-        for r in response.results
-        if _relevance(r) >= max(RECALL_FLOOR, best * RECALL_RELATIVE)
+        for r in _matches(response.results)
     ]
 
 

@@ -61,6 +61,12 @@ def read() -> list[dict]:
     return sorted(rows, key=lambda row: row["t"])  # backfilled history is appended after newer lines
 
 
+def today(now: datetime | None = None) -> list[dict]:
+    """Today's rows as they happened -- not tools/backfill_metrics.py's history, which is dated by when it was."""
+    day = (now or datetime.now()).date().isoformat()
+    return [row for row in read() if row["t"].startswith(day) and not row.get("backfill")]
+
+
 def _bucket(day: date, period: str) -> date:
     return day - timedelta(days=day.weekday()) if period == "week" else day
 

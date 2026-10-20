@@ -25,7 +25,6 @@ import persona
 import profiles
 import protocol
 import reflection
-import souls
 import training
 import wonder
 from hub import Brain
@@ -294,79 +293,6 @@ async def _set_training_active(websocket: websockets.ServerConnection, data: dic
     await hub.broadcast(training_state_message())
 
 
-SHOWN_OWN = 8  # her latest saves without him, newest first
-
-
-@hub.handles(protocol.GET_MIND)
-async def _get_mind(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-    await hub.send(websocket, mind_message(brain))
-
-
-@hub.handles(protocol.ADD_WONDER, protocol.REMOVE_WONDER)
-async def _wonder(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-    """The 🧠 window: something he adds to what she wants to find out, or takes off."""
-    if data["type"] == protocol.ADD_WONDER:
-        wonder.add(str(data.get("text") or ""), "Added by him")
-    else:
-        wonder.remove(str(data.get("id") or ""))
-    await hub.send(websocket, mind_message(brain))
-
-
-_reflecting = False
-
-
-@hub.handles(protocol.REFLECT_NOW)
-async def _reflect_now(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-    """The 🧠 window's button: her weekly look-back and soul revision now, in the background."""
-    global _reflecting
-    if _reflecting:
-        return
-    _reflecting = True
-
-    async def reflect() -> None:
-        global _reflecting
-        try:
-            await reflection.run(brain)
-        finally:
-            _reflecting = False
-
-    hub.spawn(reflect())
-
-
-@hub.handles(protocol.GET_GROWTH)
-async def _get_growth(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-    await hub.send(websocket, protocol.growth(metrics.growth()))
-
-
-def mind_message(brain: Brain) -> dict:
-    recalled = [line[2:] for line in brain.llm.memory_block.splitlines() if line.startswith("- ")]
-    soul = souls.SOUL_MD_PATH
-    text = soul.read_text(encoding="utf-8") if soul.exists() else ""
-    edited = datetime.fromtimestamp(soul.stat().st_mtime).isoformat(timespec="minutes") if soul.exists() else ""
-    waiting_lessons = [lessons.describe(p) for p in lessons.read_pending()]
-    import heartbeat  # heartbeat imports learning
-
-    rows = metrics.read()
-    own = [{"text": r["text"], "source": r.get("source", ""), "t": r["t"]} for r in rows if r["e"] == "approved" and r.get("by") == "her"]
-    chose = [{"what": r["what"], "why": r.get("reason", ""), "t": r["t"]} for r in rows if r["e"] == "activity" and "reason" in r]
-    today = [r for r in rows if r["t"].startswith(datetime.now().date().isoformat()) and not r.get("backfill")]
-    most, budget = heartbeat.caps()
-    day = {"done": sum(1 for r in today if r["e"] == "activity" and r.get("what") != "rest"), "most": most,
-           "tokens": sum(r.get("tokens") or 0 for r in today if r["e"] == "llm"), "budget": budget,
-           "reflect": [e["what"] for e in notable.waiting()]}
-    return protocol.mind(recalled, training.read_pending(), waiting_lessons, wonder.read()[::-1], own[-SHOWN_OWN:][::-1], chose[-SHOWN_OWN:][::-1], day, len(text), len(text.splitlines()), edited, souls.SOUL_MAX_CHARS)
-
-
-async def daily_snapshot() -> None:
-    """Once a day (metrics.snapshot_due): how big her memory bank and his review list are."""
-    try:
-        size = len(await memory.list_memories()) if memory.server_backed() else None
-    except Exception as exc:
-        print(f"[metrics] counting her memories failed: {exc!r}")
-        size = None
-    metrics.log("bank", size=size, queue=len(training.read_pending()), lessons=len(lessons.read_pending()))
-
-
 # How far into a day her memory proposals have read: {"day": "YYYY-MM-DD", "through": "HH:MM:SS"}.
 # Each sitting is proposed from when it ends, and the nightly run only reads what's left.
 PROPOSED_PATH = Path(__file__).parent / "proposed_through.json"
@@ -504,13 +430,14 @@ async def distill_chat(brain: Brain, transcript: str, name: str) -> None:
             )
         source = f"Your chat, {datetime.now():%A %d %B}"
         found = parse_distilled(raw)
-        for what in (what for kind, what, why in found if kind == "decision"):
-            notable.notice("you made a decision", what)
-        for what in (what for kind, what, why in found if kind == "question" and persona.not_about_him(what)):
-            wonder.add(what, source)  # hers to find out: nothing to approve
         added = 0
         for kind, what, why in found:
-            if kind != "question" and not await repeat_of(what, brain) and training.add_pending(what, source, type=kind, why=why):
+            if kind == "question":
+                wonder.keep(what, source)  # hers to find out, nothing to approve -- or, about him, his inbox
+                continue
+            if kind == "decision":
+                notable.notice("you made a decision", what)
+            if not await repeat_of(what, brain) and training.add_pending(what, source, type=kind, why=why):
                 added += 1
         print(f"[training] {added} decisions / lessons / opinions of hers from the cleared chat")
         if added:

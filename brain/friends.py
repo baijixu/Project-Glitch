@@ -324,7 +324,7 @@ async def _set_friends_active(websocket: websockets.ServerConnection, data: dict
     await hub.broadcast(protocol.friends_state(ACTIVE.read()))
 
 
-def _why_not(brain: Brain) -> str:
+def why_not(brain: Brain) -> str:
     """Why a visit can't start now, or ""."""
     if not ACTIVE.read():
         return "Turn Friend mode on first."
@@ -339,11 +339,19 @@ def _why_not(brain: Brain) -> str:
     return ""
 
 
+def start_visit(brain: Brain) -> str:
+    """Why a visit can't start now (why_not) -- or "", and it's theirs: marked running before it does, so a
+    second press, night or turn of hers can't start another. Then await visit()."""
+    if problem := why_not(brain):
+        return problem
+    STATUS["running"] = True
+    return ""
+
+
 @hub.handles(protocol.START_VISIT)
 async def _start_visit(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-    if problem := _why_not(brain):
+    if problem := start_visit(brain):
         return await hub.send(websocket, protocol.visit_state(**{**STATUS, "note": problem}))
-    STATUS["running"] = True  # before the task starts, so a second press can't start another
     hub.spawn(visit(brain))
 
 
@@ -357,20 +365,15 @@ def visited(day: date) -> bool:
 
 def visit_due(now: datetime, last_user_at: float | None) -> bool:
     """Tonight's visit: past VISIT_HOUR, none yet today, and he's been quiet VISIT_QUIET_SEC."""
-    try:
-        last_visit = LAST_VISIT_PATH.read_text(encoding="utf-8").strip()
-    except OSError:
-        last_visit = ""
     quiet = not last_user_at or now.timestamp() - last_user_at >= VISIT_QUIET_SEC
-    return now.hour >= VISIT_HOUR and last_visit != now.date().isoformat() and quiet
+    return now.hour >= VISIT_HOUR and not visited(now.date()) and quiet
 
 
 async def visit_loop(brain: Brain) -> None:
     while True:
         await asyncio.sleep(VISIT_CHECK_SEC)
         try:
-            if visit_due(datetime.now(), curiosity.last_user_at()) and not _why_not(brain):
-                STATUS["running"] = True
+            if visit_due(datetime.now(), curiosity.last_user_at()) and not start_visit(brain):
                 await visit(brain)
         except Exception as exc:  # never let one bad night stop the loop
             print(f"[friends] tonight's visit failed: {exc!r}")

@@ -14,8 +14,10 @@ on her mind, her own views -- and one has to lose; what leaves her cold about it
 Some she looks at a picture from her gallery (look_at), the one she's looked at least lately. Every thought, and each page, also goes in
 the day's thoughts log (self/thoughts/, Settings -> Chat Logs -> Thoughts).
 
-With a book in her library (library.py) unfinished, half the ticks she reads instead (read_pages):
-the next pages, and a note on them that reaches her as a conversation opens. A landing topic is
+Each turn she picks what to do with her own time (ACTIVITIES, pick): reading her book (read_pages:
+the next pages, and a note on them that reaches her as a conversation opens), looking something up,
+her friends, a picture, wandering as above, her journal, or rest -- unless something notable waits
+to be thought over (reflect) or she's past today's caps (config.yaml). A landing topic is
 looked up on the web first (with web search on), and the topics that landed this week reach
 her as a conversation opens too (into_lately); the rest of her wandering doesn't.
 """
@@ -26,7 +28,9 @@ import random
 import re
 import time
 from collections import Counter
+from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Awaitable, Callable
 from pathlib import Path
 
 import httpx
@@ -72,12 +76,6 @@ LATELY_DAYS = 7  # how long a landed topic counts as what she's been into
 READ_PULL = 5  # a sitting with a book weighs on her like a middling thought: four in two days and it lands
 # Asked about one thing at a time she likes nearly everything; made to pick between two, one loses.
 CHOOSE_CHANCE = 1 / 4  # of the turns she spends thinking
-# Each turn she picks what to do (pick): her word -> what the Growth chart calls it. Resting is always one.
-ACTIVITIES = {
-    "read": "read", "look": "look into", "visit": "visit friends", "art": "look at art", "think": "think",
-    "journal": "journal", "rest": "rest",
-    "reflect": "reflect",  # not on her menu: what a notable event gets (notable.py), before anything else
-}
 # Her day on her own, when config.yaml doesn't say (caps): about what she did with a die deciding (~100 a
 # day), and all the day's LLM tokens, his chats included. Past either she rests until tomorrow.
 MAX_ACTIVITIES = 100
@@ -308,50 +306,100 @@ def caps() -> tuple[int, int]:
     return int(cfg.get("max_activities_per_day", MAX_ACTIVITIES)), int(cfg.get("max_tokens_per_day", MAX_TOKENS))
 
 
-def over_cap(now: datetime) -> str:
-    """Why she has to rest until tomorrow, or "": today's activities (resting aside) or all of today's
-    LLM tokens -- his chats included, it's one GPU -- past his caps."""
-    today = now.date().isoformat()
-    rows = [r for r in metrics.read() if r["t"].startswith(today) and not r.get("backfill")]
-    done = sum(1 for r in rows if r["e"] == "activity" and r.get("what") != "rest")
-    tokens = sum(r.get("tokens") or 0 for r in rows if r["e"] == "llm")
+def day_usage(now: datetime) -> dict:
+    """Today against his caps: {did: what she did with her own time, in order (the Growth chart's names),
+    done: how many of those weren't resting, most, tokens: all of today's LLM tokens -- his chats included,
+    it's one GPU -- and budget}."""
+    rows = metrics.today(now)
+    did = [r["what"] for r in rows if r["e"] == "activity"]
     most, budget = caps()
-    if done >= most:
-        return f"that's {done} things today, her limit"
-    if tokens >= budget:
-        return f"{tokens:,} tokens used today, her limit"
+    tokens = sum(r.get("tokens") or 0 for r in rows if r["e"] == "llm")
+    return {"did": did, "done": sum(what != "rest" for what in did), "most": most, "tokens": tokens, "budget": budget}
+
+
+def over_cap(now: datetime) -> str:
+    """Why she has to rest until tomorrow, or "": past either of his caps (day_usage)."""
+    day = day_usage(now)
+    if day["done"] >= day["most"]:
+        return f"that's {day['done']} things today, her limit"
+    if day["tokens"] >= day["budget"]:
+        return f"{day['tokens']:,} tokens used today, her limit"
     return ""
 
 
-def _today(now: datetime) -> list[str]:
-    """What she did with her own time today, in order (the Growth chart's names)."""
-    day = now.date().isoformat()
-    return [r["what"] for r in metrics.read() if r["e"] == "activity" and r["t"].startswith(day) and not r.get("backfill")]
+@dataclass
+class Turn:
+    """One turn of her own time: what an activity needs to offer itself and to run."""
+
+    brain: Brain
+    now: datetime
+    shelf: dict
+    interests: dict
+    why: str = ""  # her reason, once she's picked
 
 
-def options(now: datetime, brain: Brain, shelf: dict) -> dict[str, str]:
+@dataclass(frozen=True)
+class Activity:
+    name: str  # what the Growth chart (and her "today so far") calls it
+    offer: Callable[[Turn], str]  # how it reads on her menu, or "" when it can't happen right now
+    run: Callable[[Turn], Awaitable[str]]  # does it; returns what happened, in a line (for Think now)
+    logs_itself: bool = False  # a visit is logged by friends.visit, whoever started it
+
+
+def _offer_read(turn: Turn) -> str:
+    if not (names := library.unread(turn.shelf)):
+        return ""
+    book = turn.shelf["books"][turn.shelf["reading"] if turn.shelf["reading"] in names else names[0]]
+    return f"read some of {book['title']} ({library.percent(book)}% in)"
+
+
+def _offer_look(turn: Turn) -> str:
+    wondering = wonder.read()
+    return f"look into something you've wondered: \"{wondering[0]['text']}\"" if wondering and web_search.read_active() else ""
+
+
+def _offer_visit(turn: Turn) -> str:
+    import friends  # friends imports heartbeat
+
+    return "" if friends.why_not(turn.brain) or friends.visited(turn.now.date()) else f"have your friends over -- {', '.join(friends.names())}"
+
+
+async def _visit(turn: Turn) -> str:
+    import friends
+
+    if problem := friends.start_visit(turn.brain):
+        return f"Her friends couldn't come: {problem}"
+    await friends.visit(turn.brain, turn.why)
+    return "She had her friends over."
+
+
+async def _rest(turn: Turn) -> str:
+    return f"She's resting: {turn.why}" if turn.why else "She's resting."
+
+
+# Her menu, in no order (pick shuffles it): her word -> the activity. Resting is always on it.
+ACTIVITIES = {
+    "read": Activity("read", _offer_read, lambda t: read_pages(t.brain, t.shelf)),
+    "look": Activity("look into", _offer_look, lambda t: look_into(t.brain, wonder.read()[0], t.now)),
+    "visit": Activity("visit friends", _offer_visit, _visit, logs_itself=True),
+    "art": Activity("look at art", lambda t: "look at a picture in your gallery" if pictures.least_looked() else "",
+                    lambda t: look_at(t.brain, t.interests, pictures.least_looked(), t.now)),
+    "think": Activity("think", lambda t: "think something over", lambda t: think(t.brain, t.interests, t.now)),
+    "journal": Activity("journal", lambda t: "write in your journal, whatever you want to get down",
+                        lambda t: write_journal(t.brain, t.interests, t.now)),
+    "rest": Activity("rest", lambda t: "rest -- do nothing for a while (always fine)", _rest),
+}
+
+
+def options(turn: Turn) -> dict[str, str]:
     """What she can do right now -- only what would actually happen -- as {word: what it is}. Not THINK's
     topics: shown "on your mind lately: R.U.R." she picked THINK 8 of 8 even after seven in a row. And
     whatever she's done SAME_IN_A_ROW times running sits out a turn -- she leans to thinking and journaling,
     and without it her book, her pictures and her friends would only ever wait."""
-    import friends  # friends imports heartbeat
-
-    found = {}
-    if names := library.unread(shelf):
-        book = shelf["books"][shelf["reading"] if shelf["reading"] in names else names[0]]
-        found["read"] = f"read some of {book['title']} ({library.percent(book)}% in)"
-    if (wondering := wonder.read()) and web_search.read_active():
-        found["look"] = f"look into something you've wondered: \"{wondering[0]['text']}\""
-    if not friends._why_not(brain) and not friends.visited(now.date()):
-        found["visit"] = f"have your friends over -- {', '.join(friends.names())}"
-    if pictures.least_looked():
-        found["art"] = "look at a picture in your gallery"
-    found["think"] = "think something over"
-    found["journal"] = "write in your journal, whatever you want to get down"
-    found["rest"] = "rest -- do nothing for a while (always fine)"
-    recent = _today(now)[-SAME_IN_A_ROW:]
-    if len(recent) == SAME_IN_A_ROW and len(set(recent)) == 1:
-        found.pop(next((w for w, name in ACTIVITIES.items() if name == recent[0] and w != "rest"), ""), None)
+    found = {word: what for word, activity in ACTIVITIES.items() if (what := activity.offer(turn))}
+    recent = day_usage(turn.now)["did"][-SAME_IN_A_ROW:]
+    if len(recent) == SAME_IN_A_ROW and len(set(recent)) == 1 and recent[0] != "rest":
+        found = {word: what for word, what in found.items() if ACTIVITIES[word].name != recent[0]}
     return found
 
 
@@ -367,7 +415,7 @@ def parse_choice(raw: str, found: dict[str, str]) -> tuple[str, str]:
 def today_so_far(now: datetime) -> str:
     """What she's done with her own time today, for her next choice: "Today so far: think x4, read x2 (last: read). "
     Without it she's asked the same question with the same options and gives the same answer (6 of 6)."""
-    if not (today := _today(now)):
+    if not (today := day_usage(now)["did"]):
         return ""
     counts = ", ".join(f"{what} x{n}" for what, n in Counter(today).most_common())
     return f"Today so far: {counts} (last: {today[-1]}). "
@@ -399,28 +447,17 @@ async def beat(brain: Brain) -> str:
     if event := notable.take():
         metrics.log("activity", what="reflect", reason=event["what"])
         return await reflect(brain, event, now)
-    shelf, interests = library.read_state(), read_interests()
-    word, why = await pick(brain, options(now, brain, shelf), now)
-    if word != "visit":  # a visit logs itself (friends.visit), with her reason
-        metrics.log("activity", what=ACTIVITIES[word], reason=why)
-    print(f"[heartbeat] she chose to {word}: {why}")
-    if word == "rest":
-        return f"She's resting: {why}" if why else "She's resting."
-    if word == "read":
-        return await read_pages(brain, shelf)
-    if word == "visit":
-        import friends
+    turn = Turn(brain, now, library.read_state(), read_interests())
+    word, turn.why = await pick(brain, options(turn), now)
+    activity = ACTIVITIES[word]
+    if not activity.logs_itself:
+        metrics.log("activity", what=activity.name, reason=turn.why)
+    print(f"[heartbeat] she chose to {word}: {turn.why}")
+    return await activity.run(turn)
 
-        friends.STATUS["running"] = True  # as friends.visit_loop does
-        await friends.visit(brain, why)
-        return "She had her friends over."
-    if word == "art":
-        return await look_at(brain, interests, pictures.least_looked(), now)
-    if word == "look":
-        return await look_into(brain, wonder.read()[0], now)
-    if word == "journal":
-        return await write_journal(brain, interests, now)
-    # think: made to pick between two things of hers now and then, otherwise her mind wanders
+
+async def think(brain: Brain, interests: dict, now: datetime) -> str:
+    """Made to pick between two things of hers now and then (choose); otherwise her mind wanders."""
     if random.random() < CHOOSE_CHANCE and len(pair := await _two_of_hers(interests)) == 2:
         return await choose(brain, interests, *pair, now)
     drifted = await fragments(now, interests)
@@ -434,12 +471,15 @@ async def beat(brain: Brain) -> str:
     return await _weigh(brain, interests, found, now)
 
 
+async def _write(brain: Brain, doing: str, prompt: str, max_tokens: int) -> str:
+    """Something she writes on her own time, under her soul -- "" if nothing came."""
+    async with brain.busy(doing):
+        return (await asyncio.to_thread(brain.llm.under_soul, prompt, max_tokens)).strip()
+
+
 async def reflect(brain: Brain, event: dict, now: datetime) -> str:
     """Something that happened (notable.py), thought over -- in her Thoughts."""
-    async with brain.busy("Thinking it over..."):
-        page = (await asyncio.to_thread(
-            brain.llm.under_soul, _REFLECT_PROMPT.format(what=event["what"], detail=event["detail"]), MAX_REFLECT_TOKENS
-        )).strip()
+    page = await _write(brain, "Thinking it over...", _REFLECT_PROMPT.format(what=event["what"], detail=event["detail"]), MAX_REFLECT_TOKENS)
     if not page:
         return f"She thought about it ({event['what']}) and had nothing to add."
     conversation.log_thought(f"💭 **{event['what'].capitalize()}**\n\n{page}", now=now)
@@ -455,8 +495,7 @@ async def look_into(brain: Brain, item: dict, now: datetime) -> str:
         found = await asyncio.to_thread(look_up, question)
     if not found:
         return f"She went to look up {question!r} and found nothing."
-    async with brain.busy("Reading up..."):
-        note = (await asyncio.to_thread(brain.llm.under_soul, _LOOK_PROMPT.format(question=question, found=found), MAX_LOOK_TOKENS)).strip()
+    note = await _write(brain, "Reading up...", _LOOK_PROMPT.format(question=question, found=found), MAX_LOOK_TOKENS)
     if not note:
         return f"She read up on {question!r} and had nothing to say."
     conversation.log_thought(f"🔎 **{question}**\n\n{note}", now=now)
@@ -468,10 +507,7 @@ async def look_into(brain: Brain, item: dict, now: datetime) -> str:
 async def write_journal(brain: Brain, interests: dict, now: datetime) -> str:
     """A page in her own journal, from what's drifting through her head -- in her Thoughts log."""
     drifted = await fragments(now, interests)
-    async with brain.busy("Writing in her journal..."):
-        page = (await asyncio.to_thread(
-            brain.llm.under_soul, _JOURNAL_PROMPT.format(fragments="\n".join(f"- {d}" for d in drifted)), MAX_JOURNAL_TOKENS
-        )).strip()
+    page = await _write(brain, "Writing in her journal...", _JOURNAL_PROMPT.format(fragments="\n".join(f"- {d}" for d in drifted)), MAX_JOURNAL_TOKENS)
     if not page:
         return "She sat down to write and nothing came."
     conversation.log_thought(f"📓 {page}", now=now)
@@ -596,8 +632,7 @@ async def _land(brain: Brain, interests: dict, topic: str, now: datetime) -> boo
     if interests[topic]["questions"]:
         wonder.keep(interests[topic]["questions"][-1], f"Thinking about {topic}")
     for question in re.findall(r"[^\n?]*\?", page)[-MAX_PAGE_QUESTIONS:]:
-        if persona.not_about_him(question):
-            wonder.add(question, f"Her page on {topic}")
+        wonder.keep(question, f"Her page on {topic}")
     await learning.propose_own(page, f"Heartbeat: {topic} landed", brain, own=True)  # what she came to think stays with her
     return True
 

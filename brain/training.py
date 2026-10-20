@@ -22,11 +22,10 @@ gitignored.
 import json
 import re
 import uuid
-
-import metrics
 from datetime import datetime, timezone
 from pathlib import Path
 
+import metrics
 from store import Toggle
 
 _DIR = Path(__file__).parent

@@ -237,15 +237,15 @@ def web_search_state(active: bool) -> dict:
     return {"type": "web_search_state", "active": active}
 
 
-def mind(recalled: list[str], pending: list, lessons: list[str], wondering: list, own: list, chose: list, day: dict, soul_chars: int, soul_lines: int, soul_edited: str, soul_max: int) -> dict:
-    """The 🧠 panel: the memories put into her prompt for the last reply, the proposals waiting for his review
-    ({id, fact, source, created}), the lesson proposals waiting in Behavior learning (each described in a line), what she wants to find out
-    (wonder.py: {id, text, source, added}, newest first),
-    what she saved on her own lately, unverified ({text, source, t}, newest first), what she chose to do with her own
-    time and why ({what, why, t}, newest first), today against her caps ({done, most, tokens, budget, reflect: what's waiting for her to think over}), and her soul.md's size and when
-    it last changed (ISO, "" with no soul.md)."""
-    return {"type": "mind", "recalled": recalled, "pending": pending, "lessons": lessons, "wondering": wondering, "own": own, "chose": chose, "day": day,
-            "soul": {"chars": soul_chars, "lines": soul_lines, "edited": soul_edited, "max": soul_max}}
+def mind(state: dict) -> dict:
+    """The 🧠 panel (mind.mind_message): recalled -- the memories put into her prompt for the last reply;
+    pending -- the proposals waiting for his review ({id, fact, source, created}); lessons -- the lesson
+    proposals waiting in Behavior learning, each described in a line; wondering -- what she wants to find out
+    (wonder.py: {id, text, source, added}, newest first); own -- what she saved on her own lately, unverified
+    ({text, source, t}, newest first); chose -- what she chose to do with her own time and why ({what, why, t},
+    newest first); day -- today against her caps ({done, most, tokens, budget, reflect: what's waiting for her
+    to think over}); soul -- soul.md's {chars, lines, max, edited: ISO, "" with no soul.md}."""
+    return {"type": "mind", **state}
 
 
 def growth(series: dict) -> dict:

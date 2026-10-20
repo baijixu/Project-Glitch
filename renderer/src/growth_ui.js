@@ -7,7 +7,7 @@ import { $ } from "./ui.js";
 // Categorical slots, fixed order, checked for colorblind separation and contrast against the
 // modal's #1e2130. A memory type keeps its color whatever else is on the chart.
 const COLORS = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#9085e9"];
-const TYPES = ["fact", "decision", "lesson", "opinion"]; // decision/lesson/opinion arrive with step 3
+const TYPES = ["fact", "decision", "lesson", "opinion"]; // a new memory, then her own (learning.distill_chat)
 const W = 520;
 const H = 170;
 const PAD = { left: 34, right: 70, top: 10, bottom: 22 };

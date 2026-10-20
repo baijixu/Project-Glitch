@@ -61,6 +61,7 @@ import journal
 import library  # noqa: F401 -- registers its message handlers
 import learning
 import llm_engines
+import mind  # noqa: F401 -- registers the 🧠 window's message handlers
 import reach_out
 import server
 import tts_engines
