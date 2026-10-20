@@ -93,9 +93,14 @@ export class TrainingUI {
   // A revised soul's changed lines (red out, green in), each under the heading it's in. Model-written: textContent.
   _diff(rows) {
     const box = Object.assign(document.createElement("div"), { className: "soul-diff" });
-    for (const [mark, text] of rows) {
+    for (const [mark, text, words] of rows) {
       const line = Object.assign(document.createElement("div"), { textContent: `${mark} ${text}` });
       line.className = mark === "+" ? "soul-diff-add" : mark === "-" ? "soul-diff-del" : "soul-diff-ctx";
+      // A line rewritten in place: only the words that changed are marked, not the whole paragraph.
+      if (words) {
+        line.classList.add("soul-diff-words");
+        line.replaceChildren(`${mark} `, ...words.map(([changed, part]) => (changed ? Object.assign(document.createElement("mark"), { textContent: part }) : part)));
+      }
       box.appendChild(line);
     }
     return box;

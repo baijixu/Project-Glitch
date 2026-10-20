@@ -550,6 +550,14 @@ body:has(#history-panel.open) :is(#inbox-button, #mind-button) {
   font-size: 11px;
 }
 
+/* The charts are drawn 520 units wide and scaled to fit: on a phone 11 units came out under 7 px. */
+@media (max-width: 600px) {
+  .growth-axis,
+  .growth-label {
+    font-size: 16px;
+  }
+}
+
 .growth-line {
   fill: none;
   stroke-width: 2;
@@ -1451,6 +1459,21 @@ summary.lessons-subhead {
 .soul-diff-del {
   color: #ff8a8a;
   text-decoration: line-through;
+}
+
+.soul-diff-words {
+  text-decoration: none;
+}
+
+.soul-diff-words mark {
+  color: inherit;
+  border-radius: 3px;
+  background: rgba(111, 220, 155, 0.22);
+}
+
+.soul-diff-del.soul-diff-words mark {
+  text-decoration: line-through;
+  background: rgba(255, 138, 138, 0.22);
 }
 
 .soul-diff-ctx {

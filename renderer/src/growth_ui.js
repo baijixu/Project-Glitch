@@ -116,7 +116,7 @@ function hbars(rows) {
   if (!rows.length) return Object.assign(document.createElement("p"), { className: "settings-hint", textContent: "Nothing yet." });
   const max = Math.max(...rows.map(([, n]) => n));
   const rowH = 22;
-  const labelW = 100;
+  const labelW = 120; // "visit friends" at a phone's larger chart text
   const svg = el("svg", { viewBox: `0 0 ${W} ${rows.length * rowH + 4}`, class: "growth-svg", role: "img" });
   rows.forEach(([what, n], i) => {
     const yy = i * rowH + 4;

@@ -106,8 +106,10 @@ def apply_rewrite(soul: str, rewritten: dict[str, str]) -> str:
     return (before + kept).rstrip() + "\n"
 
 
-def diff(old: str, new: str) -> list[list[str]]:
-    """[[" "|"-"|"+", line]] for the review list: what changed, under the heading it's in."""
+def diff(old: str, new: str) -> list[list]:
+    """[[" "|"-"|"+", line]] for the review list: what changed, under the heading it's in. A line rewritten in
+    place (out, then straight back in, mostly the same) also gets its words, [[changed, text]], as a third item:
+    her sections are one long line a paragraph, and a one-word edit showed as the whole paragraph rewritten."""
     rows, heading = [], None
     for line in difflib.ndiff(old.splitlines(), new.splitlines()):
         mark, text = line[:1], line[2:]
@@ -120,7 +122,30 @@ def diff(old: str, new: str) -> list[list[str]]:
                 rows.append([" ", heading])
                 heading = None
             rows.append([mark, text])
+    for out, back in zip(rows, rows[1:]):
+        if out[0] == "-" and back[0] == "+" and len(out) == 2:
+            matcher = difflib.SequenceMatcher(None, re.split(r"(\s+)", out[1]), re.split(r"(\s+)", back[1]), autojunk=False)
+            if matcher.ratio() >= 0.5:
+                out.append(_words(matcher, "a"))
+                back.append(_words(matcher, "b"))
     return rows
+
+
+def _words(matcher: difflib.SequenceMatcher, side: str) -> list[list]:
+    """One side of a word-level match as [[changed, text]], runs of the same kind joined."""
+    tokens = matcher.a if side == "a" else matcher.b
+    words: list[list] = []
+    for op, i1, i2, j1, j2 in matcher.get_opcodes():
+        text = "".join(tokens[i1:i2] if side == "a" else tokens[j1:j2])
+        if not text:
+            continue
+        if op != "equal" and len(words) >= 2 and words[-2][0] and not words[-1][1].strip():
+            words[-2][1] += words.pop()[1] + text  # only a space between two changes: one mark, not two
+        elif words and words[-1][0] == (op != "equal"):
+            words[-1][1] += text
+        else:
+            words.append([op != "equal", text])
+    return words
 
 
 async def _recent_memories(now: datetime) -> list[str]:
