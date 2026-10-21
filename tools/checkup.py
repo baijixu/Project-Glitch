@@ -13,6 +13,7 @@ on, a 27B at ~5 tok/s takes about half an hour.
 import asyncio
 import re
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -21,6 +22,11 @@ sys.path.insert(0, str(BRAIN))
 
 import lessons  # noqa: E402
 import llm_engines  # noqa: E402
+import metrics  # noqa: E402
+
+# Her model calls here aren't hers: logged to her real metrics, a weekly exam's ~880K tokens counted
+# against her day's cap (heartbeat.caps) and she'd rest early. progress.py and identity_check.py import this first.
+metrics.PATH = Path(tempfile.mkdtemp(prefix="glitch-checkup-metrics-")) / "metrics.jsonl"
 import memory  # noqa: E402
 import memory_profiles  # noqa: E402
 import persona  # noqa: E402
