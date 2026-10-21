@@ -13,6 +13,7 @@ Run tools/checkup.py after one goes in to see it didn't cost her anything.
 import asyncio
 import difflib
 import re
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -203,6 +204,17 @@ def apply_proposal(proposal: dict, brain: Brain) -> None:
         raise ValueError("her soul changed since she wrote this -- reject it and ask her again")
     souls.write_main_soul(proposal["new"], why="reflection")
     brain.llm.update_soul(persona.effective_soul())  # an edit, not a new her: the conversation carries on
+
+
+async def progress_exam() -> None:
+    """tools/progress.py in its own process (~45 minutes): her weekly scores, brain/self/progress/."""
+    exam = await asyncio.create_subprocess_exec(
+        sys.executable, str(Path(__file__).parent.parent / "tools" / "progress.py"),
+        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
+    )
+    async with hub.doing("Taking her weekly exam..."):
+        _, errors = await exam.communicate()
+    print("[reflection] her weekly exam is done" if exam.returncode == 0 else f"[reflection] her weekly exam failed: {errors.decode(errors='replace')[-500:]}")
 
 
 async def run(brain: Brain, now: datetime | None = None) -> None:

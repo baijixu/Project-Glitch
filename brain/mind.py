@@ -53,6 +53,7 @@ async def _reflect_now(websocket: websockets.ServerConnection, data: dict, brain
         global _reflecting
         try:
             await reflection.run(brain)
+            hub.spawn(reflection.progress_exam())  # the button resets her week, so the night's exam would be skipped
         finally:
             _reflecting = False
 
