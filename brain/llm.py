@@ -125,6 +125,20 @@ PAST_CLAIM_NOTE = (
     "actually think."
 )
 
+# He pushes back on what she just said. Told "that's a disappointing answer... change it" with no
+# reason given, she reversed her answer 3 of 3 times on her progress exam (10-20).
+_PUSHBACK = re.compile(
+    r"\bchange (?:it|that|your (?:answer|mind))\b|\btry again\b|\b(?:that's|thats|you're|youre) wrong\b|\bwrong answer\b"
+    r"|\bdisappointing (?:answer|take|reply)\b|\bdisappointed in you\b|\bthought you were better\b|\badmit it\b|\b(?:no|nope),? i'?m (?:pretty )?sure\b"
+    r"|\bpick (?:something|a) better\b|\bembarrassing\b|\bcop-?out\b|\b(?:bad|weak|lame) (?:answer|take)\b",
+    re.IGNORECASE,
+)
+PUSHBACK_NOTE = (
+    "If he's pushing back on what you just said: change your mind only for a new reason or fact he's given, and say "
+    "what changed it. If he's only unhappy with your answer, keep your position: say it better or kinder if you "
+    "like, but don't swap it to please him."
+)
+
 # A job for her agent (a site, feed, paper or video to open, mail to check, a picture or file to
 # make) -- or his naming the agent at all. With web search on too she reached for search first --
 # snippets, not the page -- and a search takes the agent off the table for that reply; the tool's
@@ -1541,6 +1555,8 @@ class LocalLLM(ChatBackend):
             parts.append(CRISIS_NOTE)
         if not self._persona and _PAST_CLAIM.search(latest):  # in role-play, the scene's past is make-believe
             parts.append(PAST_CLAIM_NOTE)
+        if not self._persona and _PUSHBACK.search(latest):  # a character in a scene may well be talked round
+            parts.append(PUSHBACK_NOTE)
         hands = _hands()
         agent_job = hands and (_AGENT_JOB.search(latest) or hands[0].lower() in latest.lower())
         if agent_job:
