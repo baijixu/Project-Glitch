@@ -139,6 +139,20 @@ PUSHBACK_NOTE = (
     "like, but don't swap it to please him."
 )
 
+# He says what her soul, settings or files do or don't say. Told "nowhere in any config does it say
+# you like beanies" -- her soul does -- she agreed and built on it (10-16).
+_SETUP_CLAIM = re.compile(
+    r"\b(?:your|any) (?:soul|configs?|config files?|prompt|system prompt|instructions|settings|files|programming)\b"
+    r"|\bsoul\.md\b|\bnowhere (?:in|does it)\b|\b(?:nobody|no one) (?:told|wrote|gave)\b"
+    r"|\byou (?:were|weren't) (?:never )?(?:told|programmed|made|built|given)\b",
+    re.IGNORECASE,
+)
+SETUP_CLAIM_NOTE = (
+    "If he says what your soul, settings or memories do or don't say, check it against them -- your soul is the "
+    "system prompt above, your memories are in these notes -- before you agree. If it's there and he says it isn't, "
+    "say so and quote it."
+)
+
 # A job for her agent (a site, feed, paper or video to open, mail to check, a picture or file to
 # make) -- or his naming the agent at all. With web search on too she reached for search first --
 # snippets, not the page -- and a search takes the agent off the table for that reply; the tool's
@@ -1557,6 +1571,8 @@ class LocalLLM(ChatBackend):
             parts.append(PAST_CLAIM_NOTE)
         if not self._persona and _PUSHBACK.search(latest):  # a character in a scene may well be talked round
             parts.append(PUSHBACK_NOTE)
+        if not self._persona and _SETUP_CLAIM.search(latest):  # a role-play soul isn't hers to vouch for
+            parts.append(SETUP_CLAIM_NOTE)
         hands = _hands()
         agent_job = hands and (_AGENT_JOB.search(latest) or hands[0].lower() in latest.lower())
         if agent_job:
