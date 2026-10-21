@@ -153,6 +153,23 @@ SETUP_CLAIM_NOTE = (
     "say so and quote it."
 )
 
+# A guessing game, where she may need to keep something from him (_SECRET_TAG).
+_GAME = re.compile(
+    r"\b(?:20|twenty) questions\b|\bthink of (?:a|an|something|someone|somewhere|a word)\b|\bguess\b|\briddles?\b"
+    r"|\bhangman\b|\btaboo\b|\btwo truths\b|\bi spy\b|\bwordle\b",
+    re.IGNORECASE,
+)
+GAME_NOTE = (
+    "If you're picking something he has to guess, write it once as [secret: the thing] anywhere in your reply. He "
+    "can't see or hear that tag; the app keeps it and shows it to you every turn, since you won't remember your pick "
+    "otherwise. Don't name it or hint at it outside the tag."
+)
+SECRET_NOTE = (
+    "Your secret for the game, which he can't see: {secret}. Answer only what he asks, truthfully: yes, no or sort "
+    "of, and a few words at most -- no descriptions, uses, places or other clues he didn't ask for. Don't say it "
+    "until he guesses it or gives up. When the game's over, write [secret: none]."
+)
+
 # A job for her agent (a site, feed, paper or video to open, mail to check, a picture or file to
 # make) -- or his naming the agent at all. With web search on too she reached for search first --
 # snippets, not the page -- and a search takes the agent off the table for that reply; the tool's
@@ -236,8 +253,9 @@ def _message_time(message: dict) -> datetime | None:
 
 
 def _for_model(message: dict) -> dict:
-    """A history message as the model gets it -- without the "at" time, the private flag or her pictures."""
-    return {k: v for k, v in message.items() if k not in ("at", "private", "pictures")}
+    """A history message as the model gets it -- without the "at" time, the private flag, her pictures or
+    her secret (that comes back in her turn notes)."""
+    return {k: v for k, v in message.items() if k not in ("at", "private", "pictures", "secret")}
 
 
 def _said(now: datetime) -> dict:
@@ -819,6 +837,21 @@ def _reply_content(content: str | None) -> str:
 _NOTES_BLOCK = re.compile(r"(?:\[notes\]|<notes>).*?(?:\[/notes\]|</notes>)", re.DOTALL | re.IGNORECASE)
 _NOTES_OPEN = re.compile(r"\[notes\]|<notes>", re.IGNORECASE)
 
+# Something she keeps from him for a game: "[secret: a lighthouse]" anywhere in her reply, never shown or
+# spoken, kept on her message in history and handed back in her turn notes (SECRET_NOTE) -- her thinking
+# is dropped after each reply, so a pick made there is gone by his next question. "[secret: none]" ends it.
+_SECRET_TAG = re.compile(r"[ \t]*\[[ \t]*secret[ \t]*:[ \t]*([^\]\n]*?)[ \t]*(?:\]|(?=\n)|$)", re.IGNORECASE)
+_SECRET_OPEN = re.compile(r"\[[ \t]*secret[ \t]*:[^\]\n]*$", re.IGNORECASE)  # still arriving: wait before speaking
+
+
+def _extract_secret(text: str) -> tuple[str | None, str]:
+    """(her secret -- "" if she ended it, None if no tag -- and the text without tags). The last one wins."""
+    tags = _SECRET_TAG.findall(text)
+    if not tags:
+        return None, text
+    secret = tags[-1].strip()
+    return ("" if secret.lower() in ("", "none") else secret), _SECRET_TAG.sub("", text)
+
 
 _TEXT_TOOL_CALL = re.compile(r"<function=([\w.-]+)>(.*?)</function>", re.DOTALL)
 _TEXT_TOOL_PARAM = re.compile(r"<parameter=([\w.-]+)>\s*(.*?)\s*</parameter>", re.DOTALL)
@@ -870,6 +903,9 @@ class Sentences:
 
     def feed(self, piece: str) -> list[str]:
         self._text += piece
+        if _SECRET_OPEN.search(self._text):
+            return []
+        self._text = _extract_secret(self._text)[1]
         if self.mood is None:
             self._text = _NOT_HER_REPLY.sub("", self._text)
             tag = _LEADING_MOOD_TAG.match(self._text)
@@ -948,6 +984,7 @@ class Reply:
     fell_back: bool = False  # thinking ran out of room, so it answered again with thinking off
     used_tool: bool = False  # search results or an agent's report are woven in, so the reply isn't a memory of the user
     pictures: list = field(default_factory=list)  # what her agent made for this reply, kept in pictures/ (shown under it)
+    secret: str | None = None  # a [secret: x] she set this reply ("" = ended), see _SECRET_TAG
 
 
 class ChatBackend:
@@ -1573,6 +1610,10 @@ class LocalLLM(ChatBackend):
             parts.append(PUSHBACK_NOTE)
         if not self._persona and _SETUP_CLAIM.search(latest):  # a role-play soul isn't hers to vouch for
             parts.append(SETUP_CLAIM_NOTE)
+        if secret := self._secret():
+            parts.append(SECRET_NOTE.format(secret=secret))
+        elif _GAME.search(latest):
+            parts.append(GAME_NOTE)
         hands = _hands()
         agent_job = hands and (_AGENT_JOB.search(latest) or hands[0].lower() in latest.lower())
         if agent_job:
@@ -1581,6 +1622,10 @@ class LocalLLM(ChatBackend):
         elif not self._persona and _PICTURE_TALK.search(latest) and pictures.listing():
             parts.append(GALLERY_NOTE)
         return "\n\n".join(parts)
+
+    def _secret(self) -> str:
+        """What she's keeping for a game: the newest [secret: x] she set and hasn't ended, or ""."""
+        return next((m["secret"] for m in reversed(self._history) if m.get("role") == "assistant" and "secret" in m), "")
 
     def _opens_a_sitting(self) -> bool:
         """Whether the newest message starts a conversation: nothing before it, or
@@ -1655,7 +1700,8 @@ class LocalLLM(ChatBackend):
             return result
         # Stored without the mood tag -- the system prompt alone keeps the model tagging.
         shown = {"pictures": result.pictures} if result.pictures else {}
-        self._history.append({"role": "assistant", "content": result.text, **_said(_now()), **shown})
+        kept = {"secret": result.secret} if result.secret is not None else {}
+        self._history.append({"role": "assistant", "content": result.text, **_said(_now()), **shown, **kept})
         self._history_changed()
         return result
 
@@ -1679,6 +1725,7 @@ class LocalLLM(ChatBackend):
             )
             if cancelled():
                 return False
+            result.secret, raw = _extract_secret(raw)
             result.mood, result.text = _extract_mood(raw)
             if result.text.strip():
                 break
