@@ -371,7 +371,8 @@ MAX_CONCLUSION_TOKENS = 400
 _CONCLUSION_PROMPT = (
     "Below is something you wrote on your own:\n\n{text}\n\n"
     "In one sentence, in the first person: what have you come to think? The view you'd want to remember and stand "
-    "by -- not a summary of what you wrote. Under 40 words, in plain words -- no metaphors or imagery, just what you "
+    "by -- not a summary of what you wrote. Name what it's about -- the book, topic or question -- in the sentence "
+    "itself: it's found again by that name. Under 40 words, in plain words -- no metaphors or imagery, just what you "
     "think. No preamble. If it didn't lead you anywhere you'd stand "
     "by, reply with just: nothing"
 )
