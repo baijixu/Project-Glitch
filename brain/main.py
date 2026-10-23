@@ -64,6 +64,7 @@ import learning
 import llm_engines
 import mind  # noqa: F401 -- registers the 🧠 window's message handlers
 import reach_out
+import reflection
 import server
 import tts_engines
 import web_search
@@ -121,6 +122,7 @@ async def main() -> None:
     hub.spawn(health.health_check_loop())
     hub.spawn(reach_out.reach_out_loop(brain))
     reach_out.listen_for_agents(brain)
+    reflection.listen_for_soul_requests(brain)
     hub.spawn(journal.journal_loop(brain))
     hub.spawn(heartbeat.heartbeat_loop(brain))
     hub.spawn(friends.visit_loop(brain))

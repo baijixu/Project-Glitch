@@ -21,6 +21,7 @@ import conversation
 import heartbeat
 import hub
 import learning
+import llm
 import library
 import memory
 import persona
@@ -33,7 +34,7 @@ EVERY_DAYS = 7
 LAST_PATH = Path(__file__).parent / "reflection_last.txt"  # the date of the last one
 # Who she is -- his choice (10-19), the closet included. Not how she works, her moods, what she does
 # when someone's in danger, or after dark: those he tuned, and they never reach the rewrite.
-SECTIONS = ("Who you are", "Your style", "How you talk", "Your own mind")
+SECTIONS = llm.SOUL_SECTIONS
 MAX_PAGE_TOKENS = 900
 MAX_REWRITE_TOKENS = 2000
 _PAGE_PROMPT = (
@@ -55,6 +56,16 @@ _REWRITE_PROMPT = (
     "- describe who you are now{age}, not a past you haven't lived.\n\n"
     "Your page:\n\n{page}\n\nYour memories from this week:\n\n{memories}\n\n"
     "Where how you're described didn't fit you this week, from your thoughts:\n\n{friction}\n\nThe parts to rewrite:\n\n{sections}\n\n"
+    "Reply with the rewritten parts, each under its heading as above, and then one last line:\n"
+    "CHANGED: in one sentence, what you changed and why"
+)
+# A change she asked for in chat (propose_requested): that change and nothing else, since he reviews it as one.
+_REQUEST_PROMPT = (
+    "Below are the parts of your soul about who you are -- how you're described, in the second person. You asked "
+    "{name} for this change: {change}{why}\n\n"
+    "Rewrite these parts with that change made, and only that: every other line stays word for word. Keep the second "
+    "person (\"You ...\"), keep every heading exactly as it is, in the same order, and add none; at most this many "
+    "words under each heading: {limits}.\n\nThe parts to rewrite:\n\n{sections}\n\n"
     "Reply with the rewritten parts, each under its heading as above, and then one last line:\n"
     "CHANGED: in one sentence, what you changed and why"
 )
@@ -204,13 +215,35 @@ async def _recent_memories(now: datetime) -> list[str]:
 async def propose_rewrite(brain: Brain, page: str, now: datetime, rubs: list[str] = ()) -> bool:
     """Her soul's SECTIONS rewritten from `page`, her week's memories and where she didn't feel like how she's
     described (`rubs`, from friction), as one proposal for his review."""
+    memories = "\n".join(f"- {m}" for m in await _recent_memories(now)) or "(none this week)"
+    return await _propose(brain, now, f"Her weekly reflection, {now:%d %B}", lambda limits, sections: _REWRITE_PROMPT.format(
+        name=persona.user_name() or "him", limits=limits, page=page, memories=memories, age=age(now),
+        friction="\n".join(f"- {rub}" for rub in rubs) or "(nothing)", sections=sections,
+    ))
+
+
+async def propose_requested(brain: Brain, change: str, why: str, now: datetime | None = None) -> bool:
+    """A change to her soul she asked for in chat (llm.SOUL_TOOL), rewritten in and put in his review list."""
+    now = now or datetime.now()
+    if not learning.can_propose(brain):
+        print(f"[reflection] she asked for a soul change, but nothing can be proposed now: {change[:80]!r}")
+        return False
+    proposed = await _propose(brain, now, f"She asked for it in chat, {now:%d %B}", lambda limits, sections: _REQUEST_PROMPT.format(
+        name=persona.user_name() or "him", change=change, why=f" (why: {why})" if why else "", limits=limits, sections=sections,
+    ))
+    if proposed:
+        await hub.broadcast(learning.training_state_message())
+    return proposed
+
+
+async def _propose(brain: Brain, now: datetime, source: str, prompt_for) -> bool:
+    """Her SECTIONS rewritten by `prompt_for(limits, sections)`, within the cap, as one soul_rewrite in his review list."""
     soul = souls.read_main_soul()
     current = sections_of(soul)
     if not current:
         return False
     locked = len(soul) - sum(len(body) for body in current.values())
     budget = souls.SOUL_MAX_CHARS - locked - 2 * len(current)  # room for her sections' text, with their blank lines
-    memories = "\n".join(f"- {m}" for m in await _recent_memories(now)) or "(none this week)"
     size = sum(len(body) for body in current.values())
     for attempt in range(2):  # once more, tighter, if the first doesn't fit
         # Word limits per section: the model can't count characters (asked for a character total, it came in
@@ -218,11 +251,7 @@ async def propose_rewrite(brain: Brain, page: str, now: datetime, rubs: list[str
         # aimed under her room: given all of it, a soul near the cap came back 9-295 characters over in 6 of 8 tries.
         share = min(1.0, budget / size) * (0.8 if attempt else 0.95)
         limits = "; ".join(f"{heading}: {max(15, int(len(body.split()) * share))}" for heading, body in current.items())
-        prompt = _REWRITE_PROMPT.format(
-            name=persona.user_name() or "him", limits=limits, page=page, memories=memories, age=age(now),
-            friction="\n".join(f"- {rub}" for rub in rubs) or "(nothing)",
-            sections="\n\n".join(f"## {heading}\n\n{body}" for heading, body in current.items()),
-        )
+        prompt = prompt_for(limits, "\n\n".join(f"## {heading}\n\n{body}" for heading, body in current.items()))
         async with brain.busy("Rewriting her soul..."):
             raw = await asyncio.to_thread(brain.llm.under_soul, prompt, MAX_REWRITE_TOKENS)
         parsed = parse_rewrite(raw, list(current))
@@ -233,13 +262,17 @@ async def propose_rewrite(brain: Brain, page: str, now: datetime, rubs: list[str
         if new.strip() == soul.strip():
             return False
         if len(new) <= souls.SOUL_MAX_CHARS:
-            training.add_pending(
-                parsed[1], f"Her weekly reflection, {now:%d %B}", "soul_rewrite", old=soul, new=new, diff=diff(soul, new)
-            )
+            training.add_pending(parsed[1], source, "soul_rewrite", old=soul, new=new, diff=diff(soul, new))
             print(f"[reflection] she proposed a revised soul: {len(soul):,} -> {len(new):,} characters")
             return True
         print(f"[reflection] her soul rewrite was {len(new) - souls.SOUL_MAX_CHARS:,} characters over (try {attempt + 1})")
     return False
+
+
+def listen_for_soul_requests(brain: Brain) -> None:
+    """Her request_soul_change tool (llm.SOUL_TOOL) runs here, after her reply: the rewrite takes a minute on her model."""
+    loop = asyncio.get_running_loop()
+    llm.request_soul_change = lambda change, why: loop.call_soon_threadsafe(lambda: hub.spawn(propose_requested(brain, change, why)))
 
 
 def apply_proposal(proposal: dict, brain: Brain) -> None:

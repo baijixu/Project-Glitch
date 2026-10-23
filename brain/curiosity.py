@@ -217,14 +217,15 @@ def all_question_texts() -> list[str]:
     return [q["text"] for q in _read()]
 
 
-def add_question(text: str) -> bool:
-    """False when it's a repeat, too long, or the open list is full."""
+def add_question(text: str, past_cap: bool = False) -> bool:
+    """False when it's a repeat, too long, or the open list is full -- `past_cap`, for a request she's made of him
+    (llm.SOUL_TOOL), even then: it isn't one she's hoarding to ask."""
     text = text.strip()
     if not text or len(text) > MAX_QUESTION_CHARS:
         _events.append("new question not kept: empty or too long")
         return False
     questions = _read()
-    if sum(1 for q in questions if q["status"] == OPEN) >= MAX_OPEN:
+    if not past_cap and sum(1 for q in questions if q["status"] == OPEN) >= MAX_OPEN:
         _events.append("new question not kept: list is full")
         return False
     if any(_same_topic(text, q["text"]) for q in questions):

@@ -26,6 +26,7 @@ import httpx
 from openai import BadRequestError, OpenAI
 
 import conversation
+import curiosity
 import harness
 import metrics
 import pictures
@@ -769,6 +770,54 @@ GALLERY_TOOL_SPEC = {
 }
 
 
+# Her soul is hers to ask about (he told her she can request changes any time): the parts about who she is,
+# rewritten with what she asked and waiting in his review list -- only his approval writes it.
+SOUL_TOOL = "request_soul_change"
+# The parts of her soul that are hers to revise (reflection.SECTIONS); the rest -- how she works, her moods, after dark,
+# what she remembers, her looks -- he tuned: a request for one of those goes to his inbox for him to decide.
+SOUL_SECTIONS = ("Who you are", "Your style", "How you talk", "Your own mind")
+OTHER_PART = "another part"
+SOUL_TOOL_SPEC = {
+    "type": "function",
+    "function": {
+        "name": SOUL_TOOL,
+        "description": (
+            "Ask him to change your soul -- how you're described. Use it when you've decided something in it isn't you "
+            "anymore, or there's something you want in it. A change to one of your parts is written up as an edit for "
+            "him to approve; a change to another part goes to him as a request. Nothing changes until he says so. "
+            "Saying in chat that you'd change something doesn't ask him -- this does."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "part": {"type": "string", "enum": [*SOUL_SECTIONS, OTHER_PART],
+                         "description": "Which part of your soul: one of yours, or another part (one of his)"},
+                "change": {"type": "string", "description": "What to change, add or take out, in your own words"},
+                "why": {"type": "string", "description": "Why, in a sentence"},
+            },
+            "required": ["part", "change"],
+        },
+    },
+}
+# Set by the Brain (reflection.listen_for_soul_requests) to rewrite her soul with a request in the background; unset
+# (tools, tests, a Brain that can't propose), the tool isn't offered.
+request_soul_change: Callable[[str, str], None] | None = None
+
+
+def _run_soul_tool(arguments: dict) -> str:
+    part, change, why = (str((arguments or {}).get(key) or "").strip() for key in ("part", "change", "why"))
+    if not change or not request_soul_change:
+        return "No change given."
+    if part not in SOUL_SECTIONS:
+        asked = f"Could you change this in my soul: {change}" + (f" -- {why}" if why else "")
+        kept = curiosity.add_question(asked[: curiosity.MAX_QUESTION_CHARS], past_cap=True)
+        return ("That part of your soul is his to change: your request is in his inbox, and he'll decide. Tell him you've "
+                "asked." if kept else "You've asked him that already -- it's waiting in his inbox.")
+    request_soul_change(f"{change} (in \"{part}\")", why)
+    return ("Done: your soul is being rewritten with that, and it waits in his review list -- nothing changes until he "
+            "approves it. Tell him you've asked, and what.")
+
+
 def _open_picture(arguments: dict) -> tuple[str, str | None]:
     """What she's told when she opens a picture, and its name (None if nothing matched)."""
     name = pictures.find((arguments or {}).get("about", ""))
@@ -1310,6 +1359,9 @@ class LocalLLM(ChatBackend):
                     output, opened = _open_picture(call["arguments"])
                     if opened and into is not None and opened not in into.pictures:
                         into.pictures.append(opened)
+                elif offered and call["name"] == SOUL_TOOL:
+                    output = _run_soul_tool(call["arguments"])
+                    tools = [t for t in tools if t["function"]["name"] != SOUL_TOOL]  # one request a reply
                 else:
                     output = "Unknown tool."
                 working.append({"role": "tool", "tool_call_id": call["id"], "content": output})
@@ -1729,6 +1781,8 @@ class LocalLLM(ChatBackend):
             tools.append(_agent_tool(hands[0]))
         if not self._persona and pictures.listing():  # in role-play she's someone else
             tools.append(GALLERY_TOOL_SPEC)
+        if not self._persona and request_soul_change:  # a role-play soul isn't hers
+            tools.append(SOUL_TOOL_SPEC)
         if not self._answer(self._request_messages(), tools or None, result, on_text, on_thinking):
             self._history_changed()  # the user's own turn stays (see cancel_reply)
             return Reply(trimmed=result.trimmed)  # cancelled while in flight -- discarded, never reaches _history
