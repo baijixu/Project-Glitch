@@ -29,6 +29,7 @@ import conversation
 import harness
 import metrics
 import pictures
+import sampling
 import web_search
 from punctuation import dedash
 
@@ -1437,14 +1438,18 @@ class LocalLLM(ChatBackend):
         messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": prompt}]
         return self._complete(messages, max_tokens, no_thinking=True, sampling=sampling)
 
+    # Her own writing -- journal pages, reading notes, daydreams, pages -- goes at her sampling profile, like her
+    # replies: at the server's defaults one prompt came back nearly word for word ("I've been sitting on the..."
+    # opened 7 of 8 journal pages). Jobs with a set shape (a verdict, a rewrite to fit, one sentence) keep the defaults.
     def write_visit_journal(self, transcript: str, names: list[str]) -> str:
         """Her journal entry about a visit (_VISIT_JOURNAL_PROMPT)."""
-        return self.under_soul(_VISIT_JOURNAL_PROMPT.format(names=", ".join(names), transcript=transcript), MAX_DIARY_TOKENS)
+        prompt = _VISIT_JOURNAL_PROMPT.format(names=", ".join(names), transcript=transcript)
+        return self.under_soul(prompt, MAX_DIARY_TOKENS, sampling.active_values())
 
     def daydream(self, fragments: str, name: str) -> str:
         """Heartbeat: what (if anything) pulls at her among `fragments` -- raw JSON
         (_DAYDREAM_PROMPT) for heartbeat.parse_daydream. `name`: the user's."""
-        return self.under_soul(_DAYDREAM_PROMPT.format(fragments=fragments, name=name), MAX_DAYDREAM_TOKENS)
+        return self.under_soul(_DAYDREAM_PROMPT.format(fragments=fragments, name=name), MAX_DAYDREAM_TOKENS, sampling.active_values())
 
     def describe_picture(self, data_b64: str, mime: str, said: str = "", label: str = "") -> str:
         """Her gallery: what's in a picture he gave her, in her words (_DESCRIBE_PROMPT); `said`, what
@@ -1458,18 +1463,18 @@ class LocalLLM(ChatBackend):
         """Heartbeat: her thought on a picture from her gallery -- raw JSON for heartbeat.parse_daydream."""
         prompt = _LOOK_PROMPT.format(about=f" ({about})" if about else "")
         messages = [{"role": "system", "content": self._soul or DEFAULT_PERSONALITY}, {"role": "user", "content": _image_content(prompt, data_b64, mime)}]
-        return self._complete(messages, MAX_DAYDREAM_TOKENS, no_thinking=True)
+        return self._complete(messages, MAX_DAYDREAM_TOKENS, no_thinking=True, sampling=sampling.active_values())
 
     def choose(self, a: str, b: str) -> str:
         """Heartbeat: which of two things of hers loses, and why -- raw JSON (_CHOICE_PROMPT) for
         heartbeat.parse_daydream."""
-        return self.under_soul(_CHOICE_PROMPT.format(a=a, b=b), MAX_DAYDREAM_TOKENS)
+        return self.under_soul(_CHOICE_PROMPT.format(a=a, b=b), MAX_DAYDREAM_TOKENS, sampling.active_values())
 
     def focus(self, topic: str, thoughts: str, name: str, found: str = "") -> str:
         """Heartbeat: her notebook page on a topic that has landed (_FOCUS_PROMPT), with what a
         web search turned up about it, if she looked."""
         prompt = _FOCUS_PROMPT.format(topic=topic, thoughts=thoughts, name=name)
-        return self.under_soul(prompt + (_FOCUS_FOUND.format(found=found) if found else ""), MAX_FOCUS_TOKENS)
+        return self.under_soul(prompt + (_FOCUS_FOUND.format(found=found) if found else ""), MAX_FOCUS_TOKENS, sampling.active_values())
 
     def pick_book(self, titles: list[str]) -> str:
         """Library: which of `titles` she reads next -- the model's raw answer, a number."""
@@ -1479,7 +1484,8 @@ class LocalLLM(ChatBackend):
     def read_pages(self, title: str, percent: int, pages: str, previous_note: str) -> str:
         """Library: her note on the next pages of a book (_READING_PROMPT)."""
         previous = f" Your note from last time: {previous_note}" if previous_note else ""
-        return self.under_soul(_READING_PROMPT.format(title=title, percent=percent, previous=previous, pages=pages), MAX_READING_TOKENS)
+        prompt = _READING_PROMPT.format(title=title, percent=percent, previous=previous, pages=pages)
+        return self.under_soul(prompt, MAX_READING_TOKENS, sampling.active_values())
 
     def write_diary(self, log: str, name: str, thoughts: str = "", his: str = "") -> str:
         """Her nightly diary entry (brain/journal.py) about one day's chat log, what went through her head

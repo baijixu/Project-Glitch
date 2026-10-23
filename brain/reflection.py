@@ -24,6 +24,7 @@ import learning
 import library
 import memory
 import persona
+import sampling
 import souls
 import training
 from hub import Brain
@@ -270,7 +271,7 @@ async def run(brain: Brain, now: datetime | None = None) -> None:
     if rubs := await friction(brain, now):
         material += "\n\nWhere how you're described didn't fit you, from your thoughts:\n" + "\n".join(f"- {rub}" for rub in rubs)
     async with brain.busy("Looking back on her week..."):
-        page = (await asyncio.to_thread(brain.llm.under_soul, _PAGE_PROMPT.format(material=material), MAX_PAGE_TOKENS)).strip()
+        page = (await asyncio.to_thread(brain.llm.under_soul, _PAGE_PROMPT.format(material=material), MAX_PAGE_TOKENS, sampling.active_values())).strip()
     if not page:
         return
     folder = conversation.JOURNAL_LOG_DIR / "becoming"

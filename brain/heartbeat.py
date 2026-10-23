@@ -473,9 +473,10 @@ async def think(brain: Brain, interests: dict, now: datetime) -> str:
 
 
 async def _write(brain: Brain, doing: str, prompt: str, max_tokens: int) -> str:
-    """Something she writes on her own time, under her soul -- "" if nothing came."""
+    """Something she writes on her own time, under her soul at her sampling (see LocalLLM.write_visit_journal) --
+    "" if nothing came."""
     async with brain.busy(doing):
-        return (await asyncio.to_thread(brain.llm.under_soul, prompt, max_tokens)).strip()
+        return (await asyncio.to_thread(brain.llm.under_soul, prompt, max_tokens, sampling.active_values())).strip()
 
 
 async def reflect(brain: Brain, event: dict, now: datetime) -> str:
