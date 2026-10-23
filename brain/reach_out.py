@@ -14,6 +14,7 @@ import websockets
 import conversation
 import curiosity
 import harness
+import heartbeat
 import his_journal
 import hub
 import learning
@@ -195,7 +196,7 @@ async def _reach_out(brain: Brain, *, test: bool = False) -> None:
     print("[brain] a quiet spell -- reaching out" + (f" with {question['text']!r}" if question else ""))
     try:
         his = his_journal.recent(persona.user_name() or "He")
-        result = await asyncio.to_thread(brain.llm.reach_out, question["text"] if question else None, his)
+        result = await asyncio.to_thread(brain.llm.reach_out, question["text"] if question else None, his, heartbeat.on_her_mind())
         text, mood = result.text, result.mood
     finally:
         curiosity.mark_reached_out(question["id"] if question else None)

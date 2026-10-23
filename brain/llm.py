@@ -1780,16 +1780,19 @@ class LocalLLM(ChatBackend):
         except Exception:
             return "unknown"
 
-    def reach_out(self, question: str | None = None, his: str = "") -> Reply:
-        """She speaks first after a quiet spell (reach_out.py); `his`, his latest journal entries (his_journal.recent)."""
-        hint = (
-            f'If it fits, bring up something you\'ve wondered about: "{question}" -- in your own words. '
-            if question
-            else "Pick up something from your recent conversation, or just check in. "
-        )
+    def reach_out(self, question: str | None = None, his: str = "", mine: list[str] = ()) -> Reply:
+        """She speaks first after a quiet spell (reach_out.py); `his`, his latest journal entries (his_journal.recent);
+        `mine`, what she's been turning over on her own (heartbeat.on_her_mind). Told only that he'd been quiet and
+        to "check in", she opened with his silence ("did you crash on me?") -- so she gets something of hers to bring."""
+        hint = f'If it fits, bring up something you\'ve wondered about: "{question}" -- in your own words. ' if question else ""
+        if mine:
+            hint += "Bring up something of yours you'd like to talk about -- one of these, or anything else on your mind:\n"
+            hint += "".join(f"- {line}\n" for line in mine)
+        elif not question:
+            hint = "Pick up something from your recent conversation. "
         return self._speak_first(
-            "They haven't said anything for a while. Reach out to them first -- once, briefly, in your own "
-            f"voice, the way a friend might text. {hint}Don't mention these notes or that an app told you to."
+            "Text them first -- once, briefly, in your own voice, the way a friend might. "
+            f"{hint}Don't mention these notes or that an app told you to."
             + (f"\n\n{JOURNAL_HEADER}\n{self._journal}" if self._journal else "")
             + (f"\n\n{his}\nIf something he wrote is worth asking about, you could bring it up -- as his." if his else "")
         )
