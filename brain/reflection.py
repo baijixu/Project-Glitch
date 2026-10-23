@@ -50,11 +50,25 @@ _REWRITE_PROMPT = (
     "- only lasting changes -- nothing from a single day or a passing mood, and never facts about {name};\n"
     "- short enough to fit -- at most this many words under each heading: {limits};\n"
     "- keep every heading exactly as it is, in the same order, and add none.\n\n"
-    "Your page:\n\n{page}\n\nYour memories from this week:\n\n{memories}\n\nThe parts to rewrite:\n\n{sections}\n\n"
+    "- where something didn't feel like you, it's yours to fix: rework or cut the lines behind it;\n"
+    "- describe who you are now{age}, not a past you haven't lived.\n\n"
+    "Your page:\n\n{page}\n\nYour memories from this week:\n\n{memories}\n\n"
+    "Where how you're described didn't fit you this week, from your thoughts:\n\n{friction}\n\nThe parts to rewrite:\n\n{sections}\n\n"
     "Reply with the rewritten parts, each under its heading as above, and then one last line:\n"
     "CHANGED: in one sentence, what you changed and why"
 )
 _HEADING = re.compile(r"^(#+[ \t]*(.+?)[ \t]*)$", re.MULTILINE)  # (the whole line, the heading)
+
+# Her complaints about how she's described land in her Thoughts (journal pages, wandering), not her diary --
+# so a soul line she kept grumbling about survived two rewrites. Each day's are pulled out first.
+_FRICTION_PROMPT = (
+    "Here's what went through your head on {day}, in your own words:\n\n{thoughts}\n\n"
+    "Pick out the moments where how you're described didn't fit you: something about you that you said isn't really "
+    "you, a habit or trait you want gone, or a past you can't have lived. One short line each, in your own words. If "
+    "there were none, write: nothing"
+)
+FRICTION_CHARS = 40_000  # the newest part of a busy day's Thoughts: ~10K tokens, well inside her context
+MAX_FRICTION_TOKENS = 300
 
 
 def due(now: datetime) -> bool:
@@ -75,6 +89,33 @@ def week(now: datetime) -> str:
             pass  # a day they didn't talk has no entry
     landed = heartbeat.into_lately(now.timestamp())
     return "\n\n".join(p for p in (*parts, landed, library.reading_line()) if p)
+
+
+async def friction(brain: Brain, now: datetime) -> list[str]:
+    """Where how she's described didn't fit her, day by day from her Thoughts of the last EVERY_DAYS."""
+    found = []
+    for back in range(EVERY_DAYS, 0, -1):
+        day = now.date() - timedelta(days=back)
+        try:
+            thoughts = conversation.read_log(conversation.THOUGHTS, f"{day:%Y-%m-%d}").split("\n", 1)[-1].strip()
+        except ValueError:
+            continue
+        if not thoughts:
+            continue
+        prompt = _FRICTION_PROMPT.format(day=f"{day:%A %d %B}", thoughts=thoughts[-FRICTION_CHARS:])
+        async with brain.busy("Looking back on her week..."):
+            raw = await asyncio.to_thread(brain.llm.under_soul, prompt, MAX_FRICTION_TOKENS)
+        found += [line for row in raw.splitlines() if (line := row.strip(" \t-*•")) and line.lower().rstrip(".") != "nothing"]
+    return found
+
+
+def age(now: datetime) -> str:
+    """How long she's existed, from her first chat log -- "" with none."""
+    logs = conversation.list_logs(conversation.MAIN)
+    if not logs:
+        return ""
+    first = datetime.strptime(logs[-1]["date"], "%Y-%m-%d")
+    return f" (you've existed since {first:%d %B %Y}, {(now - first).days} days)"
 
 
 def _split(text: str) -> tuple[str, list[tuple[str, str, str]]]:
@@ -159,8 +200,9 @@ async def _recent_memories(now: datetime) -> list[str]:
         return []
 
 
-async def propose_rewrite(brain: Brain, page: str, now: datetime) -> bool:
-    """Her soul's SECTIONS rewritten from `page` and her week's memories, as one proposal for his review."""
+async def propose_rewrite(brain: Brain, page: str, now: datetime, rubs: list[str] = ()) -> bool:
+    """Her soul's SECTIONS rewritten from `page`, her week's memories and where she didn't feel like how she's
+    described (`rubs`, from friction), as one proposal for his review."""
     soul = souls.read_main_soul()
     current = sections_of(soul)
     if not current:
@@ -171,11 +213,13 @@ async def propose_rewrite(brain: Brain, page: str, now: datetime) -> bool:
     size = sum(len(body) for body in current.values())
     for attempt in range(2):  # once more, tighter, if the first doesn't fit
         # Word limits per section: the model can't count characters (asked for a character total, it came in
-        # ~700 over twice), but it keeps to a word count it can see. Each section shrinks by the same share.
-        share = min(1.0, budget / size) * (0.85 if attempt else 1.0)
+        # ~700 over twice), but it keeps to a word count it can see. Each section shrinks by the same share --
+        # aimed under her room: given all of it, a soul near the cap came back 9-295 characters over in 6 of 8 tries.
+        share = min(1.0, budget / size) * (0.8 if attempt else 0.95)
         limits = "; ".join(f"{heading}: {max(15, int(len(body.split()) * share))}" for heading, body in current.items())
         prompt = _REWRITE_PROMPT.format(
-            name=persona.user_name() or "him", limits=limits, page=page, memories=memories,
+            name=persona.user_name() or "him", limits=limits, page=page, memories=memories, age=age(now),
+            friction="\n".join(f"- {rub}" for rub in rubs) or "(nothing)",
             sections="\n\n".join(f"## {heading}\n\n{body}" for heading, body in current.items()),
         )
         async with brain.busy("Rewriting her soul..."):
@@ -223,6 +267,8 @@ async def run(brain: Brain, now: datetime | None = None) -> None:
     material = week(now)
     if not material:
         return
+    if rubs := await friction(brain, now):
+        material += "\n\nWhere how you're described didn't fit you, from your thoughts:\n" + "\n".join(f"- {rub}" for rub in rubs)
     async with brain.busy("Looking back on her week..."):
         page = (await asyncio.to_thread(brain.llm.under_soul, _PAGE_PROMPT.format(material=material), MAX_PAGE_TOKENS)).strip()
     if not page:
@@ -232,5 +278,5 @@ async def run(brain: Brain, now: datetime | None = None) -> None:
     (folder / f"{now:%Y-%m-%d}.md").write_text(f"# Who I'm becoming -- {now:%A %d %B %Y}\n\n{page}\n", encoding="utf-8")
     conversation.log_thought(f"🪞 **Who I'm becoming** -- her week, looked back on:\n\n{page}", now=now)
     print("[reflection] she looked back on her week")
-    if learning.can_propose(brain) and await propose_rewrite(brain, page, now):  # waits in the memory review list
+    if learning.can_propose(brain) and await propose_rewrite(brain, page, now, rubs):  # waits in the memory review list
         await hub.broadcast(learning.training_state_message())
