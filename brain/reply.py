@@ -303,6 +303,8 @@ async def reply_to(
     # Her diary, her last visit's journal, the book she's reading and what she's been into.
     journals = (conversation.read_latest_journal(), friends.read_visit_journal(), library.reading_line(), heartbeat.into_lately())
     brain.llm.set_journal("" if profiles.read_roleplay_active() else "\n\n".join(j for j in journals if j))
+    since = None if profiles.read_roleplay_active() else brain.llm.quiet_since()
+    brain.llm.set_own_time(heartbeat.own_time(since) if since else "")
     # Her sampling profile, read every turn (kept in role-play: it's how she writes, not who he is).
     brain.llm.set_sampling(sampling.active_values())
 

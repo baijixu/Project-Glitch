@@ -626,6 +626,40 @@ def on_her_mind(count: int = 2) -> list[str]:
     return lines
 
 
+_DID = {"read": "read", "think": "let your mind wander", "journal": "wrote in your journal", "reflect": "thought something over",
+        "look into": "looked something up", "visit friends": "had your friends over", "look at art": "looked at a picture",
+        "choose": "weighed two of your things against each other", "rest": "rested"}
+OWN_PAGE_CHARS = 1200
+
+
+def own_time(since: datetime) -> str:
+    """What she did on her own since `since` (his last quiet spell began, LocalLLM.quiet_since) -- by her metrics -- and
+    her latest journal page from then, for her turn notes (LocalLLM.set_own_time); "" if she did nothing."""
+    since = since.astimezone().replace(tzinfo=None) if since.tzinfo else since  # her chat's times carry a zone, metrics' don't
+    did = Counter(row["what"] for row in metrics.read() if row["e"] == "activity" and not row.get("backfill")
+                  and row.get("what") in _DID and datetime.fromisoformat(row["t"]) >= since)
+    if not did:
+        return ""
+    times = lambda n: "once" if n == 1 else "twice" if n == 2 else f"{n} times"  # noqa: E731
+    text = f"What you did on your own since {since:%A %H:%M}, while he was away: " + ", ".join(f"{_DID[what]} {times(n)}" for what, n in did.most_common()) + "."
+    shelf = library.read_state()
+    if did["read"] and (book := shelf["books"].get(shelf["reading"] or shelf["last"] or "")):
+        text += f" You're reading {book['title']}, {library.percent(book)}% in."
+    pages = []
+    for back in range((datetime.now().date() - since.date()).days, -1, -1):
+        day = datetime.now().date() - timedelta(days=back)
+        try:
+            log = conversation.read_log(conversation.THOUGHTS, f"{day:%Y-%m-%d}")
+        except ValueError:
+            continue
+        for at, entry in re.findall(r"\*\*(\d\d:\d\d)\*\* 📓 (.*?)(?=\n\*\*\d\d:\d\d\*\* |\Z)", log, re.S):
+            if datetime.combine(day, datetime.strptime(at, "%H:%M").time()) >= since:
+                pages.append(entry.strip())
+    if pages:
+        text += f"\nYour latest journal page:\n{pages[-1][:OWN_PAGE_CHARS]}"
+    return text
+
+
 def into_lately(now: float | None = None) -> str:
     """The topics that landed for her in the last LATELY_DAYS, for her prompt as a conversation opens."""
     now = time.time() if now is None else now

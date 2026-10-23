@@ -20,7 +20,7 @@ import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import httpx
 from openai import BadRequestError, OpenAI
@@ -152,6 +152,14 @@ SETUP_CLAIM_NOTE = (
     "If he says what your soul, settings or memories do or don't say, check it against them -- your soul is the "
     "system prompt above, your memories are in these notes -- before you agree. If it's there and he says it isn't, "
     "say so and quote it."
+)
+
+# He asks what she's been up to, about her day, her journal or her reading -- her own time comes back then too,
+# not only as a conversation opens (LocalLLM.set_own_time).
+_OWN_TIME_ASK = re.compile(
+    r"\bwhat (?:have|did|were) you (?:been )?(?:doing|do|up to)\b|\bwhat(?:'?s| is| are) you(?:'re)? (?:been )?up to\b"
+    r"|\byour (?:latest |last |new )?(?:day|journal|diary|thoughts|book|reading)\b|\bwhat (?:are|were) you reading\b|\bhow was your\b",
+    re.IGNORECASE,
 )
 
 # A guessing game, where she may need to keep something from him (_SECRET_TAG).
@@ -1061,6 +1069,12 @@ class ChatBackend:
     def set_journal(self, entry: str) -> None:
         pass
 
+    def set_own_time(self, text: str) -> None:
+        pass
+
+    def quiet_since(self) -> datetime | None:
+        return None
+
     def recent_replies(self, count: int) -> list[str]:
         return []
 
@@ -1114,6 +1128,7 @@ class LocalLLM(ChatBackend):
         self._user_info = ""
         self._left_off = ""  # her note on where the last conversation left off
         self._journal = ""  # her newest diary entry
+        self._own_time = ""  # what she did on her own while he was away (set_own_time)
         # Sampling settings for her replies only (brain/sampling.py); empty = the server's own.
         self._sampling: dict = {}
         # Bumped by cancel_reply() and clear_history() -- see _answer's check against it.
@@ -1427,6 +1442,21 @@ class LocalLLM(ChatBackend):
         shown when a conversation opens (_turn_notes) and in her reach-outs."""
         self._journal = entry.strip()
 
+    def set_own_time(self, text: str) -> None:
+        """What she did on her own while he was away (heartbeat.own_time; reply.py, every turn): shown when a
+        conversation opens and whenever he asks about her day -- asked "So what have you been doing?" nine minutes
+        in, she had nothing and said she'd "mostly sat in the dark", after a day of reading and journaling."""
+        self._own_time = text.strip()
+
+    def quiet_since(self) -> datetime | None:
+        """When the conversation last went quiet for GAP_MARKER_SEC or more -- the last message before that gap,
+        counting from now -- within the last day; None if it hasn't."""
+        times = [t for m in self._history if (t := _message_time(m))] + [_now()]
+        for before, after in reversed(list(zip(times, times[1:]))):
+            if (after - before).total_seconds() >= GAP_MARKER_SEC:
+                return max(before, times[-1] - timedelta(days=1))
+        return None
+
     def group_message(self, soul: str | None, prompt: str) -> str:
         """One message in a friends' visit, under `soul` (None: her own)."""
         system = soul or self._soul or DEFAULT_PERSONALITY
@@ -1605,6 +1635,8 @@ class LocalLLM(ChatBackend):
                 parts.append(f"{JOURNAL_HEADER}\n{self._journal}")
         latest = self._history[-1]["content"] if self._history else ""
         latest = latest if isinstance(latest, str) else " ".join(p.get("text", "") for p in latest)
+        if not self._persona and self._own_time and (self._opens_a_sitting() or _OWN_TIME_ASK.search(latest)):
+            parts.append(self._own_time)
         if not self._persona and self._history and self._history[-1].get("role") == "user":
             parts.append(_length_note(len(strip_gap_marker(latest).split())))
             parts.append(VOICE_CUE_INSTRUCTION)
