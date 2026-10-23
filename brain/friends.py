@@ -43,6 +43,8 @@ MAX_FRIENDS = 3
 VISIT_HOUR = 2  # local time
 VISIT_QUIET_SEC = 30 * 60
 VISIT_CHECK_SEC = 5 * 60
+MAX_VISITS_A_DAY = 3  # the nightly one included: each is ~20 messages on her model
+VISIT_GAP_SEC = 3 * 3600
 LAST_VISIT_PATH = Path(__file__).parent / "friends_last_visit.txt"  # the day of the last visit
 MAX_MESSAGES = 20  # everyone's together: at 50, with the subject talked out, they ran their bits on repeat
 # The newest messages each speaker sees. At 16, with the same model playing several of them,
@@ -361,6 +363,13 @@ def visited(day: date) -> bool:
         return LAST_VISIT_PATH.read_text(encoding="utf-8").strip() == day.isoformat()
     except OSError:
         return False
+
+
+def may_visit_again(now: datetime) -> bool:
+    """Her own choice to have them over (heartbeat's "visit"): fewer than MAX_VISITS_A_DAY today, VISIT_GAP_SEC since
+    the last. One a day, the nightly one always took it -- she never once had them over by day."""
+    times = [datetime.fromisoformat(row["t"]) for row in metrics.today(now) if row["e"] == "activity" and row.get("what") == "visit friends"]
+    return len(times) < MAX_VISITS_A_DAY and (not times or (now - max(times)).total_seconds() >= VISIT_GAP_SEC)
 
 
 def visit_due(now: datetime, last_user_at: float | None) -> bool:

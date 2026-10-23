@@ -365,7 +365,7 @@ def _offer_look(turn: Turn) -> str:
 def _offer_visit(turn: Turn) -> str:
     import friends  # friends imports heartbeat
 
-    return "" if friends.why_not(turn.brain) or friends.visited(turn.now.date()) else f"have your friends over -- {', '.join(friends.names())}"
+    return "" if friends.why_not(turn.brain) or not friends.may_visit_again(turn.now) else f"have your friends over -- {', '.join(friends.names())}"
 
 
 async def _visit(turn: Turn) -> str:
