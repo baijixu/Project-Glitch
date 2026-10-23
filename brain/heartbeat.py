@@ -80,6 +80,9 @@ CHOOSE_CHANCE = 1 / 4  # of the turns she spends thinking
 # day), and all the day's LLM tokens, his chats included. Past either she rests until tomorrow.
 MAX_ACTIVITIES = 100
 MAX_PAGE_QUESTIONS = 3  # of the questions a landed page ends with, the last few go on her list
+# A thought that really pulls at her puts its question on her list too: only landed pages and her diary did, so the
+# list sat empty and she looked something up 4 times in three days. 7+ was ~11 thoughts a day over a week.
+WONDER_PULL = 7
 MAX_LOOK_TOKENS = 500
 MAX_REFLECT_TOKENS = 400
 SAME_IN_A_ROW = 3  # this many of one thing running, and it sits out a turn (options)
@@ -524,6 +527,8 @@ async def _weigh(brain: Brain, interests: dict, found: dict, now: datetime, mark
     _save_interests(interests)
     conversation.log_thought(f"{mark}{found['thought']}  \n*{topic}{' lost' if lost else ''} · pull {found['pull']}*", now=now)
     print(f"[heartbeat] a thought about {topic!r}{' (it lost)' if lost else ''} (pull {found['pull']})")
+    if found["pull"] >= WONDER_PULL and found["question"] and persona.not_about_him(found["question"]):
+        wonder.add(found["question"], f"Thinking about {topic}")  # about him, it stays with the topic: his inbox would flood
     if change == "landed" and await _land(brain, interests, topic, now):
         return f"{found['thought']} -- and {topic} landed: she wrote a page about it (Chat Logs -> Thoughts)."
     if change == "soured":
@@ -607,6 +612,18 @@ def _page_text(url: str) -> str:
     paragraphs = [" ".join(p.split()) for p in "".join(parser.parts).split("\n\n")]
     # Menus and footers are short; a reference list's long entries are full of links.
     return "\n\n".join(p for p in paragraphs if len(p) >= 200 and "http" not in p and "www." not in p)[:PAGE_EXCERPT_CHARS]
+
+
+def on_her_mind(count: int = 2) -> list[str]:
+    """What she's been turning over on her own, newest first -- "topic: her latest thought on it" -- and the book
+    she's on with her last note: something of hers to bring up when she reaches out (reach_out._reach_out)."""
+    open_ones = [(item["at"], t, item) for t, item in read_interests().items()
+                 if item["weight"] > 0 and item["thoughts"] and not item["landed"] and not item.get("soured")]
+    lines = [f"{topic}: {item['thoughts'][-1]}" for _, topic, item in sorted(open_ones, reverse=True)[:count]]
+    shelf = library.read_state()
+    if (book := shelf["books"].get(shelf["reading"] or "")) and book["note"]:
+        lines.append(f"{book['title']}, which you're reading: {book['note'][:300]}")
+    return lines
 
 
 def into_lately(now: float | None = None) -> str:
