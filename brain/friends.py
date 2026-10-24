@@ -181,7 +181,7 @@ async def a_challenge() -> str:
 def helping_her_think() -> str:
     """One of her own open questions -- her list (wonder.py), else her topics' -- to work through together."""
     questions = [i["text"] for i in wonder.read()] or [
-        q for item in heartbeat.read_interests().values() for q in item.get("questions", []) if persona.not_about_him(q)
+        q for item in heartbeat.read_interests().values() for q in item.get("questions", []) if not wonder.for_him(q)
     ]
     return (f"Help Glitch think. She's been wondering: \"{random.choice(questions)}\" Help her work it out: your own "
             "honest take, real examples, and questions back.") if questions else ""

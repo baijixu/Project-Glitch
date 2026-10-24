@@ -527,7 +527,7 @@ async def _weigh(brain: Brain, interests: dict, found: dict, now: datetime, mark
     _save_interests(interests)
     conversation.log_thought(f"{mark}{found['thought']}  \n*{topic}{' lost' if lost else ''} · pull {found['pull']}*", now=now)
     print(f"[heartbeat] a thought about {topic!r}{' (it lost)' if lost else ''} (pull {found['pull']})")
-    if found["pull"] >= WONDER_PULL and found["question"] and persona.not_about_him(found["question"]):
+    if found["pull"] >= WONDER_PULL and found["question"] and not wonder.for_him(found["question"]):
         wonder.add(found["question"], f"Thinking about {topic}")  # about him, it stays with the topic: his inbox would flood
     if change == "landed" and await _land(brain, interests, topic, now):
         return f"{found['thought']} -- and {topic} landed: she wrote a page about it (Chat Logs -> Thoughts)."
