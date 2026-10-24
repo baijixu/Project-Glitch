@@ -161,13 +161,19 @@ def book_club() -> str:
             "Talk about it: what it says, what you make of it, where you disagree with it or with each other.")
 
 
+# A belief of hers, not a taste: challenged on any first-person memory, her friends argued her favorite instrument,
+# her dream loft and her taste in culture -- 4 of 4 -- with nothing at stake.
+_BELIEF = re.compile(r"^I(?:'m| am)? (?:think|believe|suspect|hold|doubt|disagree|reject|argue|value|convinced)\b|^I'd (?:argue|rather)\b", re.I)
+
+
 async def a_challenge() -> str:
-    """One of her own views from her memories, to test."""
+    """One of her own views from her memories, to test: a belief (_BELIEF) when she has one, else any view."""
     try:
         rows = await memory.list_memories()
     except Exception:
         return ""
     views = [r["text"] for r in rows if re.match(r"(I|I'm|I've|I'd|My)\b", r["text"]) and persona.not_about_him(r["text"])]
+    views = [v for v in views if _BELIEF.match(v)] or views
     return (f"Challenge a belief. Glitch holds this view: \"{random.choice(views)}\" Test it honestly: ask for her reasons, "
             "bring real counterexamples, argue the other side. Glitch: defend it, or change your mind if they're right.") if views else ""
 

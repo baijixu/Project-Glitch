@@ -1510,9 +1510,12 @@ class LocalLLM(ChatBackend):
         return None
 
     def group_message(self, soul: str | None, prompt: str) -> str:
-        """One message in a friends' visit, under `soul` (None: her own)."""
+        """One message in a friends' visit, under `soul` (None: her own), at her sampling profile -- at the server's
+        defaults her lines all opened "Rex is right that... / Mira's right that...". Her friends run on her model
+        unless given their own."""
         system = soul or self._soul or DEFAULT_PERSONALITY
-        return self._complete([{"role": "system", "content": system}, {"role": "user", "content": prompt}], MAX_GROUP_TOKENS, no_thinking=True)
+        messages = [{"role": "system", "content": system}, {"role": "user", "content": prompt}]
+        return self._complete(messages, MAX_GROUP_TOKENS, no_thinking=True, sampling=sampling.active_values())
 
     def under_soul(self, prompt: str, max_tokens: int, sampling: dict | None = None) -> str:
         """One task outside the conversation, as herself: her soul, then `prompt` -- at the server's sampling
