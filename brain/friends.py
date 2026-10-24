@@ -68,6 +68,9 @@ _REMEMBER_PROMPT = (
 # rathers) gave 50 turns of escalating improv -- an octopus lighthouse keeper, 1920s chowder --
 # and nothing for her to take away.
 BOOK_EXCERPT_CHARS = 2500  # the passage she just read, for book club
+# Half her visits test one of her views: real opposition is what she lacked -- her journal once cast him as the skeptic
+# it wanted -- and at one in four purposes, once a night, a challenge came about twice a week.
+CHALLENGE_SHARE = 0.5
 DEBATES = [  # only when there's nothing of hers to start from yet
     "A debate. Is it ever okay to lie to a friend? Take a side, give real reasons, and change your mind if someone earns it.",
     "A debate. Should an AI get a say in how it's treated? Take a side, give real reasons, and change your mind if someone earns it.",
@@ -191,11 +194,13 @@ def catching_up(now: float | None = None) -> str:
 
 
 async def purpose() -> tuple[str, str]:
-    """(what kind of visit, its starter): one of her own things, picked at random, or a debate."""
+    """(what kind of visit, its starter): a challenge to one of her views CHALLENGE_SHARE of the time, else one of her
+    other things at random, or a debate."""
+    if (challenge := await a_challenge()) and random.random() < CHALLENGE_SHARE:
+        return "a challenge", challenge
     options = [(kind, starter) for kind, starter in (
-        ("book club", book_club()), ("a challenge", await a_challenge()),
-        ("helping her think", helping_her_think()), ("catching up", catching_up()),
-    ) if starter]
+        ("book club", book_club()), ("helping her think", helping_her_think()), ("catching up", catching_up()),
+    ) if starter] or ([("a challenge", challenge)] if challenge else [])
     return random.choice(options) if options else ("a debate", random.choice(DEBATES))
 
 
