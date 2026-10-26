@@ -40,7 +40,7 @@ STORE = NamedStore(Path(__file__).parent / "souls", kind="soul", reserved=DEFAUL
 ACTIVE = Choice(Path(__file__).parent / "active_soul_name.txt", default=DEFAULT_SOUL_NAME)
 
 list_souls = STORE.names
-# Not the active-name bookkeeping, even for the active one -- characters._delete_soul
+# Not the active-name bookkeeping, even for the active one -- characters._soul_deleted
 # decides whether to fall back to DEFAULT_SOUL_NAME.
 delete_soul = STORE.delete
 read_active_soul_name = ACTIVE.read

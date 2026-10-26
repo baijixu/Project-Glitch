@@ -4,6 +4,8 @@
 // `curiosity_timer` Brain sends (brain/main.py's _curiosity_timer_message).
 // Brain sends the moment she's due; the ticking happens here.
 
+import { $ } from "./ui.js";
+
 const PAUSED = {
   off: "Curiosity is off.",
   paused: "Paused: she's paused (Settings -> Pause Her).",
@@ -15,9 +17,9 @@ const PAUSED = {
 export class CuriosityTimerUI {
   constructor({ send }) {
     this._send = send;
-    this.textEl = document.getElementById("curiosity-timer");
-    this.testButtonEl = document.getElementById("curiosity-test-button");
-    this.errorEl = document.getElementById("curiosity-test-error");
+    this.textEl = $("curiosity-timer");
+    this.testButtonEl = $("curiosity-test-button");
+    this.errorEl = $("curiosity-test-error");
     this._state = null;
     this._dueAt = null;
     this.testButtonEl?.addEventListener("click", () => this._test());

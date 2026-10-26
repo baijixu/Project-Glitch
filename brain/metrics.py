@@ -62,7 +62,7 @@ def read() -> list[dict]:
 
 
 def today(now: datetime | None = None) -> list[dict]:
-    """Today's rows as they happened -- not tools/backfill_metrics.py's history, which is dated by when it was."""
+    """Today's rows as they happened -- not backfilled history (rows marked "backfill"), which is dated by when it was."""
     day = (now or datetime.now()).date().isoformat()
     return [row for row in read() if row["t"].startswith(day) and not row.get("backfill")]
 

@@ -11,11 +11,12 @@
 // focus or unsaved edits the list is left alone and refreshed on the next state
 // message after the edit is done.
 
+import { $ } from "./ui.js";
+
 export class TrainingUI {
   constructor({ send, onNewProposals }) {
     this._send = send;
     this._onNewProposals = onNewProposals;
-    const $ = (id) => document.getElementById(id);
     this.unavailableEl = $("training-unavailable");
     this.toggleEl = $("training-toggle");
     this.errorEl = $("training-error");

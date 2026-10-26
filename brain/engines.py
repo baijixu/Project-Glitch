@@ -150,8 +150,9 @@ def harness_state_message() -> dict:
 
 
 @dataclass(frozen=True)
-class _Kind:
-    """One kind of saved connection the Settings panel edits (save / get / delete)."""
+class Kind:
+    """One kind of saved item the Settings panel edits (save / get / delete): the connections here, and
+    role-play profiles and souls (characters.py)."""
 
     label: str  # for the console: "speech engine"
     messages: tuple[str, str, str]  # its save, get and delete message types
@@ -164,6 +165,7 @@ class _Kind:
     reachability: dict | None = None  # health's status-light cache, stale after an edit
     # What deleting the one in use means for Brain (see the functions below).
     deleted: Callable[[str, Brain], Awaitable[None]] | None = None
+    required: str = "endpoint"  # the field a save can't go without
 
 
 async def _tts_engine_deleted(name: str, brain: Brain) -> None:
@@ -204,21 +206,21 @@ async def _harness_deleted(name: str, brain: Brain) -> None:
 
 
 _KINDS = (
-    _Kind(
+    Kind(
         "speech engine",
         (protocol.SAVE_TTS_ENGINE, protocol.GET_TTS_ENGINE, protocol.DELETE_TTS_ENGINE),
         {"endpoint": "", "api_key": "", "voice": "", "voices_dir": "", "model": ""},
         tts_engines.save_engine, tts_engines.read_engine, tts_engines.delete_engine,
         protocol.tts_engine_content, tts_engines_message, health.LAST_TTS_REACHABLE, _tts_engine_deleted,
     ),
-    _Kind(
+    Kind(
         "LLM engine",
         (protocol.SAVE_LLM_ENGINE, protocol.GET_LLM_ENGINE, protocol.DELETE_LLM_ENGINE),
         {"endpoint": "", "model": "", "api_key": "", "provider": "openai", "think": False},
         llm_engines.save_engine, llm_engines.read_engine, llm_engines.delete_engine,
         protocol.llm_engine_content, llm_engines_message, None, _llm_engine_deleted,
     ),
-    _Kind(
+    Kind(
         "harness",
         (protocol.SAVE_HARNESS, protocol.GET_HARNESS, protocol.DELETE_HARNESS),
         {"endpoint": "", "model": "", "api_key": ""},
@@ -228,7 +230,7 @@ _KINDS = (
 )
 
 
-def _register(kind: _Kind) -> None:
+def register(kind: Kind) -> None:
     save_type, get_type, delete_type = kind.messages
 
     @hub.handles(save_type)
@@ -239,7 +241,7 @@ def _register(kind: _Kind) -> None:
             for field, default in kind.fields.items()
         }
         text = [name, *(v for v in values.values() if isinstance(v, str))]
-        if not name.strip() or not values["endpoint"].strip() or hub.fields_too_long(*text):
+        if not name.strip() or not values[kind.required].strip() or hub.fields_too_long(*text):
             return
         try:
             kind.save(name, **values)
@@ -278,7 +280,7 @@ def _register(kind: _Kind) -> None:
 
 
 for _kind in _KINDS:
-    _register(_kind)
+    register(_kind)
 
 
 # ============================================================================

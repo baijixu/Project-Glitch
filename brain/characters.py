@@ -54,41 +54,7 @@ async def topics_message() -> dict:
     return protocol.topics(loves + GENERAL_TOPICS)
 
 
-@hub.handles(protocol.SAVE_PROFILE)
-async def _save_profile(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-    name = data.get("name", "")
-    content = data.get("content", "")
-    if not name.strip() or not content.strip() or hub.fields_too_long(name, content):
-        return
-    try:
-        profiles.save_profile(name, content)
-    except (ValueError, OSError) as exc:
-        print(f"[brain] couldn't save profile {name!r}: {exc!r}")
-        return
-    print(f"[brain] saved profile {name!r}")
-    await hub.broadcast(profiles_message())
-
-
-@hub.handles(protocol.GET_PROFILE)
-async def _get_profile(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-    name = data.get("name", "")
-    try:
-        content = profiles.read_profile(name)
-    except (ValueError, OSError) as exc:
-        print(f"[brain] couldn't read profile {name!r}: {exc!r}")
-        return
-    await hub.send(websocket, protocol.profile_content(name, content))
-
-
-@hub.handles(protocol.DELETE_PROFILE)
-async def _delete_profile(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-    name = data.get("name", "")
-    try:
-        profiles.delete_profile(name)
-    except (ValueError, OSError) as exc:
-        print(f"[brain] couldn't delete profile {name!r}: {exc!r}")
-        return
-    print(f"[brain] deleted profile {name!r}")
+async def _profile_deleted(name: str, brain: Brain) -> None:
     # The profile that was active just got deleted out from under it --
     # fall back to DEFAULT_PROFILE_NAME rather than leaving rp_user.md/the
     # LLM's persona pointing at a file that no longer exists.
@@ -97,23 +63,28 @@ async def _delete_profile(websocket: websockets.ServerConnection, data: dict, br
         if profiles.read_roleplay_active():
             brain.llm.set_persona(content)
         print(f"[brain] active profile was deleted -- reset to {profiles.DEFAULT_PROFILE_NAME!r}")
-    await hub.broadcast(profiles_message())
 
 
-@hub.handles(protocol.SAVE_SOUL)
-async def _save_soul(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-    name = data.get("name", "")
-    description = data.get("description", "")
-    examples = data.get("examples", "")
-    if not name.strip() or not description.strip() or hub.fields_too_long(name, description, examples):
-        return
-    try:
-        souls.save_soul(name, description, examples)
-    except (ValueError, OSError) as exc:
-        print(f"[brain] couldn't save soul {name!r}: {exc!r}")
-        return
-    print(f"[brain] saved soul {name!r}")
-    await hub.broadcast(souls_message())
+async def _soul_deleted(name: str, brain: Brain) -> None:
+    # Same reasoning as _profile_deleted: don't leave rp_soul.md/the
+    # LLM pointing at a soul that no longer exists.
+    if souls.read_active_soul_name() == name:
+        souls.load_soul(souls.DEFAULT_SOUL_NAME)
+        if profiles.read_roleplay_active():
+            brain.llm.set_soul(persona.effective_soul())
+        print(f"[brain] active soul was deleted -- reset to {souls.DEFAULT_SOUL_NAME!r}")
+
+
+engines.register(engines.Kind(
+    "profile", (protocol.SAVE_PROFILE, protocol.GET_PROFILE, protocol.DELETE_PROFILE), {"content": ""},
+    lambda name, content: profiles.save_profile(name, content), lambda name: {"content": profiles.read_profile(name)},
+    profiles.delete_profile, protocol.profile_content, profiles_message, deleted=_profile_deleted, required="content",
+))
+engines.register(engines.Kind(
+    "soul", (protocol.SAVE_SOUL, protocol.GET_SOUL, protocol.DELETE_SOUL), {"description": "", "examples": ""},
+    souls.save_soul, lambda name: dict(zip(("description", "examples"), souls.read_soul(name))),
+    souls.delete_soul, protocol.soul_content, souls_message, deleted=_soul_deleted, required="description",
+))
 
 
 @hub.handles(protocol.LOAD_SOUL)
@@ -136,17 +107,6 @@ async def load_soul(websocket: websockets.ServerConnection, data: dict, brain: B
             conversation.clear_state(conversation.ROLEPLAY)
             print(f"[brain] selected soul {name!r} (role-play is off, not applied)")
     await hub.broadcast(souls_message())
-
-
-@hub.handles(protocol.GET_SOUL)
-async def _get_soul(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-    name = data.get("name", "")
-    try:
-        description, examples = souls.read_soul(name)
-    except (ValueError, OSError) as exc:
-        print(f"[brain] couldn't read soul {name!r}: {exc!r}")
-        return
-    await hub.send(websocket, protocol.soul_content(name, description, examples))
 
 
 @hub.handles(protocol.GET_NOTES)
@@ -191,25 +151,6 @@ async def save_soul_and_user(websocket: websockets.ServerConnection, data: dict,
     brain.llm.update_soul(persona.effective_soul())  # an edit, not a new her: the conversation carries on
     print("[brain] soul.md/user.md updated via manual editor")
     await hub.broadcast(await topics_message())
-
-
-@hub.handles(protocol.DELETE_SOUL)
-async def _delete_soul(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-    name = data.get("name", "")
-    try:
-        souls.delete_soul(name)
-    except (ValueError, OSError) as exc:
-        print(f"[brain] couldn't delete soul {name!r}: {exc!r}")
-        return
-    print(f"[brain] deleted soul {name!r}")
-    # Same reasoning as _delete_profile: don't leave rp_soul.md/the
-    # LLM pointing at a soul that no longer exists.
-    if souls.read_active_soul_name() == name:
-        souls.load_soul(souls.DEFAULT_SOUL_NAME)
-        if profiles.read_roleplay_active():
-            brain.llm.set_soul(persona.effective_soul())
-        print(f"[brain] active soul was deleted -- reset to {souls.DEFAULT_SOUL_NAME!r}")
-    await hub.broadcast(souls_message())
 
 
 @hub.handles(protocol.SAVE_AVATAR)

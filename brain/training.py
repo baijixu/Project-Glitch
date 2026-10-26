@@ -26,6 +26,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import metrics
+from curiosity import norm
 from store import Toggle, read_json, write_json
 
 _DIR = Path(__file__).parent
@@ -61,10 +62,6 @@ def _write(pending: list[dict]) -> None:
 def read_pending() -> list[dict]:
     """Oldest first: {id, fact, source, created} -- `source` is what the user said, for context."""
     return _read()
-
-
-def _norm(text: str) -> str:
-    return re.sub(r"[^a-z0-9 ]", "", text.lower()).strip()
 
 
 def parse_facts(raw: str) -> list[str]:
@@ -103,7 +100,7 @@ def add_pending(
     if not fact:
         return None
     pending = _read()
-    if _norm(fact) in {_norm(p["fact"]) for p in pending} or (memory_id and memory_id in {p.get("memory_id") for p in pending}):
+    if norm(fact) in {norm(p["fact"]) for p in pending} or (memory_id and memory_id in {p.get("memory_id") for p in pending}):
         return None
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     item = {"id": uuid.uuid4().hex, "fact": fact, "source": source.strip()[:200], "created": now}

@@ -11,12 +11,13 @@
 // A state that arrives while a box has focus (another device saved, say)
 // waits until the box loses focus, so it can't overwrite what's being typed.
 
+import { $ } from "./ui.js";
+
 const KEYS = ["temperature", "top_p", "top_k", "min_p", "presence_penalty", "repeat_penalty"];
 
 export class SamplingUI {
   constructor({ send }) {
     this._send = send;
-    const $ = (id) => document.getElementById(id);
     this.panelEl = $("sampling-panel");
     this.selectEl = $("sampling-select");
     this.nameEl = $("sampling-name");

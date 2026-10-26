@@ -1,6 +1,6 @@
 // One kind of thing saved Brain-side that Settings picks from a dropdown and
-// edits in a modal: role-play profiles, souls, speech engines, LLM engines and
-// harnesses all work the same way --
+// edits in a modal: role-play profiles, souls, speech engines, LLM engines,
+// harnesses, friends and memory backends all work the same way --
 //
 //   dropdown ...... a reserved first entry ("Default"/"None", never a saved file,
 //                   never sent by Brain) plus every saved name; picking one
@@ -28,6 +28,7 @@ export class SavedItems {
   // fromContent(data) ........... the modal's values from Brain's *_content (default: the same keys)
   // onSelect(name) .............. picking a dropdown entry (default: load it)
   // onOpen(values) .............. after the modal is filled in and shown
+  // confirmDelete(name) ......... the delete confirmation's text (default: "Delete the saved <label> ...")
   constructor(app, config) {
     this._app = app;
     this._config = config;
@@ -43,6 +44,7 @@ export class SavedItems {
     this.active = config.reserved;
     this._locked = false;
     this._pendingEdit = null; // the name whose *_content should open the modal
+    this.editing = ""; // the name the modal was opened with ("" for a new one): a rename's original
 
     this.selectEl?.addEventListener("change", () => (config.onSelect ?? ((name) => this.load(name)))(this.selectEl.value));
     this.editButtonEl?.addEventListener("click", () => this.edit(this.selectEl?.value));
@@ -94,7 +96,8 @@ export class SavedItems {
 
   delete(name) {
     if (!name || name === this._config.reserved) return;
-    if (!window.confirm(`Delete the saved ${this._config.label} "${name}"? This can't be undone.`)) return;
+    const text = this._config.confirmDelete?.(name) ?? `Delete the saved ${this._config.label} "${name}"? This can't be undone.`;
+    if (!window.confirm(text)) return;
     this._app.send({ type: this._config.messages.delete, name });
   }
 
@@ -103,6 +106,7 @@ export class SavedItems {
   open(name = "", values = {}) {
     if (!this.modal.el) return;
     const filled = { ...this._config.defaults, ...values };
+    this.editing = name;
     if (this.titleEl) this.titleEl.textContent = `${name ? "Edit" : "New"} ${this._config.title}`;
     if (this.nameEl) this.nameEl.value = name;
     for (const [field, el] of Object.entries(this.fieldEls)) {

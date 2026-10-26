@@ -1,175 +1,96 @@
 // Settings -> Memory backend (brain/memory_profiles.py on the Brain side):
 // pick which memory she uses -- the built-in Local file, or a Hindsight
-// server someone runs themselves -- and add, edit or delete those servers.
-// Self-contained like SamplingUI: finds its own elements by id, only needs
-// `send`, and redraws from each `memory_profiles` Brain sends, so every
-// device shows the same list.
+// server someone runs themselves -- and add, edit or delete those servers,
+// like the other saved kinds (SavedItems). Redraws from each
+// `memory_profiles` Brain sends, so every device shows the same list.
 //
 // Picking one switches her to it straight away. Download / Clear Memory are
 // only offered for the Local file: on a server, clearing means deleting her
 // whole bank or user there -- that's left to the server's own tools.
 
-import { $, Modal } from "./ui.js";
+import { $ } from "./ui.js";
+import { SavedItems } from "./saved_items.js";
 
 const LOCAL_NAME = "Local file";
 
 export class MemoryProfilesUI {
-  constructor({ send }) {
-    this._send = send;
-    this.selectEl = $("memory-profile-select");
-    this.editButtonEl = $("edit-memory-profile-button");
-    this.newButtonEl = $("new-memory-profile-button");
-    this.deleteButtonEl = $("delete-memory-profile-button");
-    this.errorEl = $("memory-profile-error");
-    this.downloadButtonEl = $("download-memory-button");
-    this.clearButtonEl = $("clear-memory-button");
-    this.modal = new Modal("memory-profile-modal-backdrop");
-    this.titleEl = $("memory-profile-modal-title");
-    this.nameEl = $("memory-profile-name");
-    this.backendEl = $("memory-profile-backend");
-    this.urlEl = $("memory-profile-url");
-    this.apiKeyEl = $("memory-profile-api-key");
-    this.spaceLabelEl = $("memory-profile-space-label");
-    this.spaceEl = $("memory-profile-space");
-    this._state = { profiles: [], active: LOCAL_NAME, types: [] };
-    this._editing = null; // the profile being edited, or null for a new one
-    this._locked = false;
-
-    this.selectEl?.addEventListener("change", () => {
-      this._showError("");
-      this._send({ type: "set_memory_profile", name: this.selectEl.value });
+  constructor(app) {
+    this._types = [];
+    this._active = LOCAL_NAME;
+    this.items = new SavedItems(app, {
+      label: "memory backend",
+      title: "Memory Backend",
+      reserved: LOCAL_NAME,
+      ids: {
+        select: "memory-profile-select", edit: "edit-memory-profile-button", add: "new-memory-profile-button",
+        delete: "delete-memory-profile-button", backdrop: "memory-profile-modal-backdrop", title: "memory-profile-modal-title",
+        name: "memory-profile-name", save: "memory-profile-save-button", cancel: "memory-profile-cancel-button",
+      },
+      fields: { backend: "memory-profile-backend", url: "memory-profile-url", api_key: "memory-profile-api-key", space: "memory-profile-space" },
+      messages: { load: "set_memory_profile", get: "get_memory_profile", save: "save_memory_profile", delete: "delete_memory_profile" },
+      canSave: (name, v) => (name && v.url) || window.alert("A memory backend needs a name and its server URL."),
+      toMessage: (v) => ({ ...v, original_name: this.items.editing }),
+      fromContent: (data) => ({ ...data.profile, backend: data.profile.type }),
+      onSelect: (name) => {
+        this._showError("");
+        this.items.load(name);
+      },
+      onOpen: (values) => {
+        if (!values.backend) $("memory-profile-backend").value = this._types[0]?.type || "";
+        this._renderBackendFields();
+      },
+      confirmDelete: (name) =>
+        `Delete the memory backend "${name}"? Only the saved connection is removed -- the memories on that server stay there.` +
+        (name === this._active ? " She'll switch to the Local file." : ""),
     });
-    this.newButtonEl?.addEventListener("click", () => this._openModal(null));
-    this.editButtonEl?.addEventListener("click", () => {
-      const name = this.selectEl?.value;
-      if (name && name !== LOCAL_NAME) this._send({ type: "get_memory_profile", name });
-    });
-    this.deleteButtonEl?.addEventListener("click", () => this._delete());
-    this.backendEl?.addEventListener("change", () => this._renderBackendFields());
-    $("memory-profile-cancel-button")?.addEventListener("click", () => this.modal.close());
-    $("memory-profile-save-button")?.addEventListener("click", () => this._save());
-    this._render();
+    $("memory-profile-backend")?.addEventListener("change", () => this._renderBackendFields());
   }
 
   handleState(data) {
-    if (data.error) {
-      this._showError(data.error);
-      if (!data.profiles) return;
-    } else {
-      this._showError("");
+    this._showError(data.error || "");
+    if (data.error && !data.profiles) return;
+    this._types = data.types || [];
+    this._active = data.active || LOCAL_NAME;
+    const backend = $("memory-profile-backend");
+    backend?.replaceChildren(...this._types.map((t) => Object.assign(document.createElement("option"), { value: t.type, textContent: t.label })));
+    const profiles = data.profiles || [];
+    this.items.render(profiles.map((p) => p.name), this._active);
+    for (const option of this.items.selectEl?.options || []) {
+      const profile = profiles.find((p) => p.name === option.value);
+      const label = profile && (this._types.find((t) => t.type === profile.type)?.label || profile.type);
+      option.textContent = !profile ? "Local file (built in, no setup)" : profile.name === label ? label : `${profile.name} (${label})`;
     }
-    this._state = { profiles: data.profiles || [], active: data.active || LOCAL_NAME, types: data.types || [] };
-    this._render();
+    for (const id of ["download-memory-button", "clear-memory-button"]) {
+      if ($(id)) $(id).hidden = this._active !== LOCAL_NAME;
+    }
   }
 
   // The ✏️ editor's contents (memory_profile_content).
   handleContent(data) {
-    if (!data.profile || !data.profile.type) {
-      this._showError(`Couldn't open "${data.name}".`);
-      return;
-    }
-    this._openModal({ name: data.name, ...data.profile });
+    if (data.profile?.type) this.items.handleContent(data);
+    else this._showError(`Couldn't open "${data.name}".`);
   }
 
-  // The harness lock disables every control in the section; lifting it has to
-  // re-derive ✏️/🗑️, or they'd come back on for the built-in Local file.
+  // The harness lock covers the whole section: the dropdown and ＋ too.
   setLocked(locked) {
-    this._locked = locked;
-    this._updateButtons();
-  }
-
-  _render() {
-    if (!this.selectEl) return;
-    this.selectEl.replaceChildren();
-    const local = document.createElement("option");
-    local.value = LOCAL_NAME;
-    local.textContent = "Local file (built in, no setup)";
-    this.selectEl.appendChild(local);
-    for (const profile of this._state.profiles) {
-      const option = document.createElement("option");
-      option.value = profile.name;
-      const label = this._label(profile.type);
-      option.textContent = profile.name === label ? label : `${profile.name} (${label})`;
-      this.selectEl.appendChild(option);
+    this.items.setLocked(locked);
+    for (const id of ["memory-profile-select", "new-memory-profile-button"]) {
+      if ($(id)) $(id).disabled = locked;
     }
-    this.selectEl.value = this._state.active;
-    const isLocal = this._state.active === LOCAL_NAME;
-    if (this.downloadButtonEl) this.downloadButtonEl.hidden = !isLocal;
-    if (this.clearButtonEl) this.clearButtonEl.hidden = !isLocal;
-    this._updateButtons();
-  }
-
-  _updateButtons() {
-    const builtIn = this.selectEl?.value === LOCAL_NAME;
-    if (this.editButtonEl) this.editButtonEl.disabled = this._locked || builtIn;
-    if (this.deleteButtonEl) this.deleteButtonEl.disabled = this._locked || builtIn;
-    if (this.selectEl) this.selectEl.disabled = this._locked;
-    if (this.newButtonEl) this.newButtonEl.disabled = this._locked;
-  }
-
-  _label(type) {
-    return this._state.types.find((t) => t.type === type)?.label || type;
-  }
-
-  _openModal(profile) {
-    if (!this.modal.el) return;
-    this._editing = profile;
-    this.titleEl.textContent = profile ? "Edit Memory Backend" : "New Memory Backend";
-    this.backendEl.replaceChildren();
-    for (const t of this._state.types) {
-      const option = document.createElement("option");
-      option.value = t.type;
-      option.textContent = t.label;
-      this.backendEl.appendChild(option);
-    }
-    this.nameEl.value = profile?.name || "";
-    this.backendEl.value = profile?.type || this._state.types[0]?.type || "";
-    this.urlEl.value = profile?.url || "";
-    this.apiKeyEl.value = profile?.api_key || "";
-    this.spaceEl.value = profile?.space || "";
-    this._renderBackendFields();
-    this.modal.open();
-    this.nameEl.focus();
   }
 
   // What the bank / user id box is called, and its default, depend on the type.
   _renderBackendFields() {
-    const t = this._state.types.find((x) => x.type === this.backendEl?.value);
+    const t = this._types.find((x) => x.type === $("memory-profile-backend")?.value);
     if (!t) return;
-    this.spaceLabelEl.textContent = t.space_label;
-    this.spaceEl.placeholder = `e.g. ${t.default_space} (the default if left blank)`;
-  }
-
-  _save() {
-    const name = this.nameEl.value.trim();
-    const url = this.urlEl.value.trim();
-    if (!name || !url) {
-      window.alert("A memory backend needs a name and its server URL.");
-      return;
-    }
-    this._send({
-      type: "save_memory_profile",
-      name,
-      original_name: this._editing?.name || "",
-      backend: this.backendEl.value,
-      url,
-      api_key: this.apiKeyEl.value.trim(),
-      space: this.spaceEl.value.trim(),
-    });
-    this.modal.close();
-  }
-
-  _delete() {
-    const name = this.selectEl?.value;
-    if (!name || name === LOCAL_NAME) return;
-    const note = name === this._state.active ? " She'll switch to the Local file." : "";
-    if (!window.confirm(`Delete the memory backend "${name}"? Only the saved connection is removed -- the memories on that server stay there.${note}`)) return;
-    this._send({ type: "delete_memory_profile", name });
+    $("memory-profile-space-label").textContent = t.space_label;
+    $("memory-profile-space").placeholder = `e.g. ${t.default_space} (the default if left blank)`;
   }
 
   _showError(text) {
-    if (!this.errorEl) return;
-    this.errorEl.textContent = text;
-    this.errorEl.hidden = !text;
+    const el = $("memory-profile-error");
+    if (!el) return;
+    el.textContent = text;
+    el.hidden = !text;
   }
 }

@@ -30,13 +30,13 @@ DEFAULT_PROFILE_NAME = "Default"
 # be saved as a real profiles/Default.md -- a second, indistinguishable "Default".
 STORE = NamedStore(Path(__file__).parent / "profiles", kind="profile", reserved=DEFAULT_PROFILE_NAME, suffix=".md")
 # Which one was last loaded, so the dropdown shows it again on reconnect and
-# characters._delete_profile can tell whether it's deleting the one in effect.
+# characters._profile_deleted can tell whether it's deleting the one in effect.
 ACTIVE = Choice(Path(__file__).parent / "active_profile_name.txt", default=DEFAULT_PROFILE_NAME)
 
 list_profiles = STORE.names
 save_profile = STORE.write_text
 read_profile = STORE.read_text  # pre-fills the editor's Edit (get_profile) without activating it
-# Not the active-name bookkeeping, even for the active one -- characters._delete_profile
+# Not the active-name bookkeeping, even for the active one -- characters._profile_deleted
 # decides whether to fall back to DEFAULT_PROFILE_NAME (it knows if role-play is on).
 delete_profile = STORE.delete
 read_active_profile_name = ACTIVE.read

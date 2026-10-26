@@ -176,7 +176,7 @@ def _write(questions: list[dict]) -> None:
     write_json(QUESTIONS_PATH, open_ones + closed)
 
 
-def _norm(text: str) -> str:
+def norm(text: str) -> str:
     return re.sub(r"[^a-z0-9 ]", "", text.lower()).strip()
 
 
@@ -189,7 +189,7 @@ def _stem(word: str) -> str:
 
 
 def _topic_words(text: str) -> set[str]:
-    return {_stem(w) for w in _norm(text).split() if w not in _STOPWORDS and len(w) > 2}
+    return {_stem(w) for w in norm(text).split() if w not in _STOPWORDS and len(w) > 2}
 
 
 def _same_topic(a: str, b: str, threshold: float = 0.6) -> bool:

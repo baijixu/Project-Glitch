@@ -9,10 +9,11 @@
 // All lesson text is set via textContent, never innerHTML -- it's
 // LLM-generated, and rendering it as markup would be an injection hole.
 
+import { $ } from "./ui.js";
+
 export class LessonsUI {
   constructor({ send }) {
     this._send = send;
-    const $ = (id) => document.getElementById(id);
     this.sectionEl = $("lessons-section");
     this.unavailableEl = $("lessons-unavailable");
     this.toggleEl = $("lessons-toggle");
