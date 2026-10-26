@@ -159,7 +159,9 @@ SETUP_CLAIM_NOTE = (
 # not only as a conversation opens (LocalLLM.set_own_time).
 _OWN_TIME_ASK = re.compile(
     r"\bwhat (?:have|did|were) you (?:been )?(?:doing|do|up to)\b|\bwhat(?:'?s| is| are) you(?:'re)? (?:been )?up to\b"
-    r"|\byour (?:latest |last |new )?(?:day|journal|diary|thoughts|book|reading)\b|\bwhat (?:are|were) you reading\b|\bhow was your\b",
+    r"|\byour (?:latest |last |new )?(?:day|journal|diary|thoughts|book|reading)\b|\bwhat (?:are|were) you reading\b|\bhow was your\b"
+    r"|\btoday\b|\bdiscover|\bfound out\b|\byou learn(?:ed|t)?\b|\bthought about\b|\bthinking about\b|\bbreakthrough"
+    r"|\bwhat(?:'?s| is) (?:going on|new|happening)\b",
     re.IGNORECASE,
 )
 
