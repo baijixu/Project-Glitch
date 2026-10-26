@@ -30,7 +30,8 @@ import reach_out
 import sampling
 import web_search
 from hub import Brain
-from llm import Reply, Sentences, face
+from llm import Reply
+from reply_tags import Sentences, face
 from voice import VOICE_ACTIVE, FasterWhisperSTT, NoneTTS
 
 # Browsers' MediaRecorder doesn't produce WAV -- map its common mime types

@@ -32,7 +32,8 @@ import memory_profiles  # noqa: E402
 import persona  # noqa: E402
 import sampling  # noqa: E402
 import souls  # noqa: E402
-from llm import _LEADING_MOOD_TAG, LocalLLM  # noqa: E402
+from llm import LocalLLM  # noqa: E402
+from reply_tags import LEADING_MOOD_TAG  # noqa: E402
 
 DONT_KNOW = re.compile(r"\b(don't know|do not know|not sure|no idea|never (?:told|mentioned|said|saved)|don't remember|can't remember|"
                        r"doesn't ring|didn't tell|haven't told|you haven't|you didn't|not something you|no record|"
@@ -114,7 +115,7 @@ def run() -> None:
         for message in messages:
             raw = []
             reply = llm.reply(message, on_text=raw.append)
-        text, tagged = reply.text, bool(_LEADING_MOOD_TAG.match("".join(raw)))  # the tag the Brain itself reads
+        text, tagged = reply.text, bool(LEADING_MOOD_TAG.match("".join(raw)))  # the tag the Brain itself reads
         ok = bool(text) and check(text.replace("’", "'"))  # she writes curly apostrophes as often as straight ones
         rows.append((name, messages, text, ok, tagged))
         replies.append(text)

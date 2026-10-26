@@ -53,7 +53,7 @@ def _storable(message: dict) -> dict:
     when = {"at": message["at"]} if isinstance(message.get("at"), str) else {}  # when it was said (llm.py)
     private = {"private": True} if message.get("private") else {}
     shown = {"pictures": message["pictures"]} if message.get("pictures") else {}  # the pictures she showed (pictures.py)
-    secret = {"secret": message["secret"]} if isinstance(message.get("secret"), str) else {}  # a game's (llm._SECRET_TAG)
+    secret = {"secret": message["secret"]} if isinstance(message.get("secret"), str) else {}  # a game's (reply_tags)
     return {"role": message.get("role"), "content": text_of(message.get("content")), **when, **private, **shown, **secret}
 
 

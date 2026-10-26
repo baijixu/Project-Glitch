@@ -34,18 +34,25 @@ STORE = NamedStore(Path(__file__).parent / "profiles", kind="profile", reserved=
 ACTIVE = Choice(Path(__file__).parent / "active_profile_name.txt", default=DEFAULT_PROFILE_NAME)
 
 list_profiles = STORE.names
-save_profile = STORE.write_text
-read_profile = STORE.read_text  # pre-fills the editor's Edit (get_profile) without activating it
 # Not the active-name bookkeeping, even for the active one -- characters._profile_deleted
 # decides whether to fall back to DEFAULT_PROFILE_NAME (it knows if role-play is on).
 delete_profile = STORE.delete
 read_active_profile_name = ACTIVE.read
 
 
+def save_profile(name: str, content: str) -> None:
+    STORE.write_text(name, content)
+
+
+def read_profile(name: str) -> dict:
+    """{"content"}: the editor's Edit (get_profile), without activating it."""
+    return {"content": STORE.read_text(name)}
+
+
 def load_profile(name: str) -> str:
     """Copies the named profile into rp_user.md (selecting it, role-play on or not) and
     returns its content -- "" for DEFAULT_PROFILE_NAME. Never touches user.md."""
-    content = "" if name == DEFAULT_PROFILE_NAME else read_profile(name)
+    content = "" if name == DEFAULT_PROFILE_NAME else STORE.read_text(name)
     RP_USER_MD_PATH.write_text(content, encoding="utf-8")
     ACTIVE.write(name)
     return content

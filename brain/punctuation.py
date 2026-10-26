@@ -1,6 +1,6 @@
 """Her punctuation, fixed after the model writes it: em-dashes (dedash). Applied once, where every
 completion of hers comes back (llm.LocalLLM._complete) and to each sentence she says as it streams
-(llm.Sentences) -- so the screen, her voice, her history and everything she writes agree. Machine-read
+(reply_tags.Sentences) -- so the screen, her voice, her history and everything she writes agree. Machine-read
 answers (YES / SAME / JSON) pass through it too; they have no dashes worth keeping."""
 
 import re

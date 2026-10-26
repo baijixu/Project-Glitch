@@ -3,14 +3,14 @@
 
 export const $ = (id) => document.getElementById(id);
 
-// Rebuilds a <select>'s options from `names` and selects `activeName`.
-export function renderDropdown(selectEl, names, activeName) {
+// Rebuilds a <select>'s options from `names` (each shown as `label(name)`) and selects `activeName`.
+export function renderDropdown(selectEl, names, activeName, label = (name) => name) {
   if (!selectEl) return;
   selectEl.replaceChildren();
   for (const name of names) {
     const option = document.createElement("option");
     option.value = name;
-    option.textContent = name;
+    option.textContent = label(name);
     selectEl.appendChild(option);
   }
   if (activeName) selectEl.value = activeName;

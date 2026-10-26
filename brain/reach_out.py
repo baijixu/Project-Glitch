@@ -25,7 +25,7 @@ import profiles
 import protocol
 import sampling
 from hub import Brain
-from llm import face
+from reply_tags import face
 from voice import VOICE_ACTIVE, NoneTTS
 
 async def maybe_propose_question(

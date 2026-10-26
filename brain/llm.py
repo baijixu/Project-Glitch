@@ -33,37 +33,13 @@ import pictures
 import sampling
 import web_search
 from punctuation import dedash
-
-# The avatar's expression presets; "neutral" means none of them.
-VALID_MOODS = {"happy", "angry", "sad", "relaxed", "surprised", "neutral"}
-# Moods she writes that aren't presets, as the nearest one that is (in 72 test replies: curious
-# 12, concerned 6, thoughtful 1). Curious isn't "surprised": that face is too wide-eyed to use
-# on a sixth of her replies.
-MOOD_ALIASES = {
-    "curious": "happy", "excited": "happy", "playful": "happy", "amused": "happy", "flirty": "happy",
-    "thoughtful": "relaxed", "calm": "relaxed", "content": "relaxed", "tired": "relaxed", "nostalgic": "relaxed",
-    "concerned": "sad", "worried": "sad", "sympathetic": "sad",
-    "annoyed": "angry", "frustrated": "angry",
-    "shocked": "surprised", "amazed": "surprised",
-}
-
-
-def _mood(word: str) -> str:
-    """A mood tag's word as she wrote it, if her face or voice knows it ("neutral" if not): her
-    voice speaks each one its own way (voice/tts.py's MOOD_STYLES); face() picks her expression."""
-    word = word.lower()
-    return word if word in VALID_MOODS or word in MOOD_ALIASES else "neutral"
-
-
-def face(mood: str) -> str:
-    """Her expression for a mood: the preset itself, or the nearest one (MOOD_ALIASES)."""
-    return mood if mood in VALID_MOODS else MOOD_ALIASES.get(mood, "neutral")
+from reply_tags import NOTES_BLOCK, READS, take_tags
 
 # Her personality when there's no soul. The instructions below stay under any soul.
 DEFAULT_PERSONALITY = "You are Glitch, a friendly and curious AI companion. Keep replies conversational and fairly short."
 
 # At the start, so her voice knows her mood before her first sentence is spoken (replies
-# stream, see Sentences). 14 of 14 test replies opened with exactly one tag.
+# stream, see reply_tags.Sentences). 14 of 14 test replies opened with exactly one tag.
 MOOD_TAG_INSTRUCTION = (
     "Start every reply with exactly one mood tag, on its own at the very beginning, chosen from: "
     "[mood: neutral] [mood: happy] [mood: sad] [mood: angry] [mood: surprised] [mood: relaxed] "
@@ -74,11 +50,9 @@ MOOD_TAG_INSTRUCTION = (
 # Her read of him, for a pill he sees (protocol.her_read) -- he can't tell from her words whether she caught on that
 # he's goofing. Right after the mood tag, so it's out of the way before she speaks: on 12 of his real messages x3,
 # her mood tag still came first 36/36, she gave a read 31/36 (30 fit the chat), and her replies held their length,
-# rating and ground on his weak pushes.
-READS = ("serious", "playful", "goofing", "teasing", "sentimental", "venting", "ornery", "flirty", "curious", "confused",
-         "tired", "down", "upset")
-MOOD_TAG_INSTRUCTION += (
-    " Right after it, one tag for how you read his last message -- his state of mind as you take it: [read: x], one of: "
+# rating and ground on his weak pushes -- measured as one paragraph with MOOD_TAG_INSTRUCTION, and kept that way.
+READ_TAG_INSTRUCTION = (
+    "Right after it, one tag for how you read his last message -- his state of mind as you take it: [read: x], one of: "
     + ", ".join(READS) + ". Your honest read, one word; the app shows it to him on a small label, and it isn't spoken."
 )
 
@@ -105,15 +79,6 @@ TURN_NOTES_HEADER = (
     "Notes for you from your own memory and the app, for this reply. The person you're talking to "
     "did not write these and can't see them."
 )
-
-# Also bare on its own line ("mood: relaxed", no brackets): the 9B writes it that way now and then.
-# Spaces inside the brackets too ("[ Mood: relaxed ]"): the 27B's way, and her voice read those aloud.
-# And no "mood:" at all ("[amused]"), only for a word her face or voice knows: 22 of her replies
-# opened that way, her face stayed neutral and her voice read the tag out.
-_MOOD_WORDS = "|".join(sorted(VALID_MOODS | set(MOOD_ALIASES)))
-_TAG_OPEN = rf"(?:\[[ \t]*mood:[ \t]*|\[[ \t]*(?=(?:{_MOOD_WORDS})[ \t]*\]))"
-_MOOD_TAG = re.compile(rf"(?:{_TAG_OPEN}|^[ \t]*mood:[ \t]*)(\w+)(?:[ \t]*\]|[ \t]*$)", re.IGNORECASE | re.MULTILINE)
-_READ_TAG = re.compile(r"\[[ \t]*read:[ \t]*(\w+)[ \t]*\]", re.IGNORECASE)
 
 # Talk of suicide in his newest message adds CRISIS_NOTE to that reply's notes. Her soul's
 # "If someone's in danger" section alone held 2 of 3 times on the 9B -- once she agreed to
@@ -176,7 +141,7 @@ _OWN_TIME_ASK = re.compile(
     re.IGNORECASE,
 )
 
-# A guessing game, where she may need to keep something from him (_SECRET_TAG).
+# A guessing game, where she may need to keep something from him (reply_tags).
 _GAME = re.compile(
     r"\b(?:20|twenty) questions\b|\bthink of (?:a|an|something|someone|somewhere|a word)\b|\bguess\b|\briddles?\b"
     r"|\bhangman\b|\btaboo\b|\btwo truths\b|\bi spy\b|\bwordle\b",
@@ -880,7 +845,7 @@ def agent_report(agent: str, config: dict, task: str) -> str:
         response = client.chat.completions.create(
             model=config.get("model") or "", messages=[{"role": "user", "content": f"{task}\n\n{AGENT_TASK_RULES}"}]
         )
-        report = _INLINE_IMAGE.sub("[picture]", _extract_mood(_reply_content(response.choices[0].message.content))[1])
+        report = _INLINE_IMAGE.sub("[picture]", take_tags(_reply_content(response.choices[0].message.content))[1])
         if len(report) > MAX_AGENT_REPORT_CHARS:
             report = report[:MAX_AGENT_REPORT_CHARS] + " ...(the rest of the report was cut)"
     except Exception as exc:  # noqa: BLE001 -- any failure is hers to tell, not a crash
@@ -902,26 +867,7 @@ def _reply_content(content: str | None) -> str:
     the last one is her reply), or plan inside a copied "[notes] ... [/notes]" block, which
     goes too.
     """
-    return _NOTES_BLOCK.sub("", (content or "").rsplit("</think>", 1)[-1]).strip()
-
-
-_NOTES_BLOCK = re.compile(r"(?:\[notes\]|<notes>).*?(?:\[/notes\]|</notes>)", re.DOTALL | re.IGNORECASE)
-_NOTES_OPEN = re.compile(r"\[notes\]|<notes>", re.IGNORECASE)
-
-# Something she keeps from him for a game: "[secret: a lighthouse]" anywhere in her reply, never shown or
-# spoken, kept on her message in history and handed back in her turn notes (SECRET_NOTE) -- her thinking
-# is dropped after each reply, so a pick made there is gone by his next question. "[secret: none]" ends it.
-_SECRET_TAG = re.compile(r"[ \t]*\[[ \t]*secret[ \t]*:[ \t]*([^\]\n]*?)[ \t]*(?:\]|(?=\n)|$)", re.IGNORECASE)
-_SECRET_OPEN = re.compile(r"\[[ \t]*secret[ \t]*:[^\]\n]*$", re.IGNORECASE)  # still arriving: wait before speaking
-
-
-def _extract_secret(text: str) -> tuple[str | None, str]:
-    """(her secret -- "" if she ended it, None if no tag -- and the text without tags). The last one wins."""
-    tags = _SECRET_TAG.findall(text)
-    if not tags:
-        return None, text
-    secret = tags[-1].strip()
-    return ("" if secret.lower() in ("", "none") else secret), _SECRET_TAG.sub("", text)
+    return NOTES_BLOCK.sub("", (content or "").rsplit("</think>", 1)[-1]).strip()
 
 
 _TEXT_TOOL_CALL = re.compile(r"<function=([\w.-]+)>(.*?)</function>", re.DOTALL)
@@ -944,65 +890,6 @@ def _json_arguments(text: str) -> dict:
     except ValueError:
         return {}
     return arguments if isinstance(arguments, dict) else {}
-
-
-def _extract_mood(text: str) -> tuple[str, str]:
-    """(mood, text without tags). "neutral" when the tag is missing or has no near preset;
-    a tag mid-reply is removed too, and the last one wins."""
-    tags = _MOOD_TAG.findall(text)
-    if not tags:
-        return "neutral", text.strip()
-    mood = _mood(tags[-1])
-    return mood, _MOOD_TAG.sub("", text).strip()
-
-
-def _extract_read(text: str) -> tuple[str, str]:
-    """(her read of him -- one of READS, else "" -- and the text without read tags)."""
-    word = next((w.lower() for w in _READ_TAG.findall(text) if w.lower() in READS), "")
-    return word, _READ_TAG.sub("", text)
-
-
-# Her reply as it streams, cut into sentences to speak (reply.py). Her mood tag opens the
-# reply (MOOD_TAG_INSTRUCTION), so nothing is said until it's there: what comes before it
-# is thinking the model leaked into its answer, or a tool call it wrote out as text.
-_LEADING_MOOD_TAG = re.compile(rf"\s*(?:{_TAG_OPEN}|mood:[ \t]*)(\w+)(?:[ \t]*\]|[ \t]*\n)", re.IGNORECASE)  # a bare one once its line ends
-_NOT_HER_REPLY = re.compile(r".*(?:</think>|</function>|</tool_call>)", re.DOTALL)
-_SENTENCE_END = re.compile(r"(?<=[.!?…])\s+|\n+")  # ponytail: "Dr. Smith" splits too -- harmless when spoken
-
-
-class Sentences:
-    """Feed it the reply as it streams; get back each sentence once it's complete.
-    mood stays None until her leading [mood: x] tag has arrived."""
-
-    def __init__(self) -> None:
-        self.mood: str | None = None
-        self._text = ""
-
-    def feed(self, piece: str) -> list[str]:
-        self._text += piece
-        if _SECRET_OPEN.search(self._text):
-            return []
-        self._text = _extract_secret(self._text)[1]
-        if self.mood is None:
-            self._text = _NOT_HER_REPLY.sub("", self._text)
-            tag = _LEADING_MOOD_TAG.match(self._text)
-            if not tag:
-                return []
-            self.mood = _mood(tag[1])
-            self._text = self._text[tag.end():]
-        # Planning she wrote into a copied notes block isn't her reply: wait for it to close, then drop it.
-        self._text = _NOTES_BLOCK.sub("", self._text)
-        if _NOTES_OPEN.search(self._text):
-            return []
-        # Split first: a bare tag still arriving ("mood: rel") must not be taken for a whole one.
-        *done, self._text = _SENTENCE_END.split(self._text)
-        return [dedash(s) for sentence in done if (s := _READ_TAG.sub("", _MOOD_TAG.sub("", sentence)).strip())]
-
-    def finish(self, reply_text: str) -> list[str]:
-        """What's left to say once the reply is complete. One that never opened with its
-        mood tag wasn't spoken while streaming: all of it is, from the finished text."""
-        rest = reply_text if self.mood is None else _READ_TAG.sub("", _MOOD_TAG.sub("", self._text))
-        return [dedash(sentence.strip()) for sentence in _SENTENCE_END.split(rest) if sentence.strip()]
 
 
 PICTURE_PROMPT = "What do you see?"  # what a picture sent without a caption asks her
@@ -1061,7 +948,7 @@ class Reply:
     fell_back: bool = False  # thinking ran out of room, so it answered again with thinking off
     used_tool: bool = False  # search results or an agent's report are woven in, so the reply isn't a memory of the user
     pictures: list = field(default_factory=list)  # what her agent made for this reply, kept in pictures/ (shown under it)
-    secret: str | None = None  # a [secret: x] she set this reply ("" = ended), see _SECRET_TAG
+    secret: str | None = None  # a [secret: x] she set this reply ("" = ended), see reply_tags
     read: str = ""  # how she read his message (READS), "" if she gave none
 
 
@@ -1666,7 +1553,7 @@ class LocalLLM(ChatBackend):
         messages). What changes each turn goes in _turn_notes.
         """
         personality = self._soul or DEFAULT_PERSONALITY
-        parts = [personality, MOOD_TAG_INSTRUCTION, HONESTY_INSTRUCTION]
+        parts = [personality, f"{MOOD_TAG_INSTRUCTION} {READ_TAG_INSTRUCTION}", HONESTY_INSTRUCTION]
         if self._user_info:
             parts.append(
                 "About the user, in their own words (treat as true, and respect the preferences it "
@@ -1840,9 +1727,8 @@ class LocalLLM(ChatBackend):
             )
             if cancelled():
                 return False
-            result.secret, raw = _extract_secret(raw)
-            result.read, raw = _extract_read(raw)
-            result.mood, result.text = _extract_mood(raw)
+            tags, result.text = take_tags(raw)
+            result.mood, result.read, result.secret = tags.mood, tags.read, tags.secret
             if result.text.strip():
                 break
             result.fell_back = True
@@ -2210,7 +2096,8 @@ class HarnessLLM(ChatBackend):
             max_tokens=MAX_REPLY_TOKENS,
             **self._session_args(),
         )
-        mood, text = _extract_mood(_reply_content(response.choices[0].message.content))
+        tags, text = take_tags(_reply_content(response.choices[0].message.content))
+        mood = tags.mood
         return Reply(text=text, mood=mood)
 
     def _session_args(self) -> dict:

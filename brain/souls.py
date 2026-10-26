@@ -59,11 +59,10 @@ def load_soul(name: str) -> str:
     return content
 
 
-def read_soul(name: str) -> tuple[str, str]:
-    """Returns (description, examples) for the editor -- pre-filling
-    the two boxes for the Edit button (get_soul).
-    """
-    return _split(STORE.read_text(name))
+def read_soul(name: str) -> dict:
+    """{"description", "examples"}: the editor's two boxes for the Edit button (get_soul)."""
+    description, examples = _split(STORE.read_text(name))
+    return {"description": description, "examples": examples}
 
 
 def write_main_soul(content: str, why: str = "edit") -> None:

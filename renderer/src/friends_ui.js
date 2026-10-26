@@ -10,7 +10,7 @@ const NO_FRIEND = "Friends";
 export class FriendsUI {
   constructor(app) {
     this._app = app;
-    this._most = 3;
+    this._most = Infinity; // her room for friends: Brain's `most`, from its first `friends`
     this._modelsFor = ""; // the server the model list was last asked for
     this.items = new SavedItems(app, {
       label: "friend",

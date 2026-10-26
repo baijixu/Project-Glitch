@@ -43,25 +43,15 @@ def list_profiles() -> list[dict]:
     return profiles
 
 
-def save_profile(name: str, kind: str, url: str, api_key: str, space: str, replaces: str = "") -> str:
-    """Creates or overwrites a profile; returns the name it was saved under.
-    `replaces` is the profile being edited: if the edit renamed it, the old one
-    goes, and if it was the active one the new name is active instead.
-    """
-    if kind not in TYPES:
-        raise ValueError(f"unknown memory type {kind!r}")
+def save_profile(name: str, backend: str, url: str, api_key: str, space: str) -> None:
+    """Creates or overwrites a profile -- under a new name, another one, as everywhere in Settings."""
+    if backend not in TYPES:
+        raise ValueError(f"unknown memory type {backend!r}")
     if not url.strip():
         raise ValueError("a memory server needs its URL")
     if STORE.path(name).stem.casefold() == LOCAL_NAME.casefold():
         raise ValueError(f"{LOCAL_NAME!r} is built in and can't be used as a profile name")
-    profile = {"type": kind, "url": url.strip(), "api_key": api_key.strip(), "space": space.strip() or TYPES[kind]["default_space"]}
-    saved = STORE.write(name, profile)
-    if replaces and replaces not in (saved, LOCAL_NAME):
-        was_active = read_active() == replaces
-        STORE.path(replaces).unlink(missing_ok=True)
-        if was_active:
-            set_active(saved)
-    return saved
+    STORE.write(name, {"type": backend, "url": url.strip(), "api_key": api_key.strip(), "space": space.strip() or TYPES[backend]["default_space"]})
 
 
 def read_profile(name: str) -> dict:
@@ -71,6 +61,12 @@ def read_profile(name: str) -> dict:
         raise ValueError(f"memory profile {name!r} has an unknown type")
     profile.setdefault("space", TYPES[profile["type"]]["default_space"])
     return profile
+
+
+def for_editor(name: str) -> dict:
+    """read_profile with its type as `backend`: in a message, `type` is the message's own."""
+    profile = read_profile(name)
+    return {**profile, "backend": profile["type"]}
 
 
 def delete_profile(name: str) -> None:

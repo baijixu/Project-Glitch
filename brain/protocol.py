@@ -383,9 +383,9 @@ def memory_profiles(profiles: list[dict], active: str, types: list[dict], error:
     return {"type": "memory_profiles", "profiles": profiles, "active": active, "types": types, "error": error}
 
 
-def memory_profile_content(name: str, profile: dict) -> dict:
-    """One saved memory profile for the ✏️ editor ({} if there's none), api_key included."""
-    return {"type": "memory_profile_content", "name": name, "profile": profile}
+def memory_profile_content(name: str, backend: str, url: str, api_key: str, space: str) -> dict:
+    """One saved memory profile for the ✏️ editor, api_key included -- the same fields save_memory_profile sends."""
+    return {"type": "memory_profile_content", "name": name, "backend": backend, "url": url, "api_key": api_key, "space": space}
 
 
 def left_off(note: str) -> dict:
@@ -400,7 +400,7 @@ def thinking(tokens: int) -> dict:
 
 
 def her_read(read: str) -> dict:
-    """How she read his last message (llm.READS), "" if she gave none -- the pill by the chat-history button."""
+    """How she read his last message (reply_tags.READS), "" if she gave none -- the pill by the chat-history button."""
     return {"type": "her_read", "read": read}
 
 

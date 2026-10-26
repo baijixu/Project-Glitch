@@ -32,7 +32,9 @@ import persona
 import profiles
 import protocol
 from hub import Brain
-from llm import LocalLLM, _extract_mood
+from llm import LocalLLM
+from reply_tags import untag
+from saved_items import Kind, register
 from store import NamedStore, Toggle
 
 ACTIVE = Toggle(Path(__file__).parent / "friends_active.txt", default=False)
@@ -212,7 +214,7 @@ async def purpose() -> tuple[str, str]:
 
 def _clean(text: str, name: str) -> str:
     """One message as the speaker wrote it: no name label, mood tag, quotes or other speakers' lines."""
-    text = _extract_mood(text)[1]
+    text = untag(text).strip()
     text = re.sub(rf"^\s*\**{re.escape(name)}\**\s*:\s*", "", text.strip(), flags=re.IGNORECASE)
     text = re.split(r"\n\s*\**[A-Z][\w ]{0,20}\**:\s", text)[0]  # it went on to write someone else's line
     sentences = re.split(r"(?<=[.!?…])\s+", " ".join(text.strip().strip('"').split()))
@@ -307,7 +309,7 @@ async def _remember(friends: dict, speakers: dict, souls: dict, lines: list[str]
         prompt = _REMEMBER_PROMPT.format(others=others, transcript="\n".join(lines))
         try:
             async with brain.reply_lock:
-                note = _extract_mood(await asyncio.to_thread(speakers[name].group_message, souls[name], prompt))[1].strip()
+                note = untag(await asyncio.to_thread(speakers[name].group_message, souls[name], prompt)).strip()
         except Exception as exc:
             print(f"[friends] {name} couldn't note the visit: {exc!r}")
             continue
@@ -399,23 +401,17 @@ async def visit_loop(brain: Brain) -> None:
             print(f"[friends] tonight's visit failed: {exc!r}")
 
 
-@hub.handles(protocol.GET_FRIEND, protocol.SAVE_FRIEND, protocol.DELETE_FRIEND)
-async def _friend(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-    name = str(data.get("name") or "")
-    try:
-        if data["type"] == protocol.GET_FRIEND:
-            return await hub.send(websocket, protocol.friend_content(name, **read_friend(name)))
-        if data["type"] == protocol.SAVE_FRIEND:
-            soul, endpoint, model = (str(data.get(key) or "").strip() for key in ("soul", "endpoint", "model"))
-            if not name.strip() or not soul or hub.fields_too_long(name, soul, endpoint, model):
-                return
-            if STORE.path(name).stem not in names() and len(names()) >= MAX_FRIENDS:
-                return await hub.send(websocket, friends_message(f"She has room for {MAX_FRIENDS} friends -- delete one first."))
-            kept = friend_memories(name) if STORE.path(name).exists() else []  # an edit keeps what they remember
-            STORE.write(name, {"soul": soul, "endpoint": endpoint, "model": model, "memories": kept})
-        else:
-            STORE.delete(name)
-    except (ValueError, OSError) as exc:
-        print(f"[friends] couldn't {data['type']} {name!r}: {exc!r}")
-        return await hub.send(websocket, friends_message(str(exc)))
-    await hub.broadcast(friends_message())
+def save_friend(name: str, soul: str, endpoint: str, model: str) -> None:
+    """A new friend, room permitting (MAX_FRIENDS), or an edit -- which keeps what they remember."""
+    if STORE.path(name).stem not in names() and len(names()) >= MAX_FRIENDS:
+        raise ValueError(f"She has room for {MAX_FRIENDS} friends -- delete one first.")
+    kept = friend_memories(name) if STORE.path(name).exists() else []
+    STORE.write(name, {"soul": soul.strip(), "endpoint": endpoint.strip(), "model": model.strip(), "memories": kept})
+
+
+register(Kind(
+    label="friend", messages=(protocol.SAVE_FRIEND, protocol.GET_FRIEND, protocol.DELETE_FRIEND),
+    fields={"soul": "", "endpoint": "", "model": ""}, required="soul",
+    save=save_friend, read=read_friend, delete=STORE.delete,
+    content=protocol.friend_content, changed=friends_message, refused=friends_message,
+))

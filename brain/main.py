@@ -22,7 +22,9 @@ Where things live
   server.py ..... connections, login and lockout, routing each message
   handshake.py .. everything a newly connected device needs
   reply.py ...... the reply pipeline, voice input, resend, clear chat
+  reply_tags.py . the tags in her reply (mood, read, secret) and its sentences as it streams
   persona.py .... which soul, user info and conversation apply right now
+  saved_items.py  saving, editing and deleting every saved kind Settings picks from
   engines.py .... LLM / speech engines and harnesses: building and switching
   characters.py . role-play profiles and souls, soul.md/user.md, avatars, logs
   learning.py ... lessons, memory saving and training, memory server profiles

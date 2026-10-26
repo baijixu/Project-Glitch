@@ -20,6 +20,7 @@ import profiles
 import protocol
 import souls
 from hub import Brain
+from saved_items import Kind, register
 
 # His own scratchpad (Settings -> Notes) -- never read by her or put in any prompt.
 NOTES_PATH = Path(__file__).parent / "notes.md"
@@ -75,15 +76,17 @@ async def _soul_deleted(name: str, brain: Brain) -> None:
         print(f"[brain] active soul was deleted -- reset to {souls.DEFAULT_SOUL_NAME!r}")
 
 
-engines.register(engines.Kind(
-    "profile", (protocol.SAVE_PROFILE, protocol.GET_PROFILE, protocol.DELETE_PROFILE), {"content": ""},
-    lambda name, content: profiles.save_profile(name, content), lambda name: {"content": profiles.read_profile(name)},
-    profiles.delete_profile, protocol.profile_content, profiles_message, deleted=_profile_deleted, required="content",
+register(Kind(
+    label="profile", messages=(protocol.SAVE_PROFILE, protocol.GET_PROFILE, protocol.DELETE_PROFILE),
+    fields={"content": ""}, required="content",
+    save=profiles.save_profile, read=profiles.read_profile, delete=profiles.delete_profile,
+    content=protocol.profile_content, changed=profiles_message, deleted=_profile_deleted,
 ))
-engines.register(engines.Kind(
-    "soul", (protocol.SAVE_SOUL, protocol.GET_SOUL, protocol.DELETE_SOUL), {"description": "", "examples": ""},
-    souls.save_soul, lambda name: dict(zip(("description", "examples"), souls.read_soul(name))),
-    souls.delete_soul, protocol.soul_content, souls_message, deleted=_soul_deleted, required="description",
+register(Kind(
+    label="soul", messages=(protocol.SAVE_SOUL, protocol.GET_SOUL, protocol.DELETE_SOUL),
+    fields={"description": "", "examples": ""}, required="description",
+    save=souls.save_soul, read=souls.read_soul, delete=souls.delete_soul,
+    content=protocol.soul_content, changed=souls_message, deleted=_soul_deleted,
 ))
 
 

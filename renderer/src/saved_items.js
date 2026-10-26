@@ -29,6 +29,7 @@ export class SavedItems {
   // onSelect(name) .............. picking a dropdown entry (default: load it)
   // onOpen(values) .............. after the modal is filled in and shown
   // confirmDelete(name) ......... the delete confirmation's text (default: "Delete the saved <label> ...")
+  // optionLabel(name) ........... how an entry reads in the dropdown (default: its name)
   constructor(app, config) {
     this._app = app;
     this._config = config;
@@ -44,7 +45,6 @@ export class SavedItems {
     this.active = config.reserved;
     this._locked = false;
     this._pendingEdit = null; // the name whose *_content should open the modal
-    this.editing = ""; // the name the modal was opened with ("" for a new one): a rename's original
 
     this.selectEl?.addEventListener("change", () => (config.onSelect ?? ((name) => this.load(name)))(this.selectEl.value));
     this.editButtonEl?.addEventListener("click", () => this.edit(this.selectEl?.value));
@@ -58,7 +58,7 @@ export class SavedItems {
   render(names, active) {
     this.names = names;
     this.active = active;
-    renderDropdown(this.selectEl, [this._config.reserved, ...names], active);
+    renderDropdown(this.selectEl, [this._config.reserved, ...names], active, this._config.optionLabel);
     this.updateEditControls();
   }
 
@@ -106,7 +106,6 @@ export class SavedItems {
   open(name = "", values = {}) {
     if (!this.modal.el) return;
     const filled = { ...this._config.defaults, ...values };
-    this.editing = name;
     if (this.titleEl) this.titleEl.textContent = `${name ? "Edit" : "New"} ${this._config.title}`;
     if (this.nameEl) this.nameEl.value = name;
     for (const [field, el] of Object.entries(this.fieldEls)) {

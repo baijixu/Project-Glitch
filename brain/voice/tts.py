@@ -62,7 +62,7 @@ _EMOJI_PATTERN = re.compile(
 )
 
 
-# Her mood tag as she wrote it (llm.py: the face presets and the finer words in MOOD_ALIASES) as a
+# Her mood tag as she wrote it (reply_tags.py: the face presets and the finer words in MOOD_ALIASES) as a
 # speaking-style hint, sent as OpenAI's `instructions` -- Qwen3-TTS (tools/qwen_tts_server.py)
 # follows it, Kokoro ignores it. Her face has six presets, her voice every word: playful and
 # curious both show "happy", but they don't sound alike. Neutral is calm too: Serena's own

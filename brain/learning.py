@@ -27,6 +27,7 @@ import reflection
 import training
 import wonder
 from hub import Brain
+from saved_items import Kind, register
 from store import read_json, write_json
 
 LESSONS_STATE_TIMEOUT_SEC = 8
@@ -226,56 +227,51 @@ async def _get_memory_content(websocket: websockets.ServerConnection, data: dict
     await hub.send(websocket, protocol.memory_content(await memory.read_entries()))
 
 
-@hub.handles(protocol.GET_MEMORY_PROFILE)
-async def _get_memory_profile(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-    name = str(data.get("name") or "").strip()
-    try:
-        profile = memory_profiles.read_profile(name)
-    except (OSError, ValueError):
-        profile = {}
-    await hub.send(websocket, protocol.memory_profile_content(name, profile))
+async def _memory_switched() -> str:
+    """Her memory is somewhere else now, or the one in use changed: reconnect. Returns why the server is
+    unreachable, or "". What memory training and lessons can do depends on the backend."""
+    error = await activate_memory()
+    lessons.invalidate()
+    await hub.debug_broadcast("memory", f"memory backend: {memory.active_description()}")
+    await hub.broadcast(training_state_message())
+    await _broadcast_lessons_state()
+    return error
 
 
-@hub.handles(protocol.SET_MEMORY_PROFILE, protocol.SAVE_MEMORY_PROFILE, protocol.DELETE_MEMORY_PROFILE)
-async def _change_memory_profile(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-    """Settings -> Memory: pick, save, edit or delete a memory backend profile
-    (memory_profiles.py). Every device's list updates; a refusal or an
-    unreachable server is only told to the device that asked.
-    """
-    msg_type = data["type"]
+@hub.handles(protocol.SET_MEMORY_PROFILE)
+async def _set_memory_profile(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
+    """Settings -> Memory: switch her to a backend. Every device's list updates; a refusal or an unreachable
+    server is only told to the device that asked."""
     name = str(data.get("name") or "").strip()
-    error = ""
-    reconnect = False
     try:
-        if msg_type == protocol.SET_MEMORY_PROFILE:
-            if name != memory_profiles.LOCAL_NAME:
-                memory_profiles.read_profile(name)  # must exist
-            memory_profiles.set_active(name)
-            reconnect = True
-        elif msg_type == protocol.SAVE_MEMORY_PROFILE:
-            fields = [str(data.get(k) or "") for k in ("backend", "url", "api_key", "space", "original_name")]
-            if hub.fields_too_long(name, *fields):
-                return
-            kind, url, api_key, space, original = fields
-            was_active = memory_profiles.read_active()
-            saved = memory_profiles.save_profile(name, kind, url, api_key, space, replaces=original)
-            reconnect = was_active in (saved, original)
-            print(f"[brain] saved memory profile {saved!r} ({kind})")
-        elif msg_type == protocol.DELETE_MEMORY_PROFILE:
-            reconnect = memory_profiles.read_active() == name
-            memory_profiles.delete_profile(name)
+        if name != memory_profiles.LOCAL_NAME:
+            memory_profiles.read_profile(name)  # must exist
     except (OSError, ValueError) as exc:
-        await hub.send(websocket, memory_profiles_message(str(exc) if isinstance(exc, ValueError) else "No such memory profile."))
-        return
-    if reconnect:
-        error = await activate_memory()
-        lessons.invalidate()
-        await hub.debug_broadcast("memory", f"memory backend: {memory.active_description()}")
+        return await hub.send(websocket, memory_profiles_message(str(exc) if isinstance(exc, ValueError) else "No such memory profile."))
+    memory_profiles.set_active(name)
+    error = await _memory_switched()
     await hub.broadcast(memory_profiles_message())
     if error:
         await hub.send(websocket, memory_profiles_message(error))
-    await hub.broadcast(training_state_message())
-    await _broadcast_lessons_state()
+
+
+async def _memory_profile_saved(name: str, brain: Brain) -> str | None:
+    """The one in use was edited: its server or bank may have changed."""
+    return await _memory_switched() if memory_profiles.STORE.path(name).stem == memory_profiles.read_active() else None
+
+
+async def _memory_profile_deleted(name: str, brain: Brain) -> str | None:
+    """Deleting the one in use left her on the Local file (memory_profiles.delete_profile): let go of its server."""
+    return await _memory_switched() if memory_profiles.read_active() == memory_profiles.LOCAL_NAME else None
+
+
+register(Kind(
+    label="memory profile", messages=(protocol.SAVE_MEMORY_PROFILE, protocol.GET_MEMORY_PROFILE, protocol.DELETE_MEMORY_PROFILE),
+    fields={"backend": "", "url": "", "api_key": "", "space": ""}, required="url",
+    save=memory_profiles.save_profile, read=memory_profiles.for_editor, delete=memory_profiles.delete_profile,
+    content=protocol.memory_profile_content, changed=memory_profiles_message, refused=memory_profiles_message,
+    saved=_memory_profile_saved, deleted=_memory_profile_deleted,
+))
 
 
 async def broadcast_training_state() -> None:

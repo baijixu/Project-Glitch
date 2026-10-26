@@ -5,8 +5,6 @@ editors for each.
 
 import asyncio
 import time
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
 
 import websockets
 
@@ -23,6 +21,7 @@ import sampling
 import tts_engines
 from hub import Brain
 from llm import ChatBackend, HarnessLLM, LocalLLM, NoneLLM, OllamaLLM, list_models, list_ollama_models
+from saved_items import Kind, register
 from voice import NoneTTS, RemoteTTS
 
 
@@ -149,25 +148,6 @@ def harness_state_message() -> dict:
     return protocol.harness_state(bool(active), active, active or harness.read_selected_harness_name(), harness.list_harnesses())
 
 
-@dataclass(frozen=True)
-class Kind:
-    """One kind of saved item the Settings panel edits (save / get / delete): the connections here, and
-    role-play profiles and souls (characters.py)."""
-
-    label: str  # for the console: "speech engine"
-    messages: tuple[str, str, str]  # its save, get and delete message types
-    fields: dict  # each editable field -> its default ("", or "openai"/False for an LLM engine)
-    save: Callable[..., None]
-    read: Callable[[str], dict]
-    delete: Callable[[str], None]
-    content: Callable[..., dict]  # the protocol message answering get
-    changed: Callable[[], dict]  # what every device gets after a save or delete
-    reachability: dict | None = None  # health's status-light cache, stale after an edit
-    # What deleting the one in use means for Brain (see the functions below).
-    deleted: Callable[[str, Brain], Awaitable[None]] | None = None
-    required: str = "endpoint"  # the field a save can't go without
-
-
 async def _tts_engine_deleted(name: str, brain: Brain) -> None:
     """Don't leave brain.tts pointed at an engine config that no longer exists."""
     if tts_engines.read_active_engine_name() != name:
@@ -205,81 +185,31 @@ async def _harness_deleted(name: str, brain: Brain) -> None:
         harness.set_selected_harness_name("")
 
 
-_KINDS = (
+for _kind in (
     Kind(
-        "speech engine",
-        (protocol.SAVE_TTS_ENGINE, protocol.GET_TTS_ENGINE, protocol.DELETE_TTS_ENGINE),
-        {"endpoint": "", "api_key": "", "voice": "", "voices_dir": "", "model": ""},
-        tts_engines.save_engine, tts_engines.read_engine, tts_engines.delete_engine,
-        protocol.tts_engine_content, tts_engines_message, health.LAST_TTS_REACHABLE, _tts_engine_deleted,
+        label="speech engine",
+        messages=(protocol.SAVE_TTS_ENGINE, protocol.GET_TTS_ENGINE, protocol.DELETE_TTS_ENGINE),
+        fields={"endpoint": "", "api_key": "", "voice": "", "voices_dir": "", "model": ""}, required="endpoint",
+        save=tts_engines.save_engine, read=tts_engines.read_engine, delete=tts_engines.delete_engine,
+        content=protocol.tts_engine_content, changed=tts_engines_message,
+        deleted=_tts_engine_deleted, reachability=health.LAST_TTS_REACHABLE,
     ),
     Kind(
-        "LLM engine",
-        (protocol.SAVE_LLM_ENGINE, protocol.GET_LLM_ENGINE, protocol.DELETE_LLM_ENGINE),
-        {"endpoint": "", "model": "", "api_key": "", "provider": "openai", "think": False},
-        llm_engines.save_engine, llm_engines.read_engine, llm_engines.delete_engine,
-        protocol.llm_engine_content, llm_engines_message, None, _llm_engine_deleted,
+        label="LLM engine",
+        messages=(protocol.SAVE_LLM_ENGINE, protocol.GET_LLM_ENGINE, protocol.DELETE_LLM_ENGINE),
+        fields={"endpoint": "", "model": "", "api_key": "", "provider": "openai", "think": False}, required="endpoint",
+        save=llm_engines.save_engine, read=llm_engines.read_engine, delete=llm_engines.delete_engine,
+        content=protocol.llm_engine_content, changed=llm_engines_message, deleted=_llm_engine_deleted,
     ),
     Kind(
-        "harness",
-        (protocol.SAVE_HARNESS, protocol.GET_HARNESS, protocol.DELETE_HARNESS),
-        {"endpoint": "", "model": "", "api_key": ""},
-        harness.save_harness, harness.read_harness, harness.delete_harness,
-        protocol.harness_content, harness_state_message, health.LAST_HARNESS_REACHABLE, _harness_deleted,
+        label="harness",
+        messages=(protocol.SAVE_HARNESS, protocol.GET_HARNESS, protocol.DELETE_HARNESS),
+        fields={"endpoint": "", "model": "", "api_key": ""}, required="endpoint",
+        save=harness.save_harness, read=harness.read_harness, delete=harness.delete_harness,
+        content=protocol.harness_content, changed=harness_state_message,
+        deleted=_harness_deleted, reachability=health.LAST_HARNESS_REACHABLE,
     ),
-)
-
-
-def register(kind: Kind) -> None:
-    save_type, get_type, delete_type = kind.messages
-
-    @hub.handles(save_type)
-    async def save(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-        name = data.get("name", "")
-        values = {
-            field: bool(data.get(field, default)) if isinstance(default, bool) else (data.get(field) or default)
-            for field, default in kind.fields.items()
-        }
-        text = [name, *(v for v in values.values() if isinstance(v, str))]
-        if not name.strip() or not values[kind.required].strip() or hub.fields_too_long(*text):
-            return
-        try:
-            kind.save(name, **values)
-        except (ValueError, OSError) as exc:
-            print(f"[brain] couldn't save {kind.label} {name!r}: {exc!r}")
-            return
-        print(f"[brain] saved {kind.label} {name!r}")
-        if kind.reachability is not None:
-            kind.reachability.pop(name, None)  # the endpoint may have changed; the next check repaints it
-        await hub.broadcast(kind.changed())
-
-    @hub.handles(get_type)
-    async def get(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-        """The Edit dialog asking for what's saved, api_key included."""
-        name = data.get("name", "")
-        try:
-            saved = kind.read(name)
-        except (ValueError, OSError) as exc:
-            print(f"[brain] couldn't read {kind.label} {name!r}: {exc!r}")
-            return
-        await hub.send(websocket, kind.content(name, **{field: saved.get(field, default) for field, default in kind.fields.items()}))
-
-    @hub.handles(delete_type)
-    async def delete(websocket: websockets.ServerConnection, data: dict, brain: Brain) -> None:
-        name = data.get("name", "")
-        try:
-            kind.delete(name)
-        except (ValueError, OSError) as exc:
-            print(f"[brain] couldn't delete {kind.label} {name!r}: {exc!r}")
-            return
-        print(f"[brain] deleted {kind.label} {name!r}")
-        if kind.reachability is not None:
-            kind.reachability.pop(name, None)
-        await kind.deleted(name, brain)
-        await hub.broadcast(kind.changed())
-
-
-for _kind in _KINDS:
+):
     register(_kind)
 
 
