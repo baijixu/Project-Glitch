@@ -133,6 +133,7 @@ html[data-ui^="neon"] :focus-visible {
 /* ---- Glass: panels and floating controls ---- */
 
 html[data-ui^="neon"] .corner-button,
+html[data-ui^="neon"] #read-pill,
 html[data-ui^="neon"] #processing-indicator,
 html[data-ui^="neon"] #status:not(:empty),
 html[data-ui^="neon"] #memory-toast,

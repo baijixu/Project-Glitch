@@ -399,6 +399,11 @@ def thinking(tokens: int) -> dict:
     return {"type": "thinking", "tokens": tokens}
 
 
+def her_read(read: str) -> dict:
+    """How she read his last message (llm.READS), "" if she gave none -- the pill by the chat-history button."""
+    return {"type": "her_read", "read": read}
+
+
 def no_reply() -> dict:
     """Nothing to reply to (empty text, a silent voice message): lets the Renderer re-enable its buttons
     without a blank chat bubble."""

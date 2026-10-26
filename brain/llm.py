@@ -71,6 +71,16 @@ MOOD_TAG_INSTRUCTION = (
     "tired, nostalgic, concerned, worried, sympathetic, annoyed, frustrated, shocked, amazed. Pick whichever best "
     "matches the emotional tone of what you're about to say; your voice follows it."
 )
+# Her read of him, for a pill he sees (protocol.her_read) -- he can't tell from her words whether she caught on that
+# he's goofing. Right after the mood tag, so it's out of the way before she speaks: on 12 of his real messages x3,
+# her mood tag still came first 36/36, she gave a read 31/36 (30 fit the chat), and her replies held their length,
+# rating and ground on his weak pushes.
+READS = ("serious", "playful", "goofing", "teasing", "sentimental", "venting", "ornery", "flirty", "curious", "confused",
+         "tired", "down", "upset")
+MOOD_TAG_INSTRUCTION += (
+    " Right after it, one tag for how you read his last message -- his state of mind as you take it: [read: x], one of: "
+    + ", ".join(READS) + ". Your honest read, one word; the app shows it to him on a small label, and it isn't spoken."
+)
 
 # In each turn's notes (in her system prompt she never used them, 0 of 15 replies). Her voice (Qwen3-TTS)
 # performs these when they're in her words (a laugh cue is spoken as "haha", voice.tts._LAUGH_CUE) -- a laugh
@@ -103,6 +113,7 @@ TURN_NOTES_HEADER = (
 _MOOD_WORDS = "|".join(sorted(VALID_MOODS | set(MOOD_ALIASES)))
 _TAG_OPEN = rf"(?:\[[ \t]*mood:[ \t]*|\[[ \t]*(?=(?:{_MOOD_WORDS})[ \t]*\]))"
 _MOOD_TAG = re.compile(rf"(?:{_TAG_OPEN}|^[ \t]*mood:[ \t]*)(\w+)(?:[ \t]*\]|[ \t]*$)", re.IGNORECASE | re.MULTILINE)
+_READ_TAG = re.compile(r"\[[ \t]*read:[ \t]*(\w+)[ \t]*\]", re.IGNORECASE)
 
 # Talk of suicide in his newest message adds CRISIS_NOTE to that reply's notes. Her soul's
 # "If someone's in danger" section alone held 2 of 3 times on the 9B -- once she agreed to
@@ -945,6 +956,12 @@ def _extract_mood(text: str) -> tuple[str, str]:
     return mood, _MOOD_TAG.sub("", text).strip()
 
 
+def _extract_read(text: str) -> tuple[str, str]:
+    """(her read of him -- one of READS, else "" -- and the text without read tags)."""
+    word = next((w.lower() for w in _READ_TAG.findall(text) if w.lower() in READS), "")
+    return word, _READ_TAG.sub("", text)
+
+
 # Her reply as it streams, cut into sentences to speak (reply.py). Her mood tag opens the
 # reply (MOOD_TAG_INSTRUCTION), so nothing is said until it's there: what comes before it
 # is thinking the model leaked into its answer, or a tool call it wrote out as text.
@@ -979,12 +996,12 @@ class Sentences:
             return []
         # Split first: a bare tag still arriving ("mood: rel") must not be taken for a whole one.
         *done, self._text = _SENTENCE_END.split(self._text)
-        return [dedash(s) for sentence in done if (s := _MOOD_TAG.sub("", sentence).strip())]
+        return [dedash(s) for sentence in done if (s := _READ_TAG.sub("", _MOOD_TAG.sub("", sentence)).strip())]
 
     def finish(self, reply_text: str) -> list[str]:
         """What's left to say once the reply is complete. One that never opened with its
         mood tag wasn't spoken while streaming: all of it is, from the finished text."""
-        rest = reply_text if self.mood is None else _MOOD_TAG.sub("", self._text)
+        rest = reply_text if self.mood is None else _READ_TAG.sub("", _MOOD_TAG.sub("", self._text))
         return [dedash(sentence.strip()) for sentence in _SENTENCE_END.split(rest) if sentence.strip()]
 
 
@@ -1045,6 +1062,7 @@ class Reply:
     used_tool: bool = False  # search results or an agent's report are woven in, so the reply isn't a memory of the user
     pictures: list = field(default_factory=list)  # what her agent made for this reply, kept in pictures/ (shown under it)
     secret: str | None = None  # a [secret: x] she set this reply ("" = ended), see _SECRET_TAG
+    read: str = ""  # how she read his message (READS), "" if she gave none
 
 
 class ChatBackend:
@@ -1823,6 +1841,7 @@ class LocalLLM(ChatBackend):
             if cancelled():
                 return False
             result.secret, raw = _extract_secret(raw)
+            result.read, raw = _extract_read(raw)
             result.mood, result.text = _extract_mood(raw)
             if result.text.strip():
                 break

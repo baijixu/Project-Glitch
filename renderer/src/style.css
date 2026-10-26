@@ -494,8 +494,27 @@ body.overlay-chat-active #overlay-edit-button {
   top: 124px;
 }
 
-/* Chat History slides over the top-left corner: its own button stays, these two would sit on its title. */
-body:has(#history-panel.open) :is(#inbox-button, #mind-button) {
+/* How she read his last message (her_read), beside the flower. */
+#read-pill {
+  position: fixed;
+  top: 27px;
+  left: 68px;
+  z-index: 20;
+  padding: 3px 10px;
+  border-radius: 11px;
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  font-size: 13px;
+  line-height: 16px;
+  pointer-events: none;
+}
+
+#read-pill[hidden] {
+  display: none;
+}
+
+/* Chat History slides over the top-left corner: its own button stays, these would sit on its title. */
+body:has(#history-panel.open) :is(#inbox-button, #mind-button, #read-pill) {
   display: none;
 }
 

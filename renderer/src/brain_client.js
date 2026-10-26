@@ -147,6 +147,11 @@ export class BrainClient {
       speak_text: (data) => this._showReplyText(data),
       topics: (data) => this._cycleTopicHints(data.items || []),
       thinking: (data) => this._awaitingReply && this._setProcessingLabel(`thinking ${data.tokens}`),
+      her_read: (data) => {
+        const pill = $("read-pill");
+        pill.textContent = data.read;
+        pill.hidden = !data.read;
+      },
       // Sent instead of speak_text when she had nothing to say (a blank voice
       // message, an empty reply) -- said so, rather than looking broken.
       no_reply: () => {

@@ -67,7 +67,8 @@ The shipped default avatar in the Neon UI style (Settings → UI Style), with th
 ## What it does
 
 - **Talk to a 3D avatar.** Type or hold-to-talk; she answers in text and (optionally) speech, with lip-sync and mood-driven
-  expressions. Ships with a default VRM model; import, rename and delete your own `.vrm` or flat `.png` avatars.
+  expressions. A pill beside the 🌸 shows how she read your last message (playful, serious, ornery...), so you can
+  tell whether she caught on. Ships with a default VRM model; import, rename and delete your own `.vrm` or flat `.png` avatars.
 - **A personality you own.** Her *soul* (`soul.md`) and what you tell her about yourself (`user.md`) are plain text files
   that only you edit. Nothing she does can change them.
 - **She knows what time it is, and how long you've been gone.** See [Time](#time).

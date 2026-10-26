@@ -396,6 +396,8 @@ async def reply_to(
         if reply.pictures:
             await hub.broadcast(protocol.artwork(pictures.entries()))  # Settings -> Artwork on every device
         await _sync_other_devices(websocket, brain)
+        if brain.llm.owns_conversation:
+            await hub.broadcast(protocol.her_read(reply.read))
         # Only her own conversations go in her chat log: a harness keeps its own, and
         # personal and professional stay apart.
         if brain.llm.owns_conversation:
