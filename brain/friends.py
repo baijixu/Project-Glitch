@@ -37,7 +37,7 @@ from store import NamedStore, Toggle
 
 ACTIVE = Toggle(Path(__file__).parent / "friends_active.txt", default=False)
 STORE = NamedStore(Path(__file__).parent / "friends", kind="friend")
-MAX_FRIENDS = 3
+MAX_FRIENDS = 4  # each one more is a turn fewer for her in a visit (MAX_MESSAGES, taken in turns)
 # With Friend mode on they come over by themselves once a night, after her diary (1 AM), when
 # he's been quiet a while -- a visit only on his button press was a rare one.
 VISIT_HOUR = 2  # local time

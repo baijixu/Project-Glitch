@@ -92,7 +92,7 @@ The shipped default avatar in the Neon UI style (Settings → UI Style), with th
   approval, what she wants to find out, what she saved and chose on her own, and charts of how she's growing.
 - **Her library.** Upload books (TXT, Markdown, PDF, EPUB, Word) and she picks what to read and reads it a few pages at a
   time while you're away, noting what she makes of it, and brings it up when you next talk.
-- **Friends.** Up to three friends with souls and models of their own come over when you start a visit; she journals about it after.
+- **Friends.** Up to four friends with souls and models of their own come over when you start a visit; she journals about it after.
 - **Tune how she talks.** Sampling profiles (temperature, top P, min P...) you save and switch between, applied from her next reply.
 - **Vision.** Show her your camera, your screen, or attach a picture or text file (with a vision-capable model).
 - **Web access.** Optional web search through your own [SearXNG](https://docs.searxng.org/) instance, with results labeled
@@ -288,7 +288,7 @@ The ⚙️ panel, top to bottom:
 | **Curiosity** | Follow-up questions and reaching out after a quiet spell. |
 | **Heartbeat** | Her mind wandering while you're away, and **Think now** to start one right away. |
 | **Library** | Books for her to read on her own time: add, see how far she's got, take off her shelf. |
-| **Friend mode** | Her friends (up to three), and **Start a visit**. |
+| **Friend mode** | Her friends (up to four), and **Start a visit**. |
 | **Memory training** | Review what she wants to remember before it's saved, or **Add a memory** in your own words. |
 | **Behavior learning** | The rules she's learned from your ratings and her diary (a list that folds), and how much she may change on her own. |
 | **Speech Engine** | Her voice: engines, voices, blended Kokoro voices. |
@@ -493,7 +493,7 @@ she keeps as a memory of her own. The books are kept as plain text in `brain/lib
 
 ### Friends
 
-*Settings → Friend mode*: up to three friends with souls of their own, edited like her role-play souls, each speaking
+*Settings → Friend mode*: up to four friends with souls of their own, edited like her role-play souls, each speaking
 through their own model: give a friend a server (any OpenAI-compatible one, such as LM Studio on another PC) and pick
 from the models it has loaded, or leave it empty for her own. It ships with three to start from, each with a life of their
 own to talk about: Rex (a blunt metalhead comic), Mira (an astrophysicist who bakes) and Juno (a chaotic art student).
