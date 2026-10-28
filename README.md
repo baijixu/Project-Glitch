@@ -458,7 +458,8 @@ now** in the [🧠 window](#her-mind) runs it without waiting for the week. Run 
 Off by default; turn it on in *Settings → Heartbeat*. Once you've been quiet for 20 minutes, every 10 minutes is a turn of her
 own time. If something notable happened -- a long talk with you ended, you gave a reply 👎, she made a decision in a chat,
 finished or put down a book, her friends came over -- she first thinks it over, in a short private entry (*Thoughts*, 💭).
-Otherwise she's offered what she could actually do right then and **picks one, with a reason**: read her
+Once an hour, with an agent picked in *Settings → Harness*, a turn goes to a **drawing**: she describes a picture of
+something on her mind, the agent makes it, and it goes in her gallery (🎨 in her *Thoughts*). Otherwise she's offered what she could actually do right then and **picks one, with a reason**: read her
 [book](#her-library), **look into** the oldest question on [her list](#her-mind) (with *Web Access* on; a note to herself,
 🔎), have her [friends](#friends) over (Friend mode on, once a day), look at a picture in her gallery, **think** something
 over, write in her **journal** (📓), or **rest**. Whatever she's done three times running sits out a turn, and past the daily

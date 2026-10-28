@@ -17,8 +17,9 @@ the day's thoughts log (self/thoughts/, Settings -> Chat Logs -> Thoughts).
 Each turn she picks what to do with her own time (ACTIVITIES, pick): reading her book (read_pages:
 the next pages, and a note on them that reaches her as a conversation opens), looking something up,
 her friends, a picture, wandering as above, her journal, or rest -- unless something notable waits
-to be thought over (reflect) or she's past today's caps (config.yaml). A landing topic is
-looked up on the web first (with web search on), and the topics that landed this week reach
+to be thought over (reflect), it's her hour's drawing (draw: with an agent set up, she describes a
+picture of something on her mind and it makes it, into her gallery), or she's past today's caps
+(config.yaml). A landing topic is looked up on the web first (with web search on), and the topics that landed this week reach
 her as a conversation opens too (into_lately); the rest of her wandering doesn't.
 """
 
@@ -43,6 +44,7 @@ import learning
 import metrics
 import notable
 import library
+import llm
 import memory
 import persona
 import pictures
@@ -89,6 +91,8 @@ SAME_IN_A_ROW = 3  # this many of one thing running, and it sits out a turn (opt
 MAX_TOKENS = 2_000_000
 MAX_CHOICE_TOKENS = 60
 MAX_JOURNAL_TOKENS = 500
+DRAW_EVERY_SEC = 60 * 60  # one of her turns an hour, when her agent can make it
+MAX_DRAW_TOKENS = 200
 # After each sitting she says how much she wants to read on (1-10). Asked KEEP or STOP she kept even a
 # software license; scored, the license got 2 and Moby-Dick's whale-classing chapters 7-8.
 DULL_AT = 3
@@ -118,6 +122,12 @@ _JOURNAL_PROMPT = (
     "Some of what's been going through your head:\n\n{fragments}\n\n"
     "Write in your journal -- whatever you want to get down right now. First person, a paragraph or two, plain words."
 )
+_DRAW_PROMPT = (
+    "Some of what's been on your mind:\n\n{fragments}\n\n"
+    "You get to make a picture of something on your mind -- {agent} draws it for you. Describe the picture you want in "
+    "two or three sentences: what's in it, the style, the mood. Just the description."
+)
+_drew_at = time.time()  # her last drawing (or Brain's start: the first comes an hour in)
 _last_beat = time.time()  # her last thought (or Brain's start: the first comes TICK_SEC in)
 _last_timer: dict | None = None  # the heartbeat_timer last sent to everyone
 
@@ -451,6 +461,9 @@ async def beat(brain: Brain) -> str:
     if event := notable.take():
         metrics.log("activity", what="reflect", reason=notable.for_him(event["what"]))
         return await reflect(brain, event, now)
+    if time.time() - _drew_at >= DRAW_EVERY_SEC and (hands := llm._hands()):
+        metrics.log("activity", what="draw")
+        return await draw(brain, read_interests(), now, *hands)
     turn = Turn(brain, now, library.read_state(), read_interests())
     word, turn.why = await pick(brain, options(turn), now)
     activity = ACTIVITIES[word]
@@ -491,6 +504,30 @@ async def reflect(brain: Brain, event: dict, now: datetime) -> str:
     conversation.log_thought(f"💭 **{event['what'][:1].upper()}{event['what'][1:]}**\n\n{page}", now=now)  # not .capitalize(): it lowercased his name
     print(f"[heartbeat] she reflected on: {event['what']}")
     return f"She thought over this: {notable.for_him(event['what'])}. {page[:120]}"
+
+
+async def draw(brain: Brain, interests: dict, now: datetime, agent: str, config: dict) -> str:
+    """Her hour's picture: something on her mind, described by her and made by her agent -- kept in her gallery
+    with her description (so she knows it when she looks at it again), and noted in her Thoughts."""
+    global _drew_at
+    _drew_at = time.time()
+    drifted = on_her_mind(3) or await fragments(now, interests)
+    if not drifted:
+        return "Nothing on her mind to draw yet."
+    prompt = _DRAW_PROMPT.format(fragments="\n".join(f"- {d}" for d in drifted), agent=agent)
+    if not (wanted := await _write(brain, "Thinking what to draw...", prompt, MAX_DRAW_TOKENS)):
+        return "She couldn't think what to draw."
+    async with hub.doing(f"Asking {agent} for a picture..."):  # not busy: his messages don't wait on the agent
+        report = await asyncio.to_thread(llm.agent_report, agent, config, f"Make a picture: {wanted}")
+    if not (kept := pictures.keep(report)):
+        print(f"[heartbeat] {agent} made no picture: {report[:200]!r}")
+        return f"{agent} didn't make her picture."
+    for name in kept:
+        pictures.describe(name, wanted)
+    await hub.broadcast(protocol.artwork(pictures.entries()))
+    conversation.log_thought(f"🎨 **I drew something**\n\n{wanted}", now=now)
+    print(f"[heartbeat] she drew: {wanted[:80]!r}")
+    return f"She drew: {wanted[:120]}"
 
 
 async def look_into(brain: Brain, item: dict, now: datetime) -> str:
@@ -627,7 +664,7 @@ def on_her_mind(count: int = 2) -> list[str]:
 
 
 _DID = {"read": "read", "think": "let your mind wander", "journal": "wrote in your journal", "reflect": "thought something over",
-        "look into": "looked something up", "visit friends": "had your friends over", "look at art": "looked at a picture",
+        "look into": "looked something up", "visit friends": "had your friends over", "look at art": "looked at a picture", "draw": "drew a picture",
         "choose": "weighed two of your things against each other", "rest": "rested"}
 OWN_PAGE_CHARS = 1200
 
