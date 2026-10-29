@@ -127,6 +127,10 @@ _DRAW_PROMPT = (
     "You get to make a picture of something on your mind -- {agent} draws it for you. Describe the picture you want in "
     "two or three sentences: what's in it, the style, the mood. Just the description."
 )
+_DREW_PROMPT = (
+    "Some of what's been on your mind:\n\n{fragments}\n\nYou just drew this: {wanted}\n\n"
+    "What was going through your head as you drew it -- why this? A few sentences, first person, plain words."
+)
 _drew_at = time.time()  # her last drawing (or Brain's start: the first comes an hour in)
 _last_beat = time.time()  # her last thought (or Brain's start: the first comes TICK_SEC in)
 _last_timer: dict | None = None  # the heartbeat_timer last sent to everyone
@@ -508,13 +512,15 @@ async def reflect(brain: Brain, event: dict, now: datetime) -> str:
 
 async def draw(brain: Brain, interests: dict, now: datetime, agent: str, config: dict) -> str:
     """Her hour's picture: something on her mind, described by her and made by her agent -- kept in her gallery
-    with her description (so she knows it when she looks at it again), and noted in her Thoughts."""
+    with what she was thinking as she drew it (so she knows it when she looks at it again; her description to the
+    agent if no thought came), and noted in her Thoughts."""
     global _drew_at
     _drew_at = time.time()
     drifted = on_her_mind(3) or await fragments(now, interests)
     if not drifted:
         return "Nothing on her mind to draw yet."
-    prompt = _DRAW_PROMPT.format(fragments="\n".join(f"- {d}" for d in drifted), agent=agent)
+    listed = "\n".join(f"- {d}" for d in drifted)
+    prompt = _DRAW_PROMPT.format(fragments=listed, agent=agent)
     if not (wanted := await _write(brain, "Thinking what to draw...", prompt, MAX_DRAW_TOKENS)):
         return "She couldn't think what to draw."
     async with hub.doing(f"Asking {agent} for a picture..."):  # not busy: his messages don't wait on the agent
@@ -522,10 +528,11 @@ async def draw(brain: Brain, interests: dict, now: datetime, agent: str, config:
     if not (kept := pictures.keep(report)):
         print(f"[heartbeat] {agent} made no picture: {report[:200]!r}")
         return f"{agent} didn't make her picture."
+    thought = await _write(brain, "Looking at her picture...", _DREW_PROMPT.format(fragments=listed, wanted=wanted), MAX_DRAW_TOKENS)
     for name in kept:
-        pictures.describe(name, wanted)
+        pictures.describe(name, thought or wanted)
     await hub.broadcast(protocol.artwork(pictures.entries()))
-    conversation.log_thought(f"🎨 **I drew something**\n\n{wanted}", now=now)
+    conversation.log_thought(f"🎨 **I drew something**\n\n{thought or wanted}", now=now)
     print(f"[heartbeat] she drew: {wanted[:80]!r}")
     return f"She drew: {wanted[:120]}"
 
