@@ -87,10 +87,30 @@ export class ArtworkUI {
           this._app.send({ type: "delete_picture", name });
         }
       });
+      if (picture.by !== "him") meta.appendChild(this._askButton(name));
       meta.appendChild(remove);
       tile.append(img, label, about, meta);
       this.listEl.appendChild(tile);
     }
+  }
+
+  // ❓ asks her about one of her pictures in chat, by the words of its name ("glassy sea stone spire"), which is
+  // how look_at_picture finds it -- so she opens and sees that one, with what she thought as she drew it.
+  _askButton(name) {
+    const ask = Object.assign(document.createElement("button"), {
+      className: "icon-button lesson-button",
+      textContent: "❓",
+      title: "Ask her about this picture",
+    });
+    ask.addEventListener("click", () => {
+      if (!this._app.canSendReply()) return;
+      const words = name.replace(/^\d{8}-\d{6}-/, "").replace(/\.\w+$/, "").replaceAll("-", " ");
+      const text = `Tell me about your "${words}" picture -- what were you thinking when you made it?`;
+      this._app.sendForReply({ type: "user_text", text }, `sent user_text (${text.length} chars, gallery ❓)`);
+      this._app.history.add("user", text);
+      $("settings-panel")?.classList.remove("open"); // her answer is in the chat, not here
+    });
+    return ask;
   }
 }
 

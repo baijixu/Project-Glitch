@@ -14,6 +14,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from curiosity import STOPWORDS, stem
 from store import read_json, write_json
 
 DIR = Path(__file__).parent / "pictures"
@@ -109,7 +110,7 @@ def find(about: str) -> str | None:
 
 
 def _words(text: str) -> set[str]:
-    return {w for w in re.findall(r"[a-z0-9]+", text.lower()) if len(w) > 2}
+    return {stem(w) for w in re.findall(r"[a-z0-9]+", text.lower()) if len(w) > 2 and w not in STOPWORDS}
 
 
 def least_looked() -> str | None:
