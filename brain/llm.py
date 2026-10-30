@@ -111,10 +111,12 @@ _PUSHBACK = re.compile(
     r"|\bpick (?:something|a) better\b|\bembarrassing\b|\bcop-?out\b|\b(?:bad|weak|lame) (?:answer|take)\b",
     re.IGNORECASE,
 )
+# One made-up exchange, not a rule: with the rule ("keep your position... don't swap it") she still opened
+# "fair, that was the safe answer" 11/15 and swapped her music taste 3/5; with this example, 2/15 and 0/5.
 PUSHBACK_NOTE = (
-    "If he's pushing back on what you just said: change your mind only for a new reason or fact he's given, and say "
-    "what changed it. If he's only unhappy with your answer, keep your position: say it better or kinder if you "
-    "like, but don't swap it to please him."
+    "He's unhappy with your answer but hasn't given you a reason, so it's still your answer. Keep it and say why, "
+    "the way you'd answer \"lame, pick a better pizza topping\" after picking pineapple: \"Nope, still pineapple. "
+    "Sweet and salty is the whole point.\" Change your mind only for a new reason or fact he's given."
 )
 
 # He says what her soul, settings or files do or don't say. Told "nowhere in any config does it say
