@@ -20,7 +20,7 @@
 
 import { AvatarsUI } from "./avatars_ui.js";
 import { BackgroundsUI } from "./backgrounds_ui.js";
-import { Capture } from "./capture.js";
+import { Capture, downscaleImage } from "./capture.js";
 import { CharactersUI } from "./characters_ui.js";
 import { ChatLogsUI } from "./chat_logs_ui.js";
 import { CuriosityTimerUI } from "./curiosity_timer_ui.js";
@@ -307,8 +307,13 @@ export class BrainClient {
     const resolve = this._pictureWaiters?.get(name);
     if (!resolve) return;
     this._pictureWaiters.delete(name);
-    if (!data_b64) this._pictures.delete(name); // gone now -- asked again next time it's shown
-    resolve(data_b64 ? `data:${mime};base64,${data_b64}` : null);
+    if (!data_b64) {
+      this._pictures.delete(name); // gone now -- asked again next time it's shown
+      return resolve(null);
+    }
+    // Kept as a 1024 px JPEG, not the full PNG: a phone holding all her pictures at full size ran out of memory.
+    const full = `data:${mime};base64,${data_b64}`;
+    downscaleImage(full).then(resolve, () => resolve(full));
   }
 
   send(message) {

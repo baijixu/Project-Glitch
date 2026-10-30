@@ -15,6 +15,14 @@ export class ArtworkUI {
     this._names = [];
     this._about = new Map();
     this.detailsEl?.addEventListener("toggle", () => this.detailsEl.open && this._render());
+    // A tile's picture is fetched once it's scrolled near, not all at once: every picture at once crashed a phone.
+    this._nearby = new IntersectionObserver((entries) => {
+      for (const { target, isIntersecting } of entries) {
+        if (!isIntersecting) continue;
+        this._nearby.unobserve(target);
+        this._app.loadPicture(target.dataset.picture).then((url) => (url ? (target.querySelector("img").src = url) : target.remove()));
+      }
+    });
     this.inputEl = $("picture-file-input");
     $("add-picture-button")?.addEventListener("click", () => this.inputEl?.click());
     this.inputEl?.addEventListener("change", () => this._add([...(this.inputEl.files || [])]));
@@ -49,6 +57,7 @@ export class ArtworkUI {
   _render() {
     if (!this.listEl) return;
     this.listEl.replaceChildren();
+    this._nearby.disconnect();
     if (!this._names.length) {
       this.listEl.appendChild(Object.assign(document.createElement("p"), { className: "settings-hint", textContent: "No pictures yet." }));
       return;
@@ -73,7 +82,6 @@ export class ArtworkUI {
         title: "Who or what this is, in a few words -- she goes by it",
       });
       label.addEventListener("change", () => this._app.send({ type: "label_picture", name, label: label.value.trim() }));
-      this._app.loadPicture(name).then((url) => (url ? (img.src = url) : tile.remove()));
       const meta = document.createElement("div");
       meta.className = "artwork-tile-meta";
       meta.appendChild(Object.assign(document.createElement("span"), { textContent: when(name) }));
@@ -92,7 +100,9 @@ export class ArtworkUI {
       buttons.appendChild(remove);
       meta.appendChild(buttons);
       tile.append(img, label, about, meta);
+      tile.dataset.picture = name;
       this.listEl.appendChild(tile);
+      this._nearby.observe(tile);
     }
   }
 
