@@ -1,7 +1,7 @@
 """Her weekly reflection: once a week, after her diary (journal.py) -- or when he asks, from the 🧠
 window -- she reads back over the week (her diary entries, the topics that landed, the book she's
 on) and writes a short page about who she's becoming (self/becoming/<date>.md, and in Settings ->
-Chat Logs -> Thoughts), and up to three things she wants to do with her own time next week (self/goals.md,
+Chat Logs -> Thoughts), and up to three things she wants to do with her own time next week (self/goals.json,
 heartbeat.goals), which next week's page looks back on. Then, with that page and the memories she made this week, she rewrites the
 parts of her soul that are about who she is (SECTIONS), so they're true of her now -- without that,
 the soul he started her from could only grow, never be outgrown. The rest of her soul (how she
@@ -325,10 +325,9 @@ async def run(brain: Brain, now: datetime | None = None) -> None:
     print("[reflection] she looked back on her week")
     async with brain.busy("Planning her week..."):
         raw = await asyncio.to_thread(brain.llm.under_soul, _GOALS_PROMPT.format(page=page), MAX_GOALS_TOKENS, sampling.active_values())
-    if goals := [line.strip() for line in raw.splitlines() if line.strip().startswith("- ")][:MAX_GOALS]:
-        heartbeat.goals_path().write_text(f"# This week I want to -- {now:%A %d %B %Y}\n\n" + "\n".join(goals) + "\n", encoding="utf-8")
-        conversation.log_thought("🎯 **This week I want to:**\n\n" + "\n".join(goals), now=now)
-    else:
-        heartbeat.goals_path().unlink(missing_ok=True)  # last week's aren't this week's
+    goals = [line.strip()[2:].strip() for line in raw.splitlines() if line.strip().startswith("- ")][:MAX_GOALS]
+    heartbeat.set_goals(goals)  # none this week clears last week's
+    if goals:
+        conversation.log_thought("🎯 **This week I want to:**\n\n" + "\n".join(f"- {g}" for g in goals), now=now)
     if learning.can_propose(brain) and await propose_rewrite(brain, page, now, rubs):  # waits in the memory review list
         await hub.broadcast(learning.training_state_message())

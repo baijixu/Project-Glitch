@@ -808,7 +808,7 @@ def _open_picture(arguments: dict) -> tuple[str, str | None]:
     return f"Opened it{': ' + about if about else '.'} It's right below, and it shows under your reply.", name
 
 
-def _hands() -> tuple[str, dict] | None:
+def agent_hands() -> tuple[str, dict] | None:
     """The harness picked in Settings -> Harness: (its name, {"endpoint", "model", "api_key"}), or
     None for none -- and none in private chat, since the harness keeps its own memory."""
     name = harness.read_selected_harness_name()
@@ -823,7 +823,7 @@ def _hands() -> tuple[str, dict] | None:
 
 def _run_agent_tool(arguments: dict) -> str:
     task = (arguments or {}).get("task", "").strip()
-    hands = _hands()
+    hands = agent_hands()
     if not task or not hands:
         return "No task given." if hands else "No agent is set up -- tell him you can't do that right now."
     agent, config = hands
@@ -1616,7 +1616,7 @@ class LocalLLM(ChatBackend):
             parts.append(SECRET_NOTE.format(secret=secret))
         elif _GAME.search(latest):
             parts.append(GAME_NOTE)
-        hands = _hands()
+        hands = agent_hands()
         agent_job = hands and (_AGENT_JOB.search(latest) or hands[0].lower() in latest.lower())
         if agent_job:
             parts.append(AGENT_JOB_NOTE.format(agent=hands[0]))
@@ -1689,7 +1689,7 @@ class LocalLLM(ChatBackend):
         tools = []
         if web_search_enabled:
             tools.append(WEB_SEARCH_TOOL)
-        if hands := _hands():
+        if hands := agent_hands():
             tools.append(_agent_tool(hands[0]))
         if not self._persona and pictures.listing():  # in role-play she's someone else
             tools.append(GALLERY_TOOL_SPEC)

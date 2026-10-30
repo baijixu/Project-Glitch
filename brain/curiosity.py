@@ -40,6 +40,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from store import Choice, Toggle, read_json, write_json
+from words import STOPWORDS, norm, stem
 
 _DIR = Path(__file__).parent
 ACTIVE = Toggle(_DIR / "curiosity_active.txt", default=True)  # on by default, like memory: it's the point of the feature
@@ -54,14 +55,6 @@ OFFER_EVERY_TURNS = 6  # at least this many of the user's messages between quest
 PROPOSE_EVERY_TURNS = 8  # how often the background "what am I curious about?" call runs
 MAX_OFFERS_UNUSED = 3  # closed unasked if offered this many times and she never worked it in
 REACH_OUT_AFTER_SEC = (15 * 60, 60 * 60)  # quiet from him before she speaks first: a random wait in this range, new each time he speaks
-STOPWORDS = frozenset(
-    "the a an and or of to in on at for with your you you're youre is are was were be do does did it its this that "
-    "what whats how when where which who why about into from more been have has had will would could can just like "
-    "one first most really still "
-    # filler verbs and words that carry no topic ("how did you get into X?" = "what got you started on X?")
-    "get got gotten getting start started make made take took going ever yet any some there here them they "
-    "their now way place thing things kind sort much many lot also even".split()
-)
 
 GUIDANCE = (
     "You're genuinely curious about the user, but most of your replies should NOT end in a question: "
@@ -174,18 +167,6 @@ def _write(questions: list[dict]) -> None:
     # she'd just asked and proposed it again.
     closed = sorted((q for q in questions if q["status"] != OPEN), key=lambda q: q.get("created", ""))[-MAX_CLOSED_KEPT:]
     write_json(QUESTIONS_PATH, open_ones + closed)
-
-
-def norm(text: str) -> str:
-    return re.sub(r"[^a-z0-9 ]", "", text.lower()).strip()
-
-
-def stem(word: str) -> str:
-    """Just enough to match "climbing"/"climb" and "names"/"name" -- no dictionary."""
-    for suffix in ("ing", "ed", "es", "s"):
-        if word.endswith(suffix) and len(word) - len(suffix) >= 4:
-            return word[: -len(suffix)]
-    return word
 
 
 def _topic_words(text: str) -> set[str]:

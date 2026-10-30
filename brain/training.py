@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import metrics
-from curiosity import norm
+from words import norm
 from store import Toggle, read_json, write_json
 
 _DIR = Path(__file__).parent

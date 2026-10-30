@@ -147,16 +147,17 @@ def _interests_path() -> Path:
     return conversation.JOURNAL_LOG_DIR / "interests.json"
 
 
-def goals_path() -> Path:
-    return conversation.JOURNAL_LOG_DIR / "goals.md"
+def _goals_path() -> Path:
+    return conversation.JOURNAL_LOG_DIR / "goals.json"
 
 
 def goals() -> list[str]:
     """What she wants to do with her time this week, from her weekly reflection (reflection.run)."""
-    try:
-        return [line[2:].strip() for line in goals_path().read_text(encoding="utf-8").splitlines() if line.startswith("- ")]
-    except FileNotFoundError:
-        return []
+    return read_json(_goals_path(), [])
+
+
+def set_goals(wanted: list[str]) -> None:
+    write_json(_goals_path(), wanted)
 
 
 def read_interests() -> dict:
@@ -481,7 +482,7 @@ async def beat(brain: Brain) -> str:
     if event := notable.take():
         metrics.log("activity", what="reflect", reason=notable.for_him(event["what"]))
         return await reflect(brain, event, now)
-    if time.time() - _drew_at >= DRAW_EVERY_SEC and (hands := llm._hands()):
+    if time.time() - _drew_at >= DRAW_EVERY_SEC and (hands := llm.agent_hands()):
         metrics.log("activity", what="draw")
         return await draw(brain, read_interests(), now, *hands)
     turn = Turn(brain, now, library.read_state(), read_interests())

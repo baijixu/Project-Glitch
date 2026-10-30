@@ -14,7 +14,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from curiosity import STOPWORDS, stem
+from words import STOPWORDS, stem
 from store import read_json, write_json
 
 DIR = Path(__file__).parent / "pictures"
