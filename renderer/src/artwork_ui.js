@@ -87,8 +87,10 @@ export class ArtworkUI {
           this._app.send({ type: "delete_picture", name });
         }
       });
-      if (picture.by !== "him") meta.appendChild(this._askButton(name));
-      meta.appendChild(remove);
+      const buttons = Object.assign(document.createElement("div"), { className: "artwork-tile-buttons" });
+      if (picture.by !== "him") buttons.appendChild(this._askButton(name));
+      buttons.appendChild(remove);
+      meta.appendChild(buttons);
       tile.append(img, label, about, meta);
       this.listEl.appendChild(tile);
     }
