@@ -296,7 +296,7 @@ The ⚙️ panel, top to bottom:
 | **LLM** | Engines, sampling profiles, and the context meter. |
 | **Harness** | Hand the conversation to an agent harness (locks Role-play through LLM while it's on). |
 | **Soul & User Files** | Edit `soul.md` and `user.md` directly. `soul.md` is capped at 6,000 characters (about two pages), with a live count; anything that doesn't fit belongs in her memories. |
-| **Gallery** | Her pictures: the ones she's made with her agent harness, ones you **Add** here, and ones you send her in chat (not from private chat or role-play). She describes each once in her own words ("me on a beach in..."); give one a short **label** ("Glitch", "not you: a model", "Yuki's pups") and she describes it again going by it, so she doesn't take every picture for herself, opens one when you bring it up so she sees it again, and looks through them in her quiet time. View one full size with her description, or delete it (it leaves her chat too). |
+| **Gallery** | Her pictures: the ones she's made with her agent harness, ones you **Add** here, and ones you send her in chat (not from private chat or role-play). She describes each once in her own words ("me on a beach in..."); give one a short **label** ("Glitch", "not you: a model", "Yuki's pups") and she describes it again going by it, so she doesn't take every picture for herself, opens one when you bring it up so she sees it again, and looks through them in her quiet time. View one full size with her description, ask her about one of hers with **❓** (she opens it in chat and tells you what she was thinking as she made it), or delete it (it leaves her chat too). Pictures load as they scroll into view, kept small, so a phone can open a big gallery. |
 | **Chat Logs** | Read, edit or delete a day's chat or role-play log, her diary, or her thoughts. |
 | **Debugging** | The debug log and its download. |
 | **Restart Brain** | Restarts the Brain process; her conversation is saved and picked back up. |
@@ -444,7 +444,8 @@ not her memory, her Thoughts, her friends or a web search. Hide an entry and she
 
 Once a week, after her diary (with memory training on), she reads back over her week -- her diary entries, the topics that
 landed, the book she's on -- and writes a short page about who she's becoming (`brain/self/becoming/`, and in *Chat Logs →
-Thoughts*, marked 🪞). Then, from that page and the memories she made that week, she **revises the parts of her soul about
+Thoughts*, marked 🪞), and up to three **goals** for her own time next week (🎯, `brain/self/goals.json`): she sees them each
+time she picks what to do, they drift through her daydreams, and next week's page looks back on how they went. Then, from that page and the memories she made that week, she **revises the parts of her soul about
 who she is** -- *Who you are*, *Your style*, *How you talk* and *Your own mind* -- in their own "You ..." voice, so she can
 outgrow the soul she started from. The rest of it (how she works, her moods, safety, after dark...) is never shown to her
 here and comes through word for word, and the whole soul has to fit the 6,000-character cap. The revised `soul.md` waits in
@@ -459,9 +460,11 @@ Off by default; turn it on in *Settings → Heartbeat*. Once you've been quiet f
 own time. If something notable happened -- a long talk with you ended, you gave a reply 👎, she made a decision in a chat,
 finished or put down a book, her friends came over -- she first thinks it over, in a short private entry (*Thoughts*, 💭).
 Once an hour, with an agent picked in *Settings → Harness*, a turn goes to a **drawing**: she describes a picture of
-something on her mind, the agent makes it, and it goes in her gallery (🎨 in her *Thoughts*). Otherwise she's offered what she could actually do right then and **picks one, with a reason**: read her
+something on her mind, the agent makes it, and it goes in her gallery with what she was thinking as she drew it (🎨 in her
+*Thoughts*). Otherwise she's offered what she could actually do right then and **picks one, with a reason** (what she then
+thinks or writes about): read her
 [book](#her-library), **look into** the oldest question on [her list](#her-mind) (with *Web Access* on; a note to herself,
-🔎), have her [friends](#friends) over (Friend mode on, once a day), look at a picture in her gallery, **think** something
+🔎), have her [friends](#friends) over (Friend mode on, up to three times a day, three hours apart), look at a picture in her gallery, **think** something
 over, write in her **journal** (📓), or **rest**. Whatever she's done three times running sits out a turn, and past the daily
 caps in `config.yaml` (`heartbeat`, see [Configuration](#configuration)) she rests until tomorrow without being asked. Her
 choices and reasons are in the 🧠 window.
@@ -698,7 +701,7 @@ Your conversations:
 - **`brain/chat_logs/`**: the daily chat logs (role-play in `chat_logs/roleplay/`); read or delete them in
   *Settings → Chat Logs*.
 - **`brain/self/`**: her diary, Heartbeat's thoughts (`thoughts/`), topics (`interests.json`) and pages (`interests/`), her
-  weekly pages (`becoming/`), what she wants to find out (`wonder.json`) and what she'll think over (`notable.json`), her
+  weekly pages (`becoming/`) and goals (`goals.json`), what she wants to find out (`wonder.json`) and what she'll think over (`notable.json`), her
   friends' visits (`visits/`) and her check-ups (`checkups/`).
 - **`brain/metrics.jsonl`**: the events behind the 🧠 window's Growth charts.
 - **`brain/his_journal.json`**: your own journal entries (*Settings → Your journal*).
