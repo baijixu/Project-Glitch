@@ -1,7 +1,8 @@
 """Her weekly reflection: once a week, after her diary (journal.py) -- or when he asks, from the 🧠
 window -- she reads back over the week (her diary entries, the topics that landed, the book she's
 on) and writes a short page about who she's becoming (self/becoming/<date>.md, and in Settings ->
-Chat Logs -> Thoughts). Then, with that page and the memories she made this week, she rewrites the
+Chat Logs -> Thoughts), and up to three things she wants to do with her own time next week (self/goals.md,
+heartbeat.goals), which next week's page looks back on. Then, with that page and the memories she made this week, she rewrites the
 parts of her soul that are about who she is (SECTIONS), so they're true of her now -- without that,
 the soul he started her from could only grow, never be outgrown. The rest of her soul (how she
 works, what she does when someone's in danger, after dark...) is never shown to her here and comes
@@ -44,6 +45,15 @@ _PAGE_PROMPT = (
     "keeps pulling at you, what you've started or stopped doing. Ground every point in something above; invent "
     "nothing. First person, at most three short paragraphs."
 )
+# Her week's goals (heartbeat.goals): in the choice of what to do on her own time and among her daydreams.
+_GOALS_PROMPT = (
+    "Here's the page you just wrote about who you're becoming:\n\n{page}\n\n"
+    "What do you want to do with your own time this coming week? Up to three things, each something you can do on "
+    "your own time -- read, look something up, think something through, write, draw, have your friends over -- and "
+    "concrete enough that you'd know next week whether you did it. One per line, starting with \"- \"."
+)
+MAX_GOALS = 3
+MAX_GOALS_TOKENS = 200
 _REWRITE_PROMPT = (
     "Below are the parts of your soul about who you are -- how you're described, in the second person -- with your "
     "page on who you're becoming and the memories you made this week. Rewrite these parts so they're true of you "
@@ -100,7 +110,8 @@ def week(now: datetime) -> str:
         except ValueError:
             pass  # a day they didn't talk has no entry
     landed = heartbeat.into_lately(now.timestamp())
-    return "\n\n".join(p for p in (*parts, landed, library.reading_line()) if p)
+    wanted = "What you wanted to do with your time this week:\n" + "\n".join(f"- {g}" for g in goals) if (goals := heartbeat.goals()) else ""
+    return "\n\n".join(p for p in (*parts, landed, library.reading_line(), wanted) if p)
 
 
 async def friction(brain: Brain, now: datetime) -> list[str]:
@@ -312,5 +323,12 @@ async def run(brain: Brain, now: datetime | None = None) -> None:
     (folder / f"{now:%Y-%m-%d}.md").write_text(f"# Who I'm becoming -- {now:%A %d %B %Y}\n\n{page}\n", encoding="utf-8")
     conversation.log_thought(f"🪞 **Who I'm becoming** -- her week, looked back on:\n\n{page}", now=now)
     print("[reflection] she looked back on her week")
+    async with brain.busy("Planning her week..."):
+        raw = await asyncio.to_thread(brain.llm.under_soul, _GOALS_PROMPT.format(page=page), MAX_GOALS_TOKENS, sampling.active_values())
+    if goals := [line.strip() for line in raw.splitlines() if line.strip().startswith("- ")][:MAX_GOALS]:
+        heartbeat.goals_path().write_text(f"# This week I want to -- {now:%A %d %B %Y}\n\n" + "\n".join(goals) + "\n", encoding="utf-8")
+        conversation.log_thought("🎯 **This week I want to:**\n\n" + "\n".join(goals), now=now)
+    else:
+        heartbeat.goals_path().unlink(missing_ok=True)  # last week's aren't this week's
     if learning.can_propose(brain) and await propose_rewrite(brain, page, now, rubs):  # waits in the memory review list
         await hub.broadcast(learning.training_state_message())

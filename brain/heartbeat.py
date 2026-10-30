@@ -99,7 +99,7 @@ DULL_AT = 3
 DULL_SITTINGS = 2  # in a row, and she puts the book down
 _WANT = re.compile(r"\n\W*(\d{1,2})\W*(?:/\s*10\W*)?$")
 _CHOICE_PROMPT = (
-    "It's {when}, and {name} isn't around -- your time is your own. {today}What do you want to do now?\n\n{options}\n\n"
+    "It's {when}, and {name} isn't around -- your time is your own. {today}{goals}What do you want to do now?\n\n{options}\n\n"
     "Pick one. Reply with one line: the word in capitals, then | and why, in a few words. For example:\n"
     "REST | I've been going all day"
 )
@@ -145,6 +145,18 @@ _HIS_LINE = re.compile(r"^\*\*[\d:]+\*\* You: (.+)$", re.MULTILINE)
 
 def _interests_path() -> Path:
     return conversation.JOURNAL_LOG_DIR / "interests.json"
+
+
+def goals_path() -> Path:
+    return conversation.JOURNAL_LOG_DIR / "goals.md"
+
+
+def goals() -> list[str]:
+    """What she wants to do with her time this week, from her weekly reflection (reflection.run)."""
+    try:
+        return [line[2:].strip() for line in goals_path().read_text(encoding="utf-8").splitlines() if line.startswith("- ")]
+    except FileNotFoundError:
+        return []
 
 
 def read_interests() -> dict:
@@ -256,13 +268,16 @@ def his_lines(now: datetime) -> list[str]:
     return found
 
 
-async def fragments(now: datetime, interests: dict) -> list[str]:
-    """One random line from each kind of thing she has, labeled, in random order."""
+async def fragments(now: datetime, interests: dict, why: str = "") -> list[str]:
+    """One random line from each kind of thing she has, labeled, in random order -- with `why` she sat down to it,
+    so a THINK picked to settle one of her goals isn't spent on whatever drifts by."""
     name = persona.user_name() or "He"
     kinds = [
+        ("Why you sat down to this: ", [why] if why else []),
         ("About you: ", soul_sentences()),
         ("From your diary: ", diary_sentences(now)),
         (f"{name} said: ", his_lines(now)),
+        ("This week you wanted to: ", goals()),
     ]
     if memory.read_memory_active():
         try:
@@ -402,9 +417,9 @@ ACTIVITIES = {
     "visit": Activity("visit friends", _offer_visit, _visit, logs_itself=True),
     "art": Activity("look at art", lambda t: "look at a picture in your gallery" if pictures.least_looked() else "",
                     lambda t: look_at(t.brain, t.interests, pictures.least_looked(), t.now)),
-    "think": Activity("think", lambda t: "think something over", lambda t: think(t.brain, t.interests, t.now)),
+    "think": Activity("think", lambda t: "think something over", lambda t: think(t.brain, t.interests, t.now, t.why)),
     "journal": Activity("journal", lambda t: "write in your journal, whatever you want to get down",
-                        lambda t: write_journal(t.brain, t.interests, t.now)),
+                        lambda t: write_journal(t.brain, t.interests, t.now, t.why)),
     "rest": Activity("rest", lambda t: "rest -- do nothing for a while (always fine)", _rest),
 }
 
@@ -446,6 +461,7 @@ async def pick(brain: Brain, found: dict[str, str], now: datetime) -> tuple[str,
     random.shuffle(items)
     prompt = _CHOICE_PROMPT.format(
         when=f"{now:%A}, {now:%I:%M %p}".replace(" 0", " "), name=persona.user_name() or "he", today=today_so_far(now),
+        goals=f"This week you wanted to: {'; '.join(wanted)}. " if (wanted := goals()) else "",
         options="\n".join(f"- {word.upper()}: {what}" for word, what in items),
     )
     async with brain.busy("Deciding what to do..."):
@@ -477,11 +493,11 @@ async def beat(brain: Brain) -> str:
     return await activity.run(turn)
 
 
-async def think(brain: Brain, interests: dict, now: datetime) -> str:
+async def think(brain: Brain, interests: dict, now: datetime, why: str = "") -> str:
     """Made to pick between two things of hers now and then (choose); otherwise her mind wanders."""
     if random.random() < CHOOSE_CHANCE and len(pair := await _two_of_hers(interests)) == 2:
         return await choose(brain, interests, *pair, now)
-    drifted = await fragments(now, interests)
+    drifted = await fragments(now, interests, why)
     if not drifted:
         return "Nothing to think about yet -- no soul, diary, chats or memories to wander through."
     async with brain.busy("Daydreaming..."):  # one model, one job at a time -- his message waits a few seconds at most
@@ -554,9 +570,9 @@ async def look_into(brain: Brain, item: dict, now: datetime) -> str:
     return f"She looked into {question!r}: {note[:120]}"
 
 
-async def write_journal(brain: Brain, interests: dict, now: datetime) -> str:
+async def write_journal(brain: Brain, interests: dict, now: datetime, why: str = "") -> str:
     """A page in her own journal, from what's drifting through her head -- in her Thoughts log."""
-    drifted = await fragments(now, interests)
+    drifted = await fragments(now, interests, why)
     page = await _write(brain, "Writing in her journal...", _JOURNAL_PROMPT.format(fragments="\n".join(f"- {d}" for d in drifted)), MAX_JOURNAL_TOKENS)
     if not page:
         return "She sat down to write and nothing came."
